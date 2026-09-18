@@ -409,6 +409,27 @@ export class SimulationEngine {
       if (!this.injectFractureTask(atMin)) break;
       this.fractureEventsTriggered += 1;
     }
+
+  }
+
+  private triggerMidRuntimeLoading(machine: MachineRuntimeState, atMin: number) {
+      const activity = this.config.activities.find((item) => item.key === 'loading');
+      if (!activity?.loadingInterrupt || machine.status !== 'running') return;
+      const cycle = this.cycleLengths.loading;
+      if (!Number.isFinite(cycle) || cycle <= 0) return;
+      const progress = machine.spoolsCompleted +
+        Math.max(0, Math.min(1, (this.runtimePerSpool - (machine.nextCompletionAt - atMin)) / this.runtimePerSpool));
+      const dueCount = Math.floor(progress / cycle);
+      const handledCount = machine.completedByActivity.loading ?? 0;
+      if (dueCount <= handledCount || machine.pendingTasks.some((task) => task.activity === 'loading')) return;
+      machine.completedByActivity.loading = dueCount;
+      machine.pendingTasks.push({ activity: 'loading', label: activity.label, timeMinutes: activity.timeMinutes });
+      machine.runtimeRemainingMin = Math.max(0, machine.nextCompletionAt - atMin);
+      machine.runtimePaused = true;
+      machine.status = 'needs-service';
+      machine.queuedSince = atMin;
+      machine.nextCompletionAt = Number.POSITIVE_INFINITY;
+      this.addLog(atMin, `${machine.label} needs ${activity.label} (weight threshold reached)`);
   }
 
   private accumulateDowntime(deltaMin: number) {
@@ -879,6 +900,7 @@ export class SimulationEngine {
       const step = Math.min(remaining, 0.01);
       const startMin = this.metrics.clockMin;
       this.advanceMachines(startMin, startMin + step);
+      this.machines.forEach((machine) => this.triggerMidRuntimeLoading(machine, startMin + step));
       this.triggerMidRuntimeFracture(startMin + step);
       this.advanceOperator(startMin, step);
       this.accumulateDowntime(step);

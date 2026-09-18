@@ -364,8 +364,31 @@ export class ProductionSimulationEngine {
           const state = this.fractureByConstruction.get(machine.constructionId);
           if (state) state.globalSpoolsCompleted += 1;
         }
+
       }
     }
+  }
+
+  private triggerMidRuntimeLoading(machine: ProdMachine, atMin: number) {
+    const activity = machine.activities.find((item) => item.key === 'loading');
+    if (!activity?.loadingInterrupt || machine.status !== 'running') return;
+    const cycle = machine.cycleLengths.loading;
+    if (!Number.isFinite(cycle) || cycle <= 0) return;
+    const progress = machine.spoolsCompleted +
+      Math.max(0, Math.min(1, (machine.runtimePerSpool - (machine.nextCompletionAt - atMin)) / machine.runtimePerSpool));
+    const dueCount = Math.floor(progress / cycle);
+    const handledCount = machine.completedByActivity.loading ?? 0;
+    if (dueCount <= handledCount || machine.pendingTasks.some((task) => task.activity === 'loading')) return;
+    const assignedOperatorId = this.operatorIdForTask(machine, 'loading');
+    machine.completedByActivity.loading = dueCount;
+    machine.pendingTasks.push({ activity: 'loading', label: activity.label, timeMinutes: activity.timeMinutes, assignedOperatorId });
+    machine.runtimeRemainingMin = Math.max(0, machine.nextCompletionAt - atMin);
+    machine.runtimePaused = true;
+    machine.status = 'needs-service';
+    machine.queuedSince = atMin;
+    machine.nextCompletionAt = Number.POSITIVE_INFINITY;
+    const constructionLabel = machine.constructionId ? this.constructionLabelById.get(machine.constructionId) ?? machine.constructionId : machine.label;
+    this.addLog(atMin, `${machine.label} needs Loading (${constructionLabel}, weight threshold reached)`);
   }
 
   /** Once a Construction group's cumulative (fractional, to stay smooth between whole-spool
@@ -826,6 +849,7 @@ export class ProductionSimulationEngine {
       const step = Math.min(remaining, 0.02);
       const startMin = this.metrics.clockMin;
       this.advanceMachines(startMin, startMin + step);
+      this.machines.forEach((machine) => this.triggerMidRuntimeLoading(machine, startMin + step));
       this.fractureByConstruction.forEach((_, constructionId) => this.triggerMidRuntimeFractureForConstruction(constructionId, startMin + step));
       this.operators.forEach((operator, i) => this.advanceOperator(operator, this.metrics.perOperator[i], startMin, step));
       this.servicingOperatorByMachineId.clear();

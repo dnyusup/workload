@@ -4,6 +4,8 @@ import type { Mpp_wl_productses } from '../generated/models/Mpp_wl_productsesMod
 import type { ActivityConfig, MachCondition, MachineSpecInput } from '../types';
 import { fractureRepairingDenominator } from './calculations';
 
+const WEIGHT_LOADING_AREAS = ['WW', 'BA', 'CA', 'IS', 'IP'];
+
 const TASK_KEY_BY_LABEL: Record<string, string> = {
   Doffing: 'doffing',
   Loading: 'loading',
@@ -53,8 +55,12 @@ function rounddownRatio(value: number, divisor: number): number {
   return Math.floor(value / divisor);
 }
 
-/** Builds the Loading parent + sub-activities from WL_Products' POlength1/2/3 columns, per the
+/** Builds Loading from WL_Products' POlength1/2/3 columns, per the
  * regulation: how many of the three are filled decides whether there's 0, 1 or 2 sub-loadings.
+ * For WW/BA/CA/IS/IP, POlength is a weight in kg rather than a physical length: only the parent
+ * Loading is created, its denominator is POlength/SpoolWeight (decimal values are intentional),
+ * and the simulation marks it due from fractional production progress, so it may interrupt a
+ * spool before Doffing.
  *   - 1 filled: parent only, denominator = ROUNDDOWN(that length / SpoolLength).
  *   - 2 filled: parent denominator = ROUNDDOWN(MAX(length) / SpoolLength); one sub-loading, taken
  *     whole (time/numerator/denominator/machcondition) from the WL_Activities row
@@ -69,7 +75,8 @@ function rounddownRatio(value: number, divisor: number): number {
  * reported back as an error instead of silently skipped. */
 function buildLoadingActivities(
   rows: Mpp_wl_activities[],
-  product: Pick<Mpp_wl_productses, 'mpp_polength1' | 'mpp_polength2' | 'mpp_polength3' | 'mpp_spoollength'>,
+  product: Pick<Mpp_wl_productses, 'mpp_area' | 'mpp_polength1' | 'mpp_polength2' | 'mpp_polength3' | 'mpp_spoollength'>,
+  spoolWeight: number,
 ): { activities: ActivityConfig[]; errors: string[] } | null {
   const poLengths = [
     { value: parseNumber(product.mpp_polength1, NaN) },
@@ -86,6 +93,7 @@ function buildLoadingActivities(
   const findSub = (subtaskName: string) =>
     loadingRows.find((row) => row.mpp_subtaskname?.trim().toLowerCase() === subtaskName.toLowerCase());
   const spoolLength = parseNumber(product.mpp_spoollength, 0);
+  const weightLoading = WEIGHT_LOADING_AREAS.includes((product.mpp_area ?? '').trim().toUpperCase());
 
   if (!parentRow) {
     errors.push('Loading (Task=Loading, SubTask blank) not found in WL_Activities for this Construction.');
@@ -105,7 +113,21 @@ function buildLoadingActivities(
       timeReadOnly: true,
       numeratorReadOnly: true,
       denominatorReadOnly: true,
+      loadingInterrupt: weightLoading,
     });
+  }
+
+  if (weightLoading) {
+    const poLength = poLengths[0].value;
+    if (!spoolWeight) {
+      errors.push('Loading denominator cannot be calculated because SpoolWeight is zero.');
+    } else if (parentRow) {
+      const loading = activities[0];
+      loading.denominator = poLength / spoolWeight;
+      loading.loadingInterrupt = true;
+      // POlength is kilograms for these areas: only the parent Loading is applicable.
+      return { activities, errors };
+    }
   }
 
   if (poLengths.length > 1) {
@@ -194,13 +216,13 @@ function buildLoadingActivities(
  * buildLoadingActivities — and otherwise falls back to the generic per-task handling below. */
 export function buildActivitiesFromRows(
   rows: Mpp_wl_activities[],
-  product: Pick<Mpp_wl_productses, 'mpp_polength1' | 'mpp_polength2' | 'mpp_polength3' | 'mpp_spoollength'>,
+  product: Pick<Mpp_wl_productses, 'mpp_area' | 'mpp_polength1' | 'mpp_polength2' | 'mpp_polength3' | 'mpp_spoollength'>,
   spoolWeight: number,
   fracturePerTon: number,
 ): { activities: ActivityConfig[]; errors: string[] } {
   const result: ActivityConfig[] = [];
   const errors: string[] = [];
-  const loadingOverride = buildLoadingActivities(rows, product);
+  const loadingOverride = buildLoadingActivities(rows, product, spoolWeight);
 
   for (const taskLabel of TASK_ORDER) {
     const taskKey = TASK_KEY_BY_LABEL[taskLabel];

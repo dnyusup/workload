@@ -62,6 +62,8 @@ export interface ActivityConfig {
    * its own (its numerator is 0, an infinite cycle) — it only exists as that substitution's source
    * for Time/MachCondition. */
   loadingPartialSlot?: 1 | 2 | 3;
+  /** Loading is triggered from fractional production progress (weight) and may interrupt a spool. */
+  loadingInterrupt?: boolean;
 }
 
 export interface MovementParams {
