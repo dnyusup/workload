@@ -1,9 +1,26 @@
 import type { ActivityConfig, MachineSpecDerived, MachineSpecInput } from '../types';
 
+/** Areas whose Linear Speed = Speed directly (no twisting formula) — Twist/min doesn't apply here. */
+const LINEAR_SPEED_FROM_SPEED_AREAS = ['WW', 'CH', 'CR', 'BA', 'CA', 'IS', 'IP'];
+/** Areas whose Twist/min = Speed (not Speed*2); Linear Speed still uses the LayLength/1000*Twist/min formula. */
+const TWIST_EQUALS_SPEED_AREAS = ['SP', 'CB'];
+
 export function deriveMachineSpec(spec: MachineSpecInput): MachineSpecDerived {
-  const twistPerMin = spec.speed * 2;
   const spoolWeight = (spec.spoolLength * spec.linearDensity * spec.noOfWires) / 1000;
-  const linearSpeed = (spec.layLength / 1000) * twistPerMin;
+
+  let twistPerMin: number;
+  let linearSpeed: number;
+  if (LINEAR_SPEED_FROM_SPEED_AREAS.includes(spec.area)) {
+    twistPerMin = 0;
+    linearSpeed = spec.speed;
+  } else if (TWIST_EQUALS_SPEED_AREAS.includes(spec.area)) {
+    twistPerMin = spec.speed;
+    linearSpeed = (spec.layLength / 1000) * twistPerMin;
+  } else {
+    twistPerMin = spec.speed * 2;
+    linearSpeed = (spec.layLength / 1000) * twistPerMin;
+  }
+
   const runtimePerSpool = linearSpeed > 0 ? spec.spoolLength / linearSpeed + 0.65 : 0;
 
   return { twistPerMin, spoolWeight, linearSpeed, runtimePerSpool };

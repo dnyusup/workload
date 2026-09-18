@@ -44,13 +44,13 @@ export function SpecForm({
       <div className="divider" />
 
       <div className="grid-2">
-        <Field label="Twist/min" hint="= Speed * 2">
+        <Field label="Twist/min" hint="Speed*2 (0 for WW/CH/CR/BA/CA/IS/IP; = Speed for SP/CB)">
           <NumberInput value={derived.twistPerMin} readOnly />
         </Field>
         <Field label="Spool Weight" hint="= SpoolLength*LinearDensity*NoOfWires/1000">
           <NumberInput value={round(derived.spoolWeight)} readOnly />
         </Field>
-        <Field label="Linear Speed" hint="= LayLength/1000*Twist/min">
+        <Field label="Linear Speed" hint="= Speed for WW/CH/CR/BA/CA/IS/IP; else LayLength/1000*Twist/min">
           <NumberInput value={round(derived.linearSpeed)} readOnly />
         </Field>
         <Field label="Runtime/spool (min)" hint="= SpoolLength/LinearSpeed + 0.65">
