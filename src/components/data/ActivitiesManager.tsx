@@ -5,18 +5,23 @@ import {
   type Mpp_wl_activities,
   type Mpp_wl_activitiesBase,
 } from '../../generated/models/Mpp_wl_activitiesModel';
+import { Mpp_wl_productsesService } from '../../generated/services/Mpp_wl_productsesService';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { SearchableSelect } from '../ui/SearchableSelect';
 
+/** DiesChange only applies to Constructions belonging to these Areas (see WL_Products.mpp_area) —
+ * everywhere else it's hidden from the Task dropdown, mirroring the Dies/Ton field restriction. */
+const DIES_CHANGE_AREAS = ['WW', 'CA', 'BA'];
+
 const TASK_OPTIONS = Object.entries(Mpp_wl_activitiesmpp_taskname).map(([value, label]) => ({
-  value: Number(value) as 0 | 1 | 2,
+  value: Number(value) as 0 | 1 | 2 | 3,
   label,
 }));
 
 interface ActivityFields {
   mpp_constructiontype: string;
-  mpp_taskname: 0 | 1 | 2;
+  mpp_taskname: 0 | 1 | 2 | 3;
   mpp_subtaskname: string;
   mpp_tasktime: number;
   mpp_numerator: number;
@@ -75,7 +80,7 @@ function fieldsFromRecord(record: Mpp_wl_activities): ActivityFields {
   const constructionType = record.mpp_constructiontype ?? '';
   return {
     mpp_constructiontype: constructionType,
-    mpp_taskname: (record.mpp_taskname ?? 0) as 0 | 1 | 2,
+    mpp_taskname: (record.mpp_taskname ?? 0) as 0 | 1 | 2 | 3,
     mpp_subtaskname: record.mpp_subtaskname ?? '',
     mpp_tasktime: record.mpp_tasktime ?? 0,
     mpp_numerator: record.mpp_numerator ?? 1,
@@ -98,10 +103,28 @@ export function ActivitiesManager({
   const [reloadToken, setReloadToken] = useState(0);
   const [constructionFilter, setConstructionFilter] = useState(initialConstructionFilter ?? '');
   const [sort, setSort] = useState<{ key: keyof ActivityFields; dir: 'asc' | 'desc' } | null>(null);
+  // Construction (mpp_constructioncode) -> Area, sourced from WL_Products, used only to decide
+  // whether DiesChange should appear in the Task dropdown for a given row (see DIES_CHANGE_AREAS).
+  const [areaByConstruction, setAreaByConstruction] = useState<Map<string, string>>(new Map());
 
   useEffect(() => {
     if (initialConstructionFilter) setConstructionFilter(initialConstructionFilter);
   }, [initialConstructionFilter]);
+
+  useEffect(() => {
+    let cancelled = false;
+    Mpp_wl_productsesService.getAll({}).then((result) => {
+      if (cancelled || !result.success) return;
+      const map = new Map<string, string>();
+      for (const product of result.data ?? []) {
+        if (product.mpp_constructioncode) map.set(product.mpp_constructioncode, product.mpp_area ?? '');
+      }
+      setAreaByConstruction(map);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadToken]);
 
   useEffect(() => {
     let cancelled = false;
@@ -173,6 +196,15 @@ export function ActivitiesManager({
   }, [rows, constructionFilter, sort]);
 
   const sortIndicator = (key: keyof ActivityFields) => (sort?.key === key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : '');
+
+  /** DiesChange (value 3) only shows up for Constructions whose Area is WW/CA/BA; already-saved
+   * rows with DiesChange keep showing it regardless, so switching Area away doesn't silently hide
+   * the selected value. */
+  const taskOptionsFor = (row: ActivityRow) => {
+    const area = areaByConstruction.get(row.fields.mpp_constructiontype) ?? '';
+    if (DIES_CHANGE_AREAS.includes(area) || row.fields.mpp_taskname === 3) return TASK_OPTIONS;
+    return TASK_OPTIONS.filter((opt) => opt.value !== 3);
+  };
 
   const addRow = () => {
     setRows((prev) => [
@@ -345,9 +377,9 @@ export function ActivitiesManager({
                     <select
                       className="input"
                       value={row.fields.mpp_taskname}
-                      onChange={(e) => updateField(row.id, 'mpp_taskname', Number(e.target.value) as 0 | 1 | 2)}
+                      onChange={(e) => updateField(row.id, 'mpp_taskname', Number(e.target.value) as 0 | 1 | 2 | 3)}
                     >
-                      {TASK_OPTIONS.map((opt) => (
+                      {taskOptionsFor(row).map((opt) => (
                         <option key={opt.value} value={opt.value}>
                           {opt.label}
                         </option>
