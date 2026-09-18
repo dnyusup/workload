@@ -149,6 +149,14 @@
           "x-ms-schema-name": "mpp_constructiondetailid",
           "maxLength": 100
         },
+        "mpp_dieschangeoperatorid": {
+          "type": "string",
+          "title": "dieschangeoperatorid",
+          "x-ms-dataverse-attribute": "mpp_dieschangeoperatorid",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "mpp_dieschangeoperatorid",
+          "maxLength": 100
+        },
         "mpp_doffingoperatorid": {
           "type": "string",
           "title": "doffingoperatorid",
