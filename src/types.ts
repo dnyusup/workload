@@ -131,6 +131,8 @@ export interface PendingTask {
    * from the machine's per-activity operator assignment). Undefined in the single-operator
    * Simulator, where every task implicitly belongs to the one shared operator. */
   assignedOperatorId?: string;
+  /** Weight-based Loading is performed entirely at the Pay Off zone. */
+  loadingPayoffOnly?: boolean;
 }
 
 export type DowntimeReason = string;

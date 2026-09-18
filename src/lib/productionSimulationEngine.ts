@@ -330,7 +330,13 @@ export class ProductionSimulationEngine {
               this.warnings.push(`Machine ${machine.label}: "${activity.label}" is due but has no operator assigned.`);
             }
           }
-          newTasks.push({ activity: key, label: activity.label, timeMinutes: activity.timeMinutes, assignedOperatorId });
+          newTasks.push({
+            activity: key,
+            label: activity.label,
+            timeMinutes: activity.timeMinutes,
+            assignedOperatorId,
+            loadingPayoffOnly: activity.loadingInterrupt,
+          });
         }
         machine.completedByActivity[key] = dueCount;
       }
@@ -389,7 +395,13 @@ export class ProductionSimulationEngine {
     if (machine.spoolsSinceLoading + fractionalProgress < cycle ||
       machine.pendingTasks.some((task) => task.activity === 'loading')) return;
     const assignedOperatorId = this.operatorIdForTask(machine, 'loading');
-    machine.pendingTasks.push({ activity: 'loading', label: activity.label, timeMinutes: activity.timeMinutes, assignedOperatorId });
+    machine.pendingTasks.push({
+      activity: 'loading',
+      label: activity.label,
+      timeMinutes: activity.timeMinutes,
+      assignedOperatorId,
+      loadingPayoffOnly: true,
+    });
     machine.runtimeRemainingMin = Math.max(0, machine.nextCompletionAt - atMin);
     machine.runtimePaused = true;
     machine.status = 'needs-service';

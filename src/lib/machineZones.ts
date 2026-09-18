@@ -43,11 +43,12 @@ interface RawSegment {
 }
 
 /** Splits one activity's total time into the zones the operator stands in, per plant convention. */
-function activityZoneSchedule(activity: ActivityKey, totalTime: number): RawSegment[] {
+function activityZoneSchedule(activity: ActivityKey, totalTime: number, loadingPayoffOnly = false): RawSegment[] {
   let raw: RawSegment[];
   if (activity === 'doffing' || activity.startsWith('doffing-')) {
     raw = [{ zone: 'takeup', duration: totalTime }];
   } else if (activity === 'loading' || activity.startsWith('loading-')) {
+    if (loadingPayoffOnly) return [{ zone: 'payoff', duration: totalTime }];
     const payoff = totalTime * 0.3;
     const takeup = 2;
     const cradle = totalTime - payoff - takeup;
@@ -87,13 +88,13 @@ export function buildServiceSegments(
 ): ServiceSegment[] {
   const segments: ServiceSegment[] = [];
   for (const task of tasks) {
-    const raw = activityZoneSchedule(task.activity, task.timeMinutes);
+    const raw = activityZoneSchedule(task.activity, task.timeMinutes, task.loadingPayoffOnly);
     const positioned = raw.map((seg) => ({
       ...seg,
       pos: zonePosition(centerX, centerY, orientation, seg.zone, pairSide, boxWidthPx, boxHeightPx),
     }));
     const includesInternalMovement =
-      task.activity === 'loading' ||
+      (task.activity === 'loading' && !task.loadingPayoffOnly) ||
       task.activity.startsWith('loading-') ||
       task.activity === 'fractureRepairing' ||
       task.activity.startsWith('fractureRepairing-');
