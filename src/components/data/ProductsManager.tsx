@@ -80,6 +80,10 @@ function computeConstructionCodes(
   };
 }
 
+/** Dies/Ton is only meaningful for these areas — elsewhere it's locked to whatever value is
+ * already stored (usually blank). */
+const DIES_TON_EDITABLE_AREAS = ['WW', 'CA', 'BA'];
+
 function emptyFields(): ProductFields {
   return {
     mpp_constructiondetailcode: '',
@@ -307,7 +311,12 @@ export function ProductsManager({
               <tbody>
                 {visibleRows.map((row) => (
                   <tr key={row.id}>
-                    {COLUMNS.map((col) => (
+                    {COLUMNS.map((col) => {
+                      const readOnly =
+                        col.key === 'mpp_dieston'
+                          ? !DIES_TON_EDITABLE_AREAS.includes(row.fields.mpp_area)
+                          : col.readOnly;
+                      return (
                       <td
                         key={col.key}
                         className={col.key === 'mpp_area' ? 'products-area-column' : undefined}
@@ -333,20 +342,27 @@ export function ProductsManager({
                           </select>
                         ) : (
                           <input
-                            className={`input ${col.readOnly ? 'input-readonly' : ''}`}
+                            className={`input ${readOnly ? 'input-readonly' : ''}`}
                             type={col.type}
                             value={row.fields[col.key]}
-                            readOnly={col.readOnly}
-                            title={col.readOnly ? 'Auto-generated from Mach/Product/LayLength/TensileGroup/SpoolType(/SpoolLength)' : undefined}
-                            onChange={(e) =>
+                            readOnly={readOnly}
+                            title={
                               col.readOnly
+                                ? 'Auto-generated from Mach/Product/LayLength/TensileGroup/SpoolType(/SpoolLength)'
+                                : col.key === 'mpp_dieston' && readOnly
+                                  ? 'Dies/Ton is only editable for area WW, CA, BA'
+                                  : undefined
+                            }
+                            onChange={(e) =>
+                              readOnly
                                 ? undefined
                                 : updateField(row.id, col.key, col.type === 'number' ? parseFloat(e.target.value) || 0 : e.target.value)
                             }
                           />
                         )}
                       </td>
-                    ))}
+                      );
+                    })}
                     <td className="data-row-actions">
                       <Button variant="primary" onClick={() => saveRow(row.id)} disabled={row.saving || !row.dirty}>
                         {row.saving ? 'Saving…' : 'Save'}
