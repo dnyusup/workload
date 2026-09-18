@@ -121,7 +121,13 @@ export class SimulationEngine {
         spoolsCompleted: startSpools,
         shiftSpoolsCompleted: 0,
         spoolsSinceLoading: (() => {
+          const loading = config.activities.find((activity) => activity.key === 'loading');
           const loadingCycle = this.cycleLengths.loading;
+          if (loading?.loadingInterrupt && Number.isFinite(loadingCycle) && loadingCycle > 0) {
+            // Weight-based Loading has its own production phase. Randomize it across the full
+            // cycle instead of deriving it from startSpools, which is capped at one shift.
+            return Math.random() * loadingCycle;
+          }
           return Number.isFinite(loadingCycle) && loadingCycle > 0 ? startSpools % loadingCycle : startSpools;
         })(),
         nextCompletionAt: assigned ? Math.random() * this.runtimePerSpool : this.runtimePerSpool,
@@ -309,6 +315,7 @@ export class SimulationEngine {
     });
     this.config.activities.filter((activity) => activity.key !== 'fractureRepairing').forEach((activity) => {
       const { key } = activity;
+      if (activity.loadingInterrupt) return;
       const cycle = this.cycleLengths[key];
       if (!Number.isFinite(cycle) || cycle <= 0) return;
       const dueCount = dueCounts.get(key) ?? 0;
@@ -417,12 +424,12 @@ export class SimulationEngine {
       if (!activity?.loadingInterrupt || machine.status !== 'running') return;
       const cycle = this.cycleLengths.loading;
       if (!Number.isFinite(cycle) || cycle <= 0) return;
-      const progress = machine.spoolsCompleted +
-        Math.max(0, Math.min(1, (this.runtimePerSpool - (machine.nextCompletionAt - atMin)) / this.runtimePerSpool));
-      const dueCount = Math.floor(progress / cycle);
-      const handledCount = machine.completedByActivity.loading ?? 0;
-      if (dueCount <= handledCount || machine.pendingTasks.some((task) => task.activity === 'loading')) return;
-      machine.completedByActivity.loading = dueCount;
+      const fractionalProgress = Math.max(
+        0,
+        Math.min(1, (this.runtimePerSpool - (machine.nextCompletionAt - atMin)) / this.runtimePerSpool),
+      );
+      if (machine.spoolsSinceLoading + fractionalProgress < cycle ||
+        machine.pendingTasks.some((task) => task.activity === 'loading')) return;
       machine.pendingTasks.push({ activity: 'loading', label: activity.label, timeMinutes: activity.timeMinutes });
       machine.runtimeRemainingMin = Math.max(0, machine.nextCompletionAt - atMin);
       machine.runtimePaused = true;

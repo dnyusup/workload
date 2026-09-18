@@ -146,7 +146,14 @@ export class ProductionSimulationEngine {
         status: assigned ? 'running' : 'unassigned',
         spoolsCompleted: startSpools,
         shiftSpoolsCompleted: 0,
-        spoolsSinceLoading: startSpools,
+        spoolsSinceLoading: (() => {
+          const loading = activities.find((activity) => activity.key === 'loading');
+          const loadingCycle = construction?.cycleLengths.loading;
+          if (loading?.loadingInterrupt && Number.isFinite(loadingCycle) && (loadingCycle ?? 0) > 0) {
+            return Math.random() * loadingCycle!;
+          }
+          return startSpools;
+        })(),
         nextCompletionAt: assigned ? Math.random() * runtimePerSpool : runtimePerSpool,
         pendingTasks: [],
         queuedSince: null,
@@ -305,6 +312,7 @@ export class ProductionSimulationEngine {
     });
     machine.activities.filter((a) => a.key !== 'fractureRepairing').forEach((activity) => {
       const { key } = activity;
+      if (activity.loadingInterrupt) return;
       const cycle = machine.cycleLengths[key];
       if (!Number.isFinite(cycle) || cycle <= 0) return;
       const dueCount = dueCounts.get(key) ?? 0;
@@ -374,13 +382,13 @@ export class ProductionSimulationEngine {
     if (!activity?.loadingInterrupt || machine.status !== 'running') return;
     const cycle = machine.cycleLengths.loading;
     if (!Number.isFinite(cycle) || cycle <= 0) return;
-    const progress = machine.spoolsCompleted +
-      Math.max(0, Math.min(1, (machine.runtimePerSpool - (machine.nextCompletionAt - atMin)) / machine.runtimePerSpool));
-    const dueCount = Math.floor(progress / cycle);
-    const handledCount = machine.completedByActivity.loading ?? 0;
-    if (dueCount <= handledCount || machine.pendingTasks.some((task) => task.activity === 'loading')) return;
+    const fractionalProgress = Math.max(
+      0,
+      Math.min(1, (machine.runtimePerSpool - (machine.nextCompletionAt - atMin)) / machine.runtimePerSpool),
+    );
+    if (machine.spoolsSinceLoading + fractionalProgress < cycle ||
+      machine.pendingTasks.some((task) => task.activity === 'loading')) return;
     const assignedOperatorId = this.operatorIdForTask(machine, 'loading');
-    machine.completedByActivity.loading = dueCount;
     machine.pendingTasks.push({ activity: 'loading', label: activity.label, timeMinutes: activity.timeMinutes, assignedOperatorId });
     machine.runtimeRemainingMin = Math.max(0, machine.nextCompletionAt - atMin);
     machine.runtimePaused = true;
