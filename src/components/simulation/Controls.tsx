@@ -1,0 +1,120 @@
+import type { AppConfig } from '../../types';
+import { deriveMachineSpec, fractureRepairingDenominator } from '../../lib/calculations';
+import { Button } from '../ui/Button';
+
+export function Controls({
+  playing,
+  speed,
+  onPlay,
+  onPause,
+  onReset,
+  onSpeedChange,
+  onBack,
+  finished,
+  config,
+  setConfig,
+  liveSettingsDisabled,
+}: {
+  playing: boolean;
+  speed: number;
+  onPlay: () => void;
+  onPause: () => void;
+  onReset: () => void;
+  onSpeedChange: (speed: number) => void;
+  onBack: () => void;
+  finished: boolean;
+  config: AppConfig;
+  setConfig: (updater: (prev: AppConfig) => AppConfig) => void;
+  /** #Mach Assigned / Fracture per Ton can only be edited right after Reset — once the shift has
+   * actually started (playing or mid-shift), changing them would restart mid-way through, which is
+   * confusing, so they're locked until the next Reset. */
+  liveSettingsDisabled: boolean;
+}) {
+  const handleMachHandledChange = (value: number) => {
+    if (!Number.isFinite(value)) return;
+    setConfig((prev) => ({ ...prev, operator: { ...prev.operator, machHandled: Math.max(0, value) } }));
+  };
+
+  const handleFracturePerTonChange = (value: number) => {
+    if (!Number.isFinite(value)) return;
+    setConfig((prev) => {
+      const nextSpec = { ...prev.spec, fracturePerTon: value };
+      const derived = deriveMachineSpec(nextSpec);
+      return {
+        ...prev,
+        spec: nextSpec,
+        // Fracture Repairing's numerator/denominator are formula-driven (Fracture/Ton, 1000/SpoolWeight)
+        // — re-resolve them here the same way starting a simulation does, so the live edit actually
+        // changes the fracture cycle instead of just the displayed spec value.
+        activities: prev.activities.map((a) => ({
+          ...a,
+          numerator: a.numeratorAuto ? value : a.numerator,
+          denominator: a.denominatorAuto ? fractureRepairingDenominator(derived.spoolWeight) : a.denominator,
+        })),
+      };
+    });
+  };
+
+  return (
+    <div className="controls-bar">
+      <Button variant="ghost" onClick={onBack}>
+        &larr; Edit Setup
+      </Button>
+      <div className="controls-live-settings">
+        <span className="controls-construction-detail">
+          Construction Detail: <strong>{config.selectedConstructionDetail ?? '—'}</strong>
+        </span>
+        <label className="controls-live-field">
+          <span>#Mach Assigned</span>
+          <input
+            className={`input input-sm ${liveSettingsDisabled ? 'input-readonly' : ''}`}
+            type="number"
+            min={0}
+            value={config.operator.machHandled}
+            readOnly={liveSettingsDisabled}
+            onChange={(e) => handleMachHandledChange(parseInt(e.target.value, 10))}
+            title={liveSettingsDisabled ? 'Click Reset to edit before starting the shift' : 'Changes here restart the simulation with the new value'}
+          />
+        </label>
+        <label className="controls-live-field">
+          <span>Fracture/Ton</span>
+          <input
+            className={`input input-sm ${liveSettingsDisabled ? 'input-readonly' : ''}`}
+            type="number"
+            min={0}
+            step="any"
+            value={config.spec.fracturePerTon}
+            readOnly={liveSettingsDisabled}
+            onChange={(e) => handleFracturePerTonChange(parseFloat(e.target.value))}
+            title={liveSettingsDisabled ? 'Click Reset to edit before starting the shift' : 'Changes here restart the simulation with the new value'}
+          />
+        </label>
+      </div>
+      <div className="controls-spacer" />
+      {finished && <span className="finished-badge">Shift complete</span>}
+      {!playing ? (
+        <Button variant="primary" onClick={onPlay} disabled={finished}>
+          ▶ Play
+        </Button>
+      ) : (
+        <Button variant="primary" onClick={onPause}>
+          ⏸ Pause
+        </Button>
+      )}
+      <div className="speed-group">
+        {[1, 2, 5, 10].map((s) => (
+          <button
+            key={s}
+            className={`speed-btn ${speed === s ? 'active' : ''}`}
+            onClick={() => onSpeedChange(s)}
+          >
+            {s}x
+          </button>
+        ))}
+      </div>
+      <Button variant="secondary" onClick={onReset}>
+        ⟲ Reset
+      </Button>
+    </div>
+  );
+}

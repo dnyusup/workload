@@ -1,0 +1,1082 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { LayoutMachine, ProductionMachineAssignment, ProductionSetup, TaskPriorityMode } from '../../types';
+import { loadSavedLayouts, type SavedLayout } from '../../lib/savedLayoutsStore';
+import {
+  listProductionSetupSummaries,
+  loadProductionSetup,
+  createProductionSetup,
+  deleteProductionSetup,
+  updateProductionSetupHeader,
+  addProductionOperator,
+  removeProductionOperator,
+  updateMachineAssignments,
+  type ProductionSetupSummary,
+} from '../../lib/productionSetupsStore';
+import { useDebouncedCallback } from '../../hooks/useDebouncedCallback';
+import { useAuth } from '../../context/AuthContext';
+import { isOwnedByCurrentUser } from '../../lib/ownership';
+import { resolveDisplayNames } from '../../lib/userDirectory';
+import { Mpp_wl_productsesService } from '../../generated/services/Mpp_wl_productsesService';
+import type { Mpp_wl_productses } from '../../generated/models/Mpp_wl_productsesModel';
+import { resolveConstructions, type ResolvedConstruction } from '../../lib/productionConstructionResolver';
+import { buildConstructionColorMap } from '../../lib/constructionColors';
+import { Card } from '../ui/Card';
+import { Button } from '../ui/Button';
+import { Field, NumberInput, SelectInput } from '../ui/Field';
+import { SearchableSelect } from '../ui/SearchableSelect';
+import { LayoutBuilder } from '../setup/LayoutBuilder';
+import { ProductionRunView } from './ProductionRunView';
+
+const TASK_PRIORITY_OPTIONS: { value: TaskPriorityMode; label: string }[] = [
+  { value: 'nearest', label: 'Nearest Task' },
+  { value: 'quickest', label: 'Quickest Task' },
+];
+
+function downloadCsv(filename: string, headers: string[], rows: (string | number)[][]) {
+  const escape = (value: string | number) => {
+    const str = String(value ?? '');
+    return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+  };
+  const csv = [headers, ...rows].map((row) => row.map(escape).join(',')).join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+/** Minimal RFC4180-ish CSV parser — handles quoted fields (with escaped "" and embedded commas /
+ * newlines), matching what downloadCsv() above produces plus what Excel typically saves. */
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = '';
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') {
+          field += '"';
+          i += 1;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        field += c;
+      }
+      continue;
+    }
+    if (c === '"') {
+      inQuotes = true;
+    } else if (c === ',') {
+      row.push(field);
+      field = '';
+    } else if (c === '\r') {
+      // skip — \n (below) closes the row
+    } else if (c === '\n') {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = '';
+    } else {
+      field += c;
+    }
+  }
+  if (field.length > 0 || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
+  return rows.filter((r) => r.length > 1 || r[0] !== '');
+}
+
+export function ProductionSimulationPage() {
+  const { user } = useAuth();
+  const isAdmin = user.role === 'admin';
+  const [summaries, setSummaries] = useState<ProductionSetupSummary[]>([]);
+  const [loadingSummaries, setLoadingSummaries] = useState(true);
+  const [summariesError, setSummariesError] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedSetup, setSelectedSetup] = useState<ProductionSetup | null>(null);
+  const [loadingSetup, setLoadingSetup] = useState(false);
+  const [setupError, setSetupError] = useState<string | null>(null);
+
+  const [savedLayouts, setSavedLayouts] = useState<SavedLayout[]>([]);
+  const [creatingFromLayoutId, setCreatingFromLayoutId] = useState('');
+  const [newSetupName, setNewSetupName] = useState('');
+  const [creatingSetup, setCreatingSetup] = useState(false);
+  const [createProgress, setCreateProgress] = useState<{ done: number; total: number } | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteProgress, setDeleteProgress] = useState<{ done: number; total: number } | null>(null);
+
+  const [products, setProducts] = useState<Mpp_wl_productses[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(true);
+  const [productsError, setProductsError] = useState<string | null>(null);
+  const [productsReloadKey, setProductsReloadKey] = useState(0);
+  const [creatorNames, setCreatorNames] = useState<Map<string, string>>(new Map());
+  const [setupSearchTerm, setSetupSearchTerm] = useState('');
+
+  // `createdbyname` from Dataverse comes back blank for records created through this app's own
+  // connection — resolve real display names from the stamped creator email via Office365Users
+  // instead (see userDirectory.ts), once per unique email in the loaded list.
+  const creatorNameFor = (s: ProductionSetupSummary) => {
+    if (s.createdByEmail) {
+      if (s.createdByEmail.trim().toLowerCase() === user.email.trim().toLowerCase()) return user.displayName;
+      return creatorNames.get(s.createdByEmail.trim().toLowerCase()) ?? s.createdByEmail;
+    }
+    return s.createdByName || 'Unknown';
+  };
+
+  const refreshSummaries = () => {
+    setLoadingSummaries(true);
+    setSummariesError(null);
+    listProductionSetupSummaries()
+      .then((result) => {
+        const visible = isAdmin ? result : result.filter((s) => isOwnedByCurrentUser(s, user));
+        setSummaries(visible);
+        const emailsToResolve = visible
+          .map((s) => s.createdByEmail)
+          .filter((email) => email && email.trim().toLowerCase() !== user.email.trim().toLowerCase());
+        if (emailsToResolve.length > 0) {
+          resolveDisplayNames(emailsToResolve).then(setCreatorNames);
+        }
+      })
+      .catch((err) => setSummariesError(err instanceof Error ? err.message : 'Failed to load Production Setups.'))
+      .finally(() => setLoadingSummaries(false));
+  };
+
+  useEffect(() => {
+    refreshSummaries();
+    loadSavedLayouts()
+      .then(setSavedLayouts)
+      .catch(() => {
+        // Layout picker just stays empty if this fails — creating a setup will show no options.
+      });
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingProducts(true);
+    setProductsError(null);
+    Mpp_wl_productsesService.getAll({ orderBy: ['mpp_constructiondetailcode asc'] })
+      .then((result) => {
+        if (cancelled) return;
+        if (result.success) {
+          setProducts(result.data ?? []);
+        } else {
+          setProductsError(result.error?.message ?? 'Failed to load WL_Products.');
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) setProductsError(err instanceof Error ? err.message : 'Failed to load WL_Products.');
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingProducts(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [productsReloadKey]);
+
+  const constructionLabelById = useMemo(
+    () => new Map(products.map((p) => [p.mpp_wl_productsid, p.mpp_constructiondetailcode ?? p.mpp_wl_productsid])),
+    [products],
+  );
+
+  // Loads the full setup (header + every operator + every machine assignment) only once a setup
+  // is actually selected — the list view above never fetches per-machine rows, see
+  // listProductionSetupSummaries. Waits for WL_Products so Construction labels resolve correctly
+  // instead of racing an empty product list.
+  useEffect(() => {
+    if (!selectedId || loadingProducts) {
+      if (!selectedId) setSelectedSetup(null);
+      return;
+    }
+    let cancelled = false;
+    setLoadingSetup(true);
+    setSetupError(null);
+    loadProductionSetup(selectedId, constructionLabelById)
+      .then((setup) => {
+        if (!cancelled) setSelectedSetup(setup);
+      })
+      .catch((err) => {
+        if (!cancelled) setSetupError(err instanceof Error ? err.message : 'Failed to load Production Setup.');
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingSetup(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, loadingProducts]);
+
+  const createSetup = async () => {
+    const layout = savedLayouts.find((l) => l.id === creatingFromLayoutId);
+    if (!layout || !newSetupName.trim()) return;
+    setCreatingSetup(true);
+    setCreateProgress({ done: 0, total: layout.machines.length });
+    setSummariesError(null);
+    try {
+      const setup = await createProductionSetup(
+        newSetupName.trim(),
+        layout.machines,
+        (done, total) => setCreateProgress({ done, total }),
+        user.email,
+        layout.operatorStart,
+      );
+      setSummaries((prev) => [
+        ...prev,
+        {
+          id: setup.id,
+          name: setup.name,
+          operatorCount: 0,
+          machineCount: setup.layout.length,
+          updatedAt: setup.updatedAt,
+          createdAt: setup.updatedAt,
+          createdByEmail: user.email,
+          createdByName: user.displayName,
+        },
+      ]);
+      setSelectedSetup(setup);
+      setSelectedId(setup.id);
+      setNewSetupName('');
+      setCreatingFromLayoutId('');
+    } catch (err) {
+      setSummariesError(err instanceof Error ? err.message : 'Failed to create Production Setup.');
+    } finally {
+      setCreatingSetup(false);
+      setCreateProgress(null);
+    }
+  };
+
+  const canDelete = (s: ProductionSetupSummary) => isAdmin || isOwnedByCurrentUser(s, user);
+
+  const filteredSummaries = summaries.filter((s) => {
+    const q = setupSearchTerm.trim().toLowerCase();
+    if (!q) return true;
+    return s.name.toLowerCase().includes(q) || creatorNameFor(s).toLowerCase().includes(q);
+  });
+
+  const deleteSetup = async (id: string) => {
+    const summary = summaries.find((s) => s.id === id);
+    if (!summary || !canDelete(summary)) return;
+    if (!window.confirm(`Delete Production Setup "${summary.name}"?`)) return;
+    setDeletingId(id);
+    setDeleteProgress({ done: 0, total: summary.machineCount });
+    setSummariesError(null);
+    try {
+      await deleteProductionSetup(id, (done, total) => setDeleteProgress({ done, total }));
+      setSummaries((prev) => prev.filter((s) => s.id !== id));
+      if (selectedId === id) setSelectedId(null);
+    } catch (err) {
+      setSummariesError(err instanceof Error ? err.message : 'Failed to delete Production Setup.');
+    } finally {
+      setDeletingId(null);
+      setDeleteProgress(null);
+    }
+  };
+
+  /** Optimistic local-state patch for the currently loaded setup — callers that already wrote
+   * their own change to Dataverse (add/remove operator, bulk assign, CSV import, header edits)
+   * use this just to keep the in-memory copy in sync, not to trigger any persistence itself. */
+  const patchLocalSetup = (patch: Partial<ProductionSetup>) => {
+    setSelectedSetup((prev) => (prev ? { ...prev, ...patch, updatedAt: Date.now() } : prev));
+  };
+
+  const [runState, setRunState] = useState<{ setup: ProductionSetup; resolved: Map<string, ResolvedConstruction>; errors: string[] } | null>(null);
+  const [resolving, setResolving] = useState(false);
+
+  const runSimulation = async (setup: ProductionSetup) => {
+    if (loadingProducts) return;
+    setResolving(true);
+    try {
+      const productIds = Array.from(new Set(setup.assignments.map((a) => a.constructionDetailId).filter((id): id is string => !!id)));
+      if (products.length === 0 && productIds.length > 0) {
+        setRunState({
+          setup,
+          resolved: new Map(),
+          errors: [
+            productsError
+              ? `Could not load WL_Products (${productsError}) — cannot resolve any Construction Detail. Fix the connection and try again.`
+              : 'WL_Products list is empty — cannot resolve any Construction Detail assigned in this setup.',
+          ],
+        });
+        return;
+      }
+      const { resolved, errors } = await resolveConstructions(productIds, products);
+      setRunState({ setup, resolved, errors });
+    } finally {
+      setResolving(false);
+    }
+  };
+
+  if (runState) {
+    return (
+      <ProductionRunView
+        setup={runState.setup}
+        resolved={runState.resolved}
+        resolveErrors={runState.errors}
+        allProductIds={products.map((p) => p.mpp_wl_productsid)}
+        onBack={() => setRunState(null)}
+      />
+    );
+  }
+
+  return (
+    <div className="layout-manager-grid">
+      {productsError && (
+        <div className="production-run-warnings" style={{ gridColumn: '1 / -1' }}>
+          <div>Failed to load WL_Products: {productsError}</div>
+          <Button variant="secondary" onClick={() => setProductsReloadKey((k) => k + 1)}>
+            Retry
+          </Button>
+        </div>
+      )}
+      {summariesError && (
+        <div className="production-run-warnings" style={{ gridColumn: '1 / -1' }}>
+          <div>{summariesError}</div>
+          <Button variant="secondary" onClick={refreshSummaries}>
+            Retry
+          </Button>
+        </div>
+      )}
+      <Card
+        title="Production Setups"
+        subtitle="Snapshot of a Layout plus Construction & per-activity operator assignment per machine"
+      >
+        <div className="production-new-setup">
+          {savedLayouts.length === 0 ? (
+            <p className="data-manager-hint">Create a Layout first in the "Layouts" menu before creating a Production Setup.</p>
+          ) : (
+            <>
+              <select className="input" value={creatingFromLayoutId} onChange={(e) => setCreatingFromLayoutId(e.target.value)} disabled={creatingSetup}>
+                <option value="">Select Layout…</option>
+                {savedLayouts.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.name} ({l.machines.length} machines)
+                  </option>
+                ))}
+              </select>
+              <input
+                className="input"
+                placeholder="Setup name"
+                value={newSetupName}
+                onChange={(e) => setNewSetupName(e.target.value)}
+                disabled={creatingSetup}
+              />
+              <Button variant="secondary" onClick={createSetup} disabled={!creatingFromLayoutId || !newSetupName.trim() || creatingSetup}>
+                {creatingSetup
+                  ? createProgress && createProgress.total > 0
+                    ? `Creating… (${createProgress.done}/${createProgress.total})`
+                    : 'Creating…'
+                  : '+ New Setup'}
+              </Button>
+              {creatingSetup && (
+                <p className="data-manager-hint">Creating machine rows in Dataverse — this can take a while for large layouts, please wait.</p>
+              )}
+            </>
+          )}
+        </div>
+        {loadingSummaries ? (
+          <p className="data-manager-hint">Loading…</p>
+        ) : summaries.length === 0 ? (
+          <p className="data-manager-hint">No Production Setups yet.</p>
+        ) : (
+          <>
+            <input
+              className="input list-search-input"
+              placeholder="Search by name or creator…"
+              value={setupSearchTerm}
+              onChange={(e) => setSetupSearchTerm(e.target.value)}
+            />
+            {filteredSummaries.length === 0 ? (
+              <p className="data-manager-hint">No Production Setups match "{setupSearchTerm}".</p>
+            ) : (
+              <div className="layout-list-scroll">
+                <ul className="layout-list">
+                  {filteredSummaries.map((s) => (
+                    <li key={s.id} className={`layout-list-item ${selectedId === s.id ? 'active' : ''}`}>
+                      <button type="button" className="layout-list-select" onClick={() => setSelectedId(s.id)}>
+                        <span className="layout-list-name">{s.name}</span>
+                        <span className="layout-list-count">
+                          {s.machineCount} machines · {s.operatorCount} operators
+                        </span>
+                        <span className="layout-list-count">
+                          By {creatorNameFor(s)} · {new Date(s.createdAt).toLocaleString()}
+                        </span>
+                      </button>
+                      <div className="layout-list-actions">
+                        {canDelete(s) && (
+                          <Button variant="danger" onClick={() => deleteSetup(s.id)} disabled={deletingId !== null}>
+                            {deletingId === s.id
+                              ? deleteProgress && deleteProgress.total > 0
+                                ? `Deleting… (${deleteProgress.done}/${deleteProgress.total})`
+                                : 'Deleting…'
+                              : 'Delete'}
+                          </Button>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </>
+        )}
+      </Card>
+
+      <div className="layout-manager-editor production-editor">
+        {setupError && <div className="production-run-warnings">{setupError}</div>}
+        {loadingSetup ? (
+          <Card title="Loading Setup">
+            <p className="data-manager-hint">Loading…</p>
+          </Card>
+        ) : selectedSetup ? (
+          <ProductionSetupEditor
+            key={selectedSetup.id}
+            setup={selectedSetup}
+            products={products}
+            loadingProducts={loadingProducts}
+            onLocalChange={patchLocalSetup}
+            onRun={() => runSimulation(selectedSetup)}
+            onOperatorCountChange={(delta) =>
+              setSummaries((prev) => prev.map((s) => (s.id === selectedSetup.id ? { ...s, operatorCount: s.operatorCount + delta } : s)))
+            }
+            resolving={resolving}
+          />
+        ) : (
+          <Card title="No Setup Selected">
+            <p className="data-manager-hint">Select a Layout then click "+ New Setup" to create a new one.</p>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ProductionSetupEditor({
+  setup,
+  products,
+  loadingProducts,
+  onLocalChange,
+  onRun,
+  onOperatorCountChange,
+  resolving,
+}: {
+  setup: ProductionSetup;
+  products: Mpp_wl_productses[];
+  loadingProducts: boolean;
+  onLocalChange: (patch: Partial<ProductionSetup>) => void;
+  onRun: () => void;
+  onOperatorCountChange: (delta: number) => void;
+  resolving: boolean;
+}) {
+  const [selectedMachineIds, setSelectedMachineIds] = useState<string[]>([]);
+  const [newOperatorName, setNewOperatorName] = useState('');
+  const [addingOperator, setAddingOperator] = useState(false);
+  const [bulkOperatorCount, setBulkOperatorCount] = useState(20);
+  const [bulkOperatorPrefix, setBulkOperatorPrefix] = useState('Opr');
+  const [addingBulkOperators, setAddingBulkOperators] = useState(false);
+  const [bulkConstructionId, setBulkConstructionId] = useState('');
+  const [bulkDoffingOperatorId, setBulkDoffingOperatorId] = useState('');
+  const [bulkLoadingOperatorId, setBulkLoadingOperatorId] = useState('');
+  const [bulkFractureOperatorId, setBulkFractureOperatorId] = useState('');
+  // Tracks what's actually applied on the selected machines right now (as of the last selection
+  // change or Apply click) — compared against the bulk* form values above to flag an Apply button
+  // yellow whenever the dropdown has moved away from what's currently on the machines.
+  const [appliedConstructionId, setAppliedConstructionId] = useState('');
+  const [appliedDoffingOperatorId, setAppliedDoffingOperatorId] = useState('');
+  const [appliedLoadingOperatorId, setAppliedLoadingOperatorId] = useState('');
+  const [appliedFractureOperatorId, setAppliedFractureOperatorId] = useState('');
+  const [importMessage, setImportMessage] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
+
+  const assignmentByMachine = new Map(setup.assignments.map((a) => [a.machineId, a]));
+  const operatorLabel = (id?: string) => (id ? setup.operators.find((o) => o.id === id)?.label ?? '—' : '—');
+
+  /** Prefills the bulk-assign fields with whatever the selected machines already have applied —
+   * only when every selected machine agrees on that field (same Construction, or same operator
+   * per activity); a mixed selection blanks that field instead of guessing. */
+  useEffect(() => {
+    const selectedAssignments = selectedMachineIds
+      .map((id) => setup.assignments.find((a) => a.machineId === id))
+      .filter((a): a is ProductionMachineAssignment => !!a);
+    const commonValue = (getter: (a: ProductionMachineAssignment) => string | undefined): string => {
+      if (selectedAssignments.length === 0) return '';
+      const values = new Set(selectedAssignments.map((a) => getter(a) ?? ''));
+      return values.size === 1 ? [...values][0] : '';
+    };
+    const construction = commonValue((a) => a.constructionDetailId);
+    const doffing = commonValue((a) => a.doffingOperatorId);
+    const loading = commonValue((a) => a.loadingOperatorId);
+    const fracture = commonValue((a) => a.fractureRepairingOperatorId);
+    setBulkConstructionId(construction);
+    setBulkDoffingOperatorId(doffing);
+    setBulkLoadingOperatorId(loading);
+    setBulkFractureOperatorId(fracture);
+    setAppliedConstructionId(construction);
+    setAppliedDoffingOperatorId(doffing);
+    setAppliedLoadingOperatorId(loading);
+    setAppliedFractureOperatorId(fracture);
+    // Deliberately NOT depending on setup.assignments: this should only resync when the SELECTION
+    // itself changes, not every time any field gets applied — otherwise applying just one of the
+    // four pending fields (e.g. Doffing) would also silently wipe out the user's still-unapplied
+    // picks in the other three, since this would re-read their "actual" (unchanged) values from
+    // setup.assignments and stomp over the pending dropdown state. Explicit apply/unplan handlers
+    // update applied*/bulk* state themselves for the field(s) they actually touch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMachineIds]);
+
+  const constructionColorMap = useMemo(
+    () => buildConstructionColorMap(products.map((p) => p.mpp_wl_productsid)),
+    [products],
+  );
+
+  const machineAppearance = (m: LayoutMachine) => {
+    const a = assignmentByMachine.get(m.id);
+    if (!a?.constructionDetailId) {
+      return { status: 'unplanned' as const, tooltip: `Machine ${m.label}\nNot planned yet (no Construction assigned).` };
+    }
+    const fullyAssigned = !!(a.doffingOperatorId && a.loadingOperatorId && a.fractureRepairingOperatorId);
+    const tooltip = [
+      `Machine ${m.label}`,
+      `Construction: ${a.constructionDetailLabel ?? '—'}`,
+      `Doffing: ${operatorLabel(a.doffingOperatorId)}`,
+      `Loading: ${operatorLabel(a.loadingOperatorId)}`,
+      `Fracture Repairing: ${operatorLabel(a.fractureRepairingOperatorId)}`,
+    ].join('\n');
+    return {
+      status: fullyAssigned ? ('assigned' as const) : ('planned' as const),
+      borderColor: constructionColorMap.get(a.constructionDetailId),
+      tooltip,
+    };
+  };
+
+  /** Applies a patch to the selected machines both locally (optimistic) and in Dataverse — every
+   * bulk-assign action (Construction / per-activity operator / Unplan) goes through this. */
+  const applyBulk = async (patch: Partial<ProductionMachineAssignment>) => {
+    if (selectedMachineIds.length === 0) return;
+    const selectedSet = new Set(selectedMachineIds);
+    onLocalChange({
+      assignments: setup.assignments.map((a) => (selectedSet.has(a.machineId) ? { ...a, ...patch } : a)),
+    });
+    setActionError(null);
+    try {
+      await updateMachineAssignments(
+        setup.id,
+        selectedMachineIds.map((machineId) => ({ machineId, patch })),
+      );
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to save assignment.');
+    }
+  };
+
+  const unplanSelection = async () => {
+    if (selectedMachineIds.length === 0) return;
+    await applyBulk({
+      constructionDetailId: undefined,
+      constructionDetailLabel: undefined,
+      doffingOperatorId: undefined,
+      loadingOperatorId: undefined,
+      fractureRepairingOperatorId: undefined,
+    });
+    setBulkConstructionId('');
+    setBulkDoffingOperatorId('');
+    setBulkLoadingOperatorId('');
+    setBulkFractureOperatorId('');
+    setAppliedConstructionId('');
+    setAppliedDoffingOperatorId('');
+    setAppliedLoadingOperatorId('');
+    setAppliedFractureOperatorId('');
+  };
+
+  const buildBulkOperatorLabels = (prefix: string, count: number): string[] => {
+    const safeCount = Number.isFinite(count) ? Math.max(1, Math.min(Math.floor(count), 500)) : 1;
+    const trimmedPrefix = prefix.trim();
+    const labelPrefix = trimmedPrefix
+      ? trimmedPrefix
+          .replace(/\s+/g, '_')
+          .replace(/^[a-z]/, (char) => char.toUpperCase())
+      : 'Operator';
+    return Array.from({ length: safeCount }, (_, index) => `${labelPrefix}_${String(index + 1).padStart(4, '0')}`);
+  };
+
+  const operatorNameExists = (label: string) =>
+    setup.operators.some((o) => o.label.trim().toLowerCase() === label.trim().toLowerCase());
+
+  const addOperator = async () => {
+    const label = newOperatorName.trim();
+    if (!label) return;
+    if (operatorNameExists(label)) {
+      setActionError(`Operator "${label}" already exists in this setup.`);
+      return;
+    }
+    setAddingOperator(true);
+    setActionError(null);
+    try {
+      const operator = await addProductionOperator(setup.id, label);
+      onLocalChange({ operators: [...setup.operators, operator] });
+      onOperatorCountChange(1);
+      setNewOperatorName('');
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to add operator.');
+    } finally {
+      setAddingOperator(false);
+    }
+  };
+
+  const addBulkOperators = async () => {
+    const prefix = bulkOperatorPrefix.trim();
+    if (!prefix) return;
+    const labels = buildBulkOperatorLabels(prefix, bulkOperatorCount).filter((label) => !operatorNameExists(label));
+    if (labels.length === 0) {
+      setActionError('All generated operator names already exist in this setup — try a different prefix.');
+      return;
+    }
+    setAddingBulkOperators(true);
+    setActionError(null);
+    try {
+      const created = [] as typeof setup.operators;
+      for (const label of labels) {
+        const operator = await addProductionOperator(setup.id, label);
+        created.push(operator);
+      }
+      onLocalChange({ operators: [...setup.operators, ...created] });
+      onOperatorCountChange(created.length);
+      setBulkOperatorCount(20);
+      setBulkOperatorPrefix('Opr');
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to add operators.');
+    } finally {
+      setAddingBulkOperators(false);
+    }
+  };
+
+  const removeOperator = async (id: string) => {
+    setActionError(null);
+    try {
+      await removeProductionOperator(setup.id, id);
+      onLocalChange({
+        operators: setup.operators.filter((o) => o.id !== id),
+        assignments: setup.assignments.map((a) => ({
+          ...a,
+          doffingOperatorId: a.doffingOperatorId === id ? undefined : a.doffingOperatorId,
+          loadingOperatorId: a.loadingOperatorId === id ? undefined : a.loadingOperatorId,
+          fractureRepairingOperatorId: a.fractureRepairingOperatorId === id ? undefined : a.fractureRepairingOperatorId,
+        })),
+      });
+      onOperatorCountChange(-1);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to remove operator.');
+    }
+  };
+
+  const applyConstruction = () => {
+    const product = products.find((p) => p.mpp_wl_productsid === bulkConstructionId);
+    if (!product) return;
+    applyBulk({ constructionDetailId: product.mpp_wl_productsid, constructionDetailLabel: product.mpp_constructiondetailcode });
+    setAppliedConstructionId(bulkConstructionId);
+  };
+
+  const operatorLabelOrBlank = (id?: string) => (id ? setup.operators.find((o) => o.id === id)?.label ?? '' : '');
+
+  const exportCsv = () => {
+    const headers = ['Machine', 'Construction Detail', 'Doffing', 'Loading', 'FractureRepairing'];
+    const rows = setup.layout.map((m) => {
+      const a = assignmentByMachine.get(m.id);
+      return [
+        m.label,
+        a?.constructionDetailLabel ?? '',
+        operatorLabelOrBlank(a?.doffingOperatorId),
+        operatorLabelOrBlank(a?.loadingOperatorId),
+        operatorLabelOrBlank(a?.fractureRepairingOperatorId),
+      ];
+    });
+    downloadCsv(`${setup.name.replace(/[^a-z0-9]+/gi, '_') || 'production-setup'}.csv`, headers, rows);
+  };
+
+  /** Re-applies an edited export back onto this setup's assignments — matched by Machine label
+   * (must exist in this setup's layout), Construction Detail label (looked up against the live
+   * WL_Products list) and operator label (looked up against this setup's own operator list). A
+   * blank cell clears that field; an unrecognized Machine/Construction/Operator name is reported
+   * instead of silently guessed at. */
+  const importCsv = async (file: File) => {
+    const text = await file.text();
+    const rows = parseCsv(text);
+    if (rows.length < 2) {
+      setImportMessage('CSV is empty or has no data rows.');
+      return;
+    }
+    const header = rows[0].map((h) => h.trim().toLowerCase());
+    const colIndex = {
+      machine: header.indexOf('machine'),
+      construction: header.indexOf('construction detail'),
+      doffing: header.indexOf('doffing'),
+      loading: header.indexOf('loading'),
+      fracture: header.indexOf('fracturerepairing'),
+    };
+    if (colIndex.machine === -1) {
+      setImportMessage('CSV must have a "Machine" column.');
+      return;
+    }
+    const machineIdByLabel = new Map(setup.layout.map((m) => [m.label, m.id]));
+    const productByLabel = new Map(products.map((p) => [p.mpp_constructiondetailcode?.trim(), p]));
+    const operatorIdByLabel = new Map(setup.operators.map((o) => [o.label.trim(), o.id]));
+    const errors: string[] = [];
+    const patchByMachineId = new Map<string, Partial<ProductionMachineAssignment>>();
+
+    rows.slice(1).forEach((cols, i) => {
+      const rowNum = i + 2;
+      const machineLabel = cols[colIndex.machine]?.trim();
+      if (!machineLabel) return;
+      const machineId = machineIdByLabel.get(machineLabel);
+      if (!machineId) {
+        errors.push(`Row ${rowNum}: machine "${machineLabel}" is not in this setup's layout.`);
+        return;
+      }
+      const patch: Partial<ProductionMachineAssignment> = {};
+      if (colIndex.construction !== -1) {
+        const label = cols[colIndex.construction]?.trim();
+        if (!label) {
+          patch.constructionDetailId = undefined;
+          patch.constructionDetailLabel = undefined;
+        } else {
+          const product = productByLabel.get(label);
+          if (!product) {
+            errors.push(`Row ${rowNum}: Construction Detail "${label}" not found in WL_Products.`);
+          } else {
+            patch.constructionDetailId = product.mpp_wl_productsid;
+            patch.constructionDetailLabel = product.mpp_constructiondetailcode;
+          }
+        }
+      }
+      const operatorColumns: [keyof ProductionMachineAssignment, number, string][] = [
+        ['doffingOperatorId', colIndex.doffing, 'Doffing'],
+        ['loadingOperatorId', colIndex.loading, 'Loading'],
+        ['fractureRepairingOperatorId', colIndex.fracture, 'FractureRepairing'],
+      ];
+      operatorColumns.forEach(([field, idx, colName]) => {
+        if (idx === -1) return;
+        const label = cols[idx]?.trim();
+        if (!label) {
+          (patch as Record<string, string | undefined>)[field] = undefined;
+          return;
+        }
+        const operatorId = operatorIdByLabel.get(label);
+        if (!operatorId) {
+          errors.push(`Row ${rowNum}: operator "${label}" (${colName}) is not in this setup — add that operator first.`);
+        } else {
+          (patch as Record<string, string | undefined>)[field] = operatorId;
+        }
+      });
+      patchByMachineId.set(machineId, patch);
+    });
+
+    onLocalChange({
+      assignments: setup.assignments.map((a) => (patchByMachineId.has(a.machineId) ? { ...a, ...patchByMachineId.get(a.machineId) } : a)),
+    });
+    setActionError(null);
+    try {
+      await updateMachineAssignments(
+        setup.id,
+        Array.from(patchByMachineId.entries()).map(([machineId, patch]) => ({ machineId, patch })),
+      );
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to save imported assignments.');
+    }
+    setImportMessage(
+      errors.length > 0
+        ? `Import finished with ${errors.length} issue(s): ${errors.slice(0, 5).join(' ')}${errors.length > 5 ? ' …' : ''}`
+        : `Successfully imported ${patchByMachineId.size} row(s).`,
+    );
+  };
+
+  const persistHeader = useDebouncedCallback((patch: Partial<ProductionSetup>) => {
+    updateProductionSetupHeader(setup.id, patch).catch((err) => setActionError(err instanceof Error ? err.message : 'Failed to save setting.'));
+  }, 600);
+
+  const onHeaderChange = (patch: Partial<ProductionSetup>) => {
+    onLocalChange(patch);
+    persistHeader(patch);
+  };
+
+  const canRun = setup.operators.length > 0 && setup.assignments.some((a) => a.constructionDetailId);
+
+  const constructionDirty = bulkConstructionId !== appliedConstructionId;
+  const doffingDirty = bulkDoffingOperatorId !== appliedDoffingOperatorId;
+  const loadingDirty = bulkLoadingOperatorId !== appliedLoadingOperatorId;
+  const fractureDirty = bulkFractureOperatorId !== appliedFractureOperatorId;
+
+  const assignSelectionCard = (
+    <Card
+      title={`Assign Selection (${selectedMachineIds.length} machine(s) selected)`}
+      actions={
+        <Button variant="danger" onClick={unplanSelection} disabled={selectedMachineIds.length === 0}>
+          Unplan Selection
+        </Button>
+      }
+    >
+      <div className="production-assign-row">
+        <SearchableSelect
+          value={bulkConstructionId}
+          onChange={setBulkConstructionId}
+          disabled={loadingProducts}
+          placeholder={loadingProducts ? 'Loading…' : 'Select Construction Detail'}
+          searchPlaceholder="Search Construction Detail…"
+          options={products.map((p) => ({ value: p.mpp_wl_productsid, label: p.mpp_constructiondetailcode ?? p.mpp_wl_productsid }))}
+        />
+        <Button
+          variant="secondary"
+          className={constructionDirty ? 'btn-pending' : ''}
+          onClick={applyConstruction}
+          disabled={selectedMachineIds.length === 0 || !bulkConstructionId}
+          title="Apply Construction Detail to selection"
+        >
+          Apply
+        </Button>
+      </div>
+      <div className="production-assign-row">
+        <SearchableSelect
+          value={bulkDoffingOperatorId}
+          onChange={setBulkDoffingOperatorId}
+          placeholder="Select Doffing Operator"
+          searchPlaceholder="Search operator…"
+          options={setup.operators.map((o) => ({ value: o.id, label: o.label }))}
+        />
+        <Button
+          variant="secondary"
+          className={doffingDirty ? 'btn-pending' : ''}
+          onClick={() => {
+            applyBulk({ doffingOperatorId: bulkDoffingOperatorId || undefined });
+            setAppliedDoffingOperatorId(bulkDoffingOperatorId);
+          }}
+          disabled={selectedMachineIds.length === 0}
+          title="Apply Doffing operator to selection"
+        >
+          Doff
+        </Button>
+      </div>
+      <div className="production-assign-row">
+        <SearchableSelect
+          value={bulkLoadingOperatorId}
+          onChange={setBulkLoadingOperatorId}
+          placeholder="Select Loading Operator"
+          searchPlaceholder="Search operator…"
+          options={setup.operators.map((o) => ({ value: o.id, label: o.label }))}
+        />
+        <Button
+          variant="secondary"
+          className={loadingDirty ? 'btn-pending' : ''}
+          onClick={() => {
+            applyBulk({ loadingOperatorId: bulkLoadingOperatorId || undefined });
+            setAppliedLoadingOperatorId(bulkLoadingOperatorId);
+          }}
+          disabled={selectedMachineIds.length === 0}
+          title="Apply Loading operator to selection"
+        >
+          Load
+        </Button>
+      </div>
+      <div className="production-assign-row">
+        <SearchableSelect
+          value={bulkFractureOperatorId}
+          onChange={setBulkFractureOperatorId}
+          placeholder="Select Fracture Repairing Operator"
+          searchPlaceholder="Search operator…"
+          options={setup.operators.map((o) => ({ value: o.id, label: o.label }))}
+        />
+        <Button
+          variant="secondary"
+          className={fractureDirty ? 'btn-pending' : ''}
+          onClick={() => {
+            applyBulk({ fractureRepairingOperatorId: bulkFractureOperatorId || undefined });
+            setAppliedFractureOperatorId(bulkFractureOperatorId);
+          }}
+          disabled={selectedMachineIds.length === 0}
+          title="Apply Fracture Repairing operator to selection"
+        >
+          Fract
+        </Button>
+      </div>
+    </Card>
+  );
+
+  return (
+    <>
+      {actionError && <div className="production-run-warnings">{actionError}</div>}
+      <Card
+        title="Shift & Movement Settings"
+        actions={
+          <Button variant="primary" onClick={onRun} disabled={!canRun || resolving || loadingProducts}>
+            {loadingProducts ? 'Loading WL_Products…' : resolving ? 'Preparing…' : '▶ Run Simulation'}
+          </Button>
+        }
+      >
+        <div className="grid-2">
+          <Field label="Task Priority">
+            <SelectInput value={setup.taskPriority} options={TASK_PRIORITY_OPTIONS} onChange={(v) => onHeaderChange({ taskPriority: v })} />
+          </Field>
+          <Field label="Shift Time (min)">
+            <NumberInput value={setup.shiftTime} onChange={(v) => onHeaderChange({ shiftTime: v })} />
+          </Field>
+          <Field label="Lunch Time (min)">
+            <NumberInput value={setup.lunchTime} onChange={(v) => onHeaderChange({ lunchTime: v })} />
+          </Field>
+          <Field label="Lunch starts at minute">
+            <NumberInput value={setup.lunchStartAt} min={0} onChange={(v) => onHeaderChange({ lunchStartAt: v })} />
+          </Field>
+          <Field label="Meeting Time (min)">
+            <NumberInput value={setup.meetingTime} onChange={(v) => onHeaderChange({ meetingTime: v })} />
+          </Field>
+          <Field label="Meeting starts at minute">
+            <NumberInput value={setup.meetingStartAt} min={0} onChange={(v) => onHeaderChange({ meetingStartAt: v })} />
+          </Field>
+          <Field label="Walking Speed (m/min)">
+            <NumberInput value={setup.movement.walkingSpeed} min={0} onChange={(v) => onHeaderChange({ movement: { ...setup.movement, walkingSpeed: v } })} />
+          </Field>
+          <Field label="Layout Scale (px/meter)">
+            <NumberInput value={setup.movement.pixelsPerMeter} min={1} onChange={(v) => onHeaderChange({ movement: { ...setup.movement, pixelsPerMeter: v } })} />
+          </Field>
+        </div>
+        {!canRun && <p className="data-manager-hint">Add at least 1 operator and assign a Construction Detail to at least 1 machine before running the simulation.</p>}
+      </Card>
+
+      <Card title="Operators">
+        <div className="production-operator-add">
+          <input
+            className="input"
+            placeholder="Operator name, e.g. Operator 1"
+            value={newOperatorName}
+            onChange={(e) => setNewOperatorName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && addOperator()}
+            disabled={addingOperator || addingBulkOperators}
+          />
+          <Button
+            variant="secondary"
+            onClick={addOperator}
+            disabled={addingOperator || addingBulkOperators || !newOperatorName.trim() || operatorNameExists(newOperatorName)}
+            title={operatorNameExists(newOperatorName) ? `Operator "${newOperatorName.trim()}" already exists` : undefined}
+          >
+            {addingOperator ? 'Adding…' : '+ Add Operator'}
+          </Button>
+        </div>
+        <div className="production-operator-add" style={{ marginTop: 10 }}>
+          <input
+            className="input"
+            type="number"
+            min={1}
+            max={500}
+            value={bulkOperatorCount}
+            onChange={(e) => setBulkOperatorCount(Math.max(1, Number(e.target.value) || 1))}
+            disabled={addingOperator || addingBulkOperators}
+          />
+          <input
+            className="input"
+            placeholder="Prefix, e.g. Opr"
+            value={bulkOperatorPrefix}
+            onChange={(e) => setBulkOperatorPrefix(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && addBulkOperators()}
+            disabled={addingOperator || addingBulkOperators}
+          />
+          <Button
+            variant="secondary"
+            onClick={addBulkOperators}
+            disabled={addingOperator || addingBulkOperators || !bulkOperatorPrefix.trim()}
+          >
+            {addingBulkOperators ? 'Creating…' : `+ Add ${bulkOperatorCount} Operators`}
+          </Button>
+        </div>
+        <div className="production-operator-chips">
+          {setup.operators.length === 0 && <p className="data-manager-hint">No operators yet.</p>}
+          {setup.operators.map((o) => (
+            <span key={o.id} className="production-operator-chip">
+              {o.label}
+              <button type="button" onClick={() => removeOperator(o.id)} title="Remove operator">
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      </Card>
+
+      <p className="data-manager-hint">Shift+click or shift+drag to select multiple machines, then assign them in the "Assign Selection" panel below (or in the panel that appears on the canvas in Fullscreen).</p>
+      <LayoutBuilder
+        layout={setup.layout}
+        readOnly
+        onSelectionChange={setSelectedMachineIds}
+        machineAppearance={machineAppearance}
+        sidePanel={assignSelectionCard}
+        onChange={() => {}}
+        operatorStart={setup.operatorStart ?? null}
+      />
+      <div className="legend">
+        <span className="legend-item"><span className="legend-swatch machine-plan-unplanned" /> Not planned</span>
+        <span className="legend-item"><span className="legend-swatch machine-plan-planned" /> Construction assigned</span>
+        <span className="legend-item"><span className="legend-swatch machine-plan-assigned" /> All operators assigned</span>
+        <span className="production-legend-hint">Border color = Construction Detail (hover a machine for details)</span>
+      </div>
+
+      {assignSelectionCard}
+
+      <Card
+        title="Machine Assignments"
+        actions={
+          <div className="production-csv-actions">
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".csv,text/csv"
+              className="production-csv-input"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) importCsv(file);
+                e.target.value = '';
+              }}
+            />
+            <Button variant="ghost" onClick={() => importInputRef.current?.click()}>
+              Import CSV
+            </Button>
+            <Button variant="secondary" onClick={exportCsv}>
+              Export CSV
+            </Button>
+          </div>
+        }
+      >
+        {importMessage && <p className="data-manager-hint">{importMessage}</p>}
+        <div className="machine-timeline-rows">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Machine</th>
+                <th>Construction</th>
+                <th>Doffing</th>
+                <th>Loading</th>
+                <th>Fracture Repairing</th>
+              </tr>
+            </thead>
+            <tbody>
+              {setup.layout.map((m) => {
+                const a = assignmentByMachine.get(m.id);
+                return (
+                  <tr key={m.id}>
+                    <td>{m.label}</td>
+                    <td>{a?.constructionDetailLabel ?? '—'}</td>
+                    <td>{operatorLabel(a?.doffingOperatorId)}</td>
+                    <td>{operatorLabel(a?.loadingOperatorId)}</td>
+                    <td>{operatorLabel(a?.fractureRepairingOperatorId)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </>
+  );
+}

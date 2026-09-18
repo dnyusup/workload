@@ -1,0 +1,1325 @@
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { MachineTimelineKind, OperatorTimelineKind, ProductionMachineAssignment, ProductionSetup, ProductionSimulationState } from '../../types';
+import type { ResolvedConstruction } from '../../lib/productionConstructionResolver';
+import { useProductionSimulation } from '../../hooks/useProductionSimulation';
+import { MachineZoneLabels } from '../ui/MachineZoneLabels';
+import { MachineDonut } from '../simulation/MachineDonut';
+import {
+  machineZoneColors,
+  operatorFacing,
+  ordinal,
+  timelineKinds,
+  machineTimelineKinds,
+  machineTimelineColor,
+  machineTimelineLabel,
+} from '../simulation/timelineDisplay';
+import { buildConstructionColorMap } from '../../lib/constructionColors';
+import { Card } from '../ui/Card';
+import { Button } from '../ui/Button';
+
+const LABEL_MARGIN = 24;
+const MIN_ZOOM = 0.1;
+const MAX_ZOOM = 4;
+const FIT_MARGIN = 60;
+const OPERATOR_COLORS = ['#38bdf8', '#f472b6', '#facc15', '#4ade80', '#a78bfa', '#fb923c', '#22d3ee', '#f87171'];
+const ROUTE_HOLD_MS = 5000;
+
+type Point = { x: number; y: number };
+
+function fmtTime(min: number) {
+  const totalMinutes = Math.round(min);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return `${h}h ${m}m`;
+}
+
+function fmt(v: number) {
+  return Math.round(v * 10) / 10;
+}
+
+const downtimeLabels: Record<string, string> = {
+  doffing: 'Doffing',
+  loading: 'Loading',
+  fractureRepairing: 'Fracture Repairing',
+  waiting: 'Waiting for Operator',
+};
+
+const downtimePalette = ['#38bdf8', '#a78bfa', '#f87171', '#c084fc', '#2dd4bf', '#fb923c', '#facc15'];
+function colorForDowntime(label: string, index: number) {
+  const known: Record<string, string> = {
+    Doffing: '#38bdf8',
+    Loading: '#a78bfa',
+    'Fracture Repairing': '#f87171',
+    'Waiting for Operator': '#fbbf24',
+  };
+  return known[label] ?? downtimePalette[index % downtimePalette.length];
+}
+
+function verdictFor(utilization: number): { text: string; className: string } {
+  if (utilization >= 100) return { text: 'Overload — consider adding operators or reducing machines.', className: 'verdict-bad' };
+  if (utilization >= 95) return { text: 'High workload — approaching capacity limit.', className: 'verdict-warn' };
+  if (utilization < 75) return { text: 'Needs optimization — operator is underutilized.', className: 'verdict-info' };
+  return { text: 'Operator capacity is sufficient.', className: 'verdict-ok' };
+}
+
+const NON_SERVICE_KINDS = new Set(['walking', 'lunch', 'meeting', 'idle']);
+
+/** Same detail level as the single-operator Simulator's Operator Utilization card (Utilization %,
+ * Walking, Total service, per-activity service breakdown, Idle) — derived straight from the
+ * timeline segments of whichever operator(s) are passed in, so the same function covers both the
+ * "all operators combined" default view and a single filtered operator. */
+function summarizeOperatorTimelines(
+  ops: ProductionSimulationState['operators'],
+  timelineDuration: number,
+  activityLabel: (key: string) => string,
+) {
+  const segments = ops.flatMap((op) => op.timeline);
+  const minutesWhere = (pred: (kind: string) => boolean) =>
+    segments
+      .filter((s) => pred(s.kind))
+      .reduce((total, s) => total + Math.max(0, Math.min(s.endMin, timelineDuration) - s.startMin), 0);
+
+  const walking = minutesWhere((k) => k === 'walking');
+  const breakMin = minutesWhere((k) => k === 'lunch' || k === 'meeting');
+  const idle = minutesWhere((k) => k === 'idle');
+
+  const serviceLabelTotals = new Map<string, number>();
+  segments
+    .filter((s) => !NON_SERVICE_KINDS.has(s.kind))
+    .forEach((s) => {
+      const label = activityLabel(s.kind);
+      const minutes = Math.max(0, Math.min(s.endMin, timelineDuration) - s.startMin);
+      serviceLabelTotals.set(label, (serviceLabelTotals.get(label) ?? 0) + minutes);
+    });
+  const serviceBreakdown = Array.from(serviceLabelTotals.entries()).map(([label, minutes]) => ({ label, minutes }));
+  const totalService = serviceBreakdown.reduce((total, s) => total + s.minutes, 0);
+
+  const elapsed = timelineDuration * ops.length - breakMin;
+  const busy = walking + totalService;
+  const utilization = elapsed > 0 ? (busy / elapsed) * 100 : 0;
+
+  return { walking, totalService, serviceBreakdown, idle, elapsed, utilization };
+}
+
+function operatorStatusLabel(op: ProductionSimulationState['operators'][number]) {
+  if (op.phase === 'break') return `${op.breakLabel} (${Math.ceil(op.breakRemainingMin)}m)`;
+  if (op.phase === 'walking') return `→ Machine ${op.targetMachineLabel}`;
+  if (op.phase === 'servicing') return op.currentZoneLabel ?? `Handling ${op.targetMachineLabel}`;
+  return 'Idle';
+}
+
+export function ProductionRunView({
+  setup,
+  resolved,
+  resolveErrors,
+  allProductIds,
+  onBack,
+}: {
+  setup: ProductionSetup;
+  resolved: Map<string, ResolvedConstruction>;
+  resolveErrors: string[];
+  /** Every WL_Products id, in the same stable order the Production Setup editor uses to build its
+   * Construction border-color legend — keeps a Construction's color consistent between the setup
+   * screen and this run view. */
+  allProductIds: string[];
+  onBack: () => void;
+}) {
+  const { state, playing, speed, controls } = useProductionSimulation(setup, resolved, resolveErrors);
+  const { machines, operators, metrics } = state;
+  const [targetUtilization, setTargetUtilization] = useState(85);
+  const constructionColorMap = useMemo(() => buildConstructionColorMap(allProductIds), [allProductIds]);
+  const assignmentByMachineId = useMemo(() => new Map(setup.assignments.map((a) => [a.machineId, a])), [setup.assignments]);
+  const operatorLabelMap = useMemo(() => new Map(setup.operators.map((o) => [o.id, o.label])), [setup.operators]);
+  const operatorLabelById = useCallback((id?: string) => (id ? operatorLabelMap.get(id) ?? '—' : '—'), [operatorLabelMap]);
+
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [viewSize, setViewSize] = useState({ width: 800, height: 520 });
+  // Lets the canvas be dragged taller/shorter (see the resize handle below the SVG) instead of
+  // being stuck at a fixed height — the ResizeObserver already watching wrapperRef (below) picks
+  // up the new size automatically and updates the SVG viewBox, so no extra wiring is needed for
+  // the canvas content itself to react to it.
+  const [canvasHeight, setCanvasHeight] = useState(420);
+  const canvasResizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
+  const [resizingCanvas, setResizingCanvas] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState<Point>({ x: 0, y: 0 });
+  const [panning, setPanning] = useState(false);
+  const panStartRef = useRef<{ vb: Point; pan: Point } | null>(null);
+  const hasAutoFitRef = useRef(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [selectedMachineId, setSelectedMachineId] = useState<string | null>(null);
+  const onSelectMachine = useCallback((id: string) => setSelectedMachineId((prev) => (prev === id ? null : id)), []);
+  // A boolean, not the raw zoom value — passed to the memoized machine layer below so panning/
+  // zooming WITHIN one detail tier never invalidates its memo (only crossing the threshold does).
+  // At real-factory scale (~1300+ machines) the donut/sub-labels are unreadable at low zoom anyway,
+  // so skipping them there also cuts per-machine DOM nodes roughly in half while zoomed out.
+  const isDetailed = zoom >= 0.4;
+  const [machineTimelineSearch, setMachineTimelineSearch] = useState('');
+  // At real-factory scale (~1300+ machines) this list alone is a heavy render (each row can carry
+  // many timeline segments) and, being part of the same component as the canvas, would otherwise
+  // re-render on every pan/zoom tick too — letting it be hidden entirely removes that cost when
+  // you just want to look at the canvas, not scroll through the table.
+  const [showMachineTimeline, setShowMachineTimeline] = useState(false);
+  const [showOperatorTimeline, setShowOperatorTimeline] = useState(false);
+  const [operatorTimelineSearch, setOperatorTimelineSearch] = useState('');
+  const [selectedOperatorHighlight, setSelectedOperatorHighlight] = useState<{ operatorId: string; index: number } | null>(null);
+  /** Clicking an operator's name in the Operator Timeline filters the Operator Utilization card
+   * down to just that operator — independent of selectedOperatorHighlight above, which highlights
+   * one specific timeline SEGMENT against the Machine Timeline instead. */
+  const [utilFilterOperatorId, setUtilFilterOperatorId] = useState<string | null>(null);
+  type OperatorSortColumn = 'label' | 'walking' | 'totalService' | 'idle' | 'utilization';
+  const [operatorSort, setOperatorSort] = useState<{ column: OperatorSortColumn; direction: 'asc' | 'desc' }>({
+    column: 'utilization',
+    direction: 'desc',
+  });
+  const operatorListPanelRef = useRef<HTMLDivElement>(null);
+  const [isOperatorListFullscreen, setIsOperatorListFullscreen] = useState(false);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsOperatorListFullscreen(document.fullscreenElement === operatorListPanelRef.current);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  const toggleOperatorListFullscreen = () => {
+    if (document.fullscreenElement === operatorListPanelRef.current) {
+      document.exitFullscreen();
+    } else {
+      operatorListPanelRef.current?.requestFullscreen();
+    }
+  };
+
+  const toggleOperatorSort = (column: OperatorSortColumn) => {
+    setOperatorSort((prev) =>
+      prev.column === column ? { column, direction: prev.direction === 'asc' ? 'desc' : 'asc' } : { column, direction: 'desc' },
+    );
+  };
+
+  // Each operator's whole planned route is captured the moment a walk starts and held on screen
+  // for at least 5 real (wall-clock) seconds, regardless of sim speed — same trick as the
+  // single-operator Simulator (see LayoutCanvas), just tracked per operator id here.
+  const [displayedRoutes, setDisplayedRoutes] = useState<Record<string, Point[]>>({});
+  const routeKeysRef = useRef<Record<string, string>>({});
+  const holdTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  useEffect(() => {
+    operators.forEach((op) => {
+      const route = op.plannedRoute;
+      if (!route || route.length < 2) return;
+      const key = route.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join('|');
+      if (key === routeKeysRef.current[op.id]) return;
+      routeKeysRef.current[op.id] = key;
+      setDisplayedRoutes((prev) => ({ ...prev, [op.id]: route }));
+      if (holdTimeoutsRef.current[op.id]) clearTimeout(holdTimeoutsRef.current[op.id]);
+      holdTimeoutsRef.current[op.id] = setTimeout(() => {
+        setDisplayedRoutes((prev) => {
+          const next = { ...prev };
+          delete next[op.id];
+          return next;
+        });
+      }, ROUTE_HOLD_MS);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [operators]);
+  useEffect(
+    () => () => {
+      Object.values(holdTimeoutsRef.current).forEach((t) => clearTimeout(t));
+    },
+    [],
+  );
+
+  const toViewBoxPoint = (clientX: number, clientY: number): Point => {
+    const svg = svgRef.current;
+    if (!svg) return { x: 0, y: 0 };
+    const rect = svg.getBoundingClientRect();
+    const scaleX = rect.width > 0 ? viewSize.width / rect.width : 1;
+    const scaleY = rect.height > 0 ? viewSize.height / rect.height : 1;
+    return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
+  };
+
+  const zoomAt = (vb: Point, newZoomRaw: number) => {
+    const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, newZoomRaw));
+    const worldX = (vb.x - pan.x) / zoom;
+    const worldY = (vb.y - pan.y) / zoom;
+    setPan({ x: vb.x - worldX * newZoom, y: vb.y - worldY * newZoom });
+    setZoom(newZoom);
+  };
+
+  const fitToPage = (size = viewSize) => {
+    if (machines.length === 0) return;
+    const minX = Math.min(...machines.map((m) => m.x - m.widthPx / 2));
+    const minY = Math.min(...machines.map((m) => m.y - m.heightPx / 2));
+    const maxX = Math.max(...machines.map((m) => m.x + m.widthPx / 2));
+    const maxY = Math.max(...machines.map((m) => m.y + m.heightPx / 2));
+    const contentWidth = Math.max(1, maxX - minX);
+    const contentHeight = Math.max(1, maxY - minY);
+    const availableWidth = Math.max(50, size.width - FIT_MARGIN * 2);
+    const availableHeight = Math.max(50, size.height - FIT_MARGIN * 2);
+    const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.min(availableWidth / contentWidth, availableHeight / contentHeight)));
+    const centerWorldX = (minX + maxX) / 2;
+    const centerWorldY = (minY + maxY) / 2;
+    setZoom(newZoom);
+    setPan({ x: size.width / 2 - centerWorldX * newZoom, y: size.height / 2 - centerWorldY * newZoom });
+  };
+
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      const { width, height } = entry.contentRect;
+      if (width <= 0 || height <= 0) return;
+      setViewSize({ width, height });
+      if (!hasAutoFitRef.current && machines.length > 0) {
+        hasAutoFitRef.current = true;
+        fitToPage({ width, height });
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [machines.length > 0]);
+
+  useEffect(() => {
+    const wrapper = wrapperRef.current;
+    if (!wrapper) return;
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const vb = toViewBoxPoint(e.clientX, e.clientY);
+      const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+      zoomAt(vb, zoom * factor);
+    };
+    wrapper.addEventListener('wheel', handleWheel, { passive: false });
+    return () => wrapper.removeEventListener('wheel', handleWheel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zoom, pan, viewSize]);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(document.fullscreenElement === panelRef.current);
+      requestAnimationFrame(() => requestAnimationFrame(() => fitToPage()));
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else panelRef.current?.requestFullscreen();
+  };
+
+  const handleCanvasPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    panStartRef.current = { vb: toViewBoxPoint(e.clientX, e.clientY), pan };
+    setPanning(true);
+  };
+  const handleCanvasPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!panStartRef.current) return;
+    const vb = toViewBoxPoint(e.clientX, e.clientY);
+    const { vb: startVb, pan: startPan } = panStartRef.current;
+    setPan({ x: startPan.x + (vb.x - startVb.x), y: startPan.y + (vb.y - startVb.y) });
+  };
+  const handleCanvasPointerUp = () => {
+    panStartRef.current = null;
+    setPanning(false);
+  };
+
+  const MIN_CANVAS_HEIGHT = 240;
+  const MAX_CANVAS_HEIGHT = 1400;
+
+  const handleResizeHandlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    canvasResizeRef.current = { startY: e.clientY, startHeight: canvasHeight };
+    setResizingCanvas(true);
+  };
+  const handleResizeHandlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!canvasResizeRef.current) return;
+    const delta = e.clientY - canvasResizeRef.current.startY;
+    setCanvasHeight(Math.min(MAX_CANVAS_HEIGHT, Math.max(MIN_CANVAS_HEIGHT, canvasResizeRef.current.startHeight + delta)));
+  };
+  const handleResizeHandlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    (e.currentTarget as Element).releasePointerCapture(e.pointerId);
+    canvasResizeRef.current = null;
+    setResizingCanvas(false);
+  };
+
+  const operatorColor = (index: number) => OPERATOR_COLORS[index % OPERATOR_COLORS.length];
+
+  // Sub-activity keys are unique per WL_Activities row (loading-sub-<guid>) so they don't collide
+  // across different Constructions in the same setup — but that also means they're not human
+  // readable on their own. Build a key→label lookup from every resolved Construction's own
+  // activities so cards below can show "Loading Partial1" instead of the raw key.
+  const activityLabelByKey = useMemo(() => {
+    const map: Record<string, string> = {};
+    resolved.forEach((construction) => {
+      construction.activities.forEach((activity) => {
+        map[activity.key] = activity.label;
+      });
+    });
+    return map;
+  }, [resolved]);
+  const activityLabel = (key: string) => downtimeLabels[key] ?? activityLabelByKey[key] ?? key;
+
+  /** Groups by LABEL rather than raw key — two Constructions can each have their own
+   * loading-sub-<guid> key that both mean "Loading Partial1", and those should show as one row. */
+  function groupByLabel(record: Record<string, number>): [string, number][] {
+    const totals = new Map<string, number>();
+    Object.entries(record).forEach(([key, value]) => {
+      const label = activityLabel(key);
+      totals.set(label, (totals.get(label) ?? 0) + value);
+    });
+    return Array.from(totals.entries());
+  }
+
+  const completedByLabel = groupByLabel(metrics.completedByActivity).sort((a, b) => b[1] - a[1]);
+
+  const downtimeEntries = groupByLabel(metrics.downtimeByReason)
+    .map(([label, value], index) => ({ key: label, label, value, color: colorForDowntime(label, index) }))
+    .filter((d) => d.value > 0)
+    .sort((a, b) => b.value - a.value);
+  const maxDowntime = downtimeEntries[0]?.value ?? 0;
+
+  // Machines nobody bothered to plan (no Construction assigned) never produce anything and would
+  // just be dead rows in the Machine Timeline. Operators assigned to zero machines for every
+  // activity likewise never do anything for the whole shift — counting them in Manhour/ton would
+  // understate the real per-ton labor cost, and they'd only clutter the operator list/timeline.
+  const plannedMachines = machines.filter((m) => m.status !== 'unassigned');
+  const assignedOperatorIds = useMemo(() => {
+    const ids = new Set<string>();
+    setup.assignments.forEach((a) => {
+      if (a.doffingOperatorId) ids.add(a.doffingOperatorId);
+      if (a.loadingOperatorId) ids.add(a.loadingOperatorId);
+      if (a.fractureRepairingOperatorId) ids.add(a.fractureRepairingOperatorId);
+    });
+    return ids;
+  }, [setup.assignments]);
+  const displayedOperators = operators.filter((op) => assignedOperatorIds.has(op.id));
+  const colorByOperatorId = new Map(operators.map((op, index) => [op.id, operatorColor(index)]));
+
+  // Output: aggregated using each machine's OWN spool weight / runtime-per-spool (accumulated in
+  // the engine as tonageKg/producedMachineMin), since a Production Setup can mix Constructions —
+  // unlike the single-operator Simulator's Output card, which only ever has one shared spec.
+  const totalSpools = metrics.completedByActivity.doffing ?? 0;
+  const tonage = metrics.tonageKg / 1000;
+  const shiftHours = metrics.shiftTimeMin / 60;
+  const manHourPerTon = tonage > 0 ? (displayedOperators.length * shiftHours) / tonage : 0;
+  const scheduledMachineMin = metrics.assignedMachineCount * metrics.shiftTimeMin;
+  const outputOee = scheduledMachineMin > 0 ? (metrics.producedMachineMin / scheduledMachineMin) * 100 : 0;
+  const scheduledMachineHours = metrics.assignedMachineCount * shiftHours;
+  const machHoursPerTon = tonage > 0 ? scheduledMachineHours / tonage : 0;
+  const totalFractureCount = Object.entries(metrics.completedByActivity)
+    .filter(([key]) => key === 'fractureRepairing' || key.startsWith('fractureRepairing-'))
+    .reduce((sum, [, count]) => sum + count, 0);
+  const actualFracturePerTon = tonage > 0 ? totalFractureCount / tonage : 0;
+
+  const plannedProductionMin = metrics.assignedMachineCount * metrics.clockMin;
+  const totalDowntimeMin = Object.values(metrics.downtimeByReason).reduce((a, b) => a + b, 0);
+  const availability = plannedProductionMin > 0 ? ((plannedProductionMin - totalDowntimeMin) / plannedProductionMin) * 100 : 100;
+  const oee = Math.max(0, Math.min(100, availability));
+
+  const queue = machines.filter((m) => m.status === 'needs-service');
+  const operatorsOnBreak = operators.filter((op) => op.phase === 'break');
+
+  const timelineDuration = Math.max(0, Math.min(metrics.clockMin, metrics.shiftTimeMin));
+
+  const utilOperators = utilFilterOperatorId ? operators.filter((op) => op.id === utilFilterOperatorId) : displayedOperators;
+  const utilFilterLabel = utilFilterOperatorId ? operators.find((op) => op.id === utilFilterOperatorId)?.label ?? null : null;
+  const utilSummary = summarizeOperatorTimelines(utilOperators, timelineDuration, activityLabel);
+  const utilVerdict = verdictFor(utilSummary.utilization);
+
+  // Observed utilization depends on how this ONE simulated run happened to play out — routing
+  // detours, queue order, which operator got assigned too many machines, etc. That's exactly the
+  // kind of noise the recommendation should look past: instead it's computed straight from each
+  // PLANNED machine's own Construction (cycle lengths + activity times), the same numbers the
+  // engine itself uses to decide when work is due — so "operator assigned to too many machines"
+  // shows up directly as too much theoretical demand for the team size, regardless of how the
+  // queueing/waiting actually unfolded. Machines with no Construction assigned are excluded
+  // entirely (unplanned = not real workload yet).
+  const theoreticalRequiredMinutes = useMemo(() => {
+    if (utilFilterOperatorId) return null; // a fleet-wide demand total isn't meaningful for one person
+    let total = 0;
+    setup.assignments.forEach((a) => {
+      if (!a.constructionDetailId) return;
+      const construction = resolved.get(a.constructionDetailId);
+      if (!construction) return;
+      const runtimePerSpool = construction.runtimePerSpool || 1;
+      const theoreticalSpools = timelineDuration / runtimePerSpool;
+      (['doffing', 'loading', 'fractureRepairing'] as const).forEach((prefix) => {
+        construction.activities
+          .filter((act) => act.key === prefix || act.key.startsWith(`${prefix}-`))
+          .forEach((act) => {
+            const cycle = construction.cycleLengths[act.key];
+            if (!Number.isFinite(cycle) || cycle <= 0) return;
+            total += (theoreticalSpools / cycle) * act.timeMinutes;
+          });
+      });
+    });
+    return total;
+  }, [utilFilterOperatorId, setup.assignments, resolved, timelineDuration]);
+
+  // Headcount recommendation, not a machine count: how many operators (fractional — no need to
+  // wait for a whole extra person) it'd take to cover the theoretical demand above at the target
+  // utilization. Uses the WHOLE team (not just displayedOperators) as the current baseline, since
+  // an operator with zero tasks assigned is still a body on the floor the recommendation should
+  // subtract against. Falls back to the plain utilization-ratio calc when filtered to one operator.
+  const allOperatorsSummary = summarizeOperatorTimelines(operators, timelineDuration, activityLabel);
+  const perOperatorAvailableMin = operators.length > 0 ? allOperatorsSummary.elapsed / operators.length : 0;
+  const requiredOperators =
+    theoreticalRequiredMinutes !== null && perOperatorAvailableMin > 0
+      ? theoreticalRequiredMinutes / (perOperatorAvailableMin * (targetUtilization / 100))
+      : 0;
+  const operatorRecommendation = utilFilterOperatorId
+    ? utilOperators.length > 0 && utilSummary.utilization > 0
+      ? utilOperators.length * (utilSummary.utilization / targetUtilization) - utilOperators.length
+      : 0
+    : operators.length > 0
+      ? requiredOperators - operators.length
+      : 0;
+
+  const operatorUtilRows = displayedOperators.map((op) => ({
+    id: op.id,
+    label: op.label,
+    color: colorByOperatorId.get(op.id) ?? '#94a3b8',
+    ...summarizeOperatorTimelines([op], timelineDuration, activityLabel),
+  }));
+  const sortedOperatorRows = [...operatorUtilRows].sort((a, b) => {
+    const dir = operatorSort.direction === 'asc' ? 1 : -1;
+    if (operatorSort.column === 'label') return a.label.localeCompare(b.label) * dir;
+    return (a[operatorSort.column] - b[operatorSort.column]) * dir;
+  });
+
+  const allOperatorTimelineKinds = useMemo(
+    () => [
+      ...timelineKinds,
+      ...operators
+        .flatMap((op) => op.timeline)
+        .filter((segment) => !timelineKinds.some((item) => item.kind === segment.kind))
+        .reduce<{ kind: OperatorTimelineKind; label: string; color: string }[]>((items, segment) => {
+          if (!items.some((item) => item.kind === segment.kind)) {
+            items.push({ kind: segment.kind, label: segment.label.split(' — ')[0], color: '#c084fc' });
+          }
+          return items;
+        }, []),
+    ],
+    [operators],
+  );
+
+  const selectedMachine = machines.find((m) => m.id === selectedMachineId) ?? null;
+  const allMachineTimelineKinds = useMemo(
+    () => [
+      ...machineTimelineKinds,
+      ...machines
+        .flatMap((machine) => machine.timeline)
+        .filter((segment) => !machineTimelineKinds.some((item) => item.kind === segment.kind))
+        .reduce<{ kind: MachineTimelineKind; label: string; color: string }[]>((items, segment) => {
+          if (!items.some((item) => item.kind === segment.kind)) {
+            items.push({ kind: segment.kind, label: machineTimelineLabel(segment.kind, segment.label), color: machineTimelineColor(segment.kind) });
+          }
+          return items;
+        }, []),
+    ],
+    [machines],
+  );
+
+  const machineSummary = (timeline: (typeof machines)[number]['timeline']) =>
+    allMachineTimelineKinds.map(({ kind }) => ({
+      kind,
+      minutes: timeline
+        .filter((segment) => segment.kind === kind)
+        .reduce((total, segment) => total + Math.max(0, Math.min(segment.endMin, timelineDuration) - segment.startMin), 0),
+    }));
+  const totalMachineSummary = useMemo(
+    () =>
+      allMachineTimelineKinds.map(({ kind }) => ({
+        kind,
+        minutes: machines.reduce((total, machine) => total + machineSummary(machine.timeline).find((item) => item.kind === kind)!.minutes, 0),
+      })),
+    [allMachineTimelineKinds, machines, timelineDuration],
+  );
+
+  const selectedOperator = selectedOperatorHighlight ? operators.find((op) => op.id === selectedOperatorHighlight.operatorId) : null;
+  const selectedOperatorRange = selectedOperator && selectedOperatorHighlight
+    ? selectedOperator.timeline[selectedOperatorHighlight.index] ?? null
+    : null;
+
+  // Clicking a segment on an operator's timeline doesn't just mark the matching time range on
+  // every machine row (selectedOperatorRange above) — it also narrows the Machine Timeline list
+  // down to only the machines that operator is actually assigned to handle (any activity), so a
+  // busy operator's own slice of the line is easy to isolate out of hundreds of machines.
+  const machinesForSelectedOperator = selectedOperator
+    ? new Set(
+        setup.assignments
+          .filter(
+            (a) =>
+              a.doffingOperatorId === selectedOperator.id ||
+              a.loadingOperatorId === selectedOperator.id ||
+              a.fractureRepairingOperatorId === selectedOperator.id,
+          )
+          .map((a) => a.machineId),
+      )
+    : null;
+  const machineTimelineRows = (machinesForSelectedOperator ? plannedMachines.filter((m) => machinesForSelectedOperator.has(m.id)) : plannedMachines).filter(
+    (m) => m.label.toLowerCase().includes(machineTimelineSearch.trim().toLowerCase()),
+  );
+
+  const operatorTimelineList = displayedOperators.filter((op) => op.label.toLowerCase().includes(operatorTimelineSearch.trim().toLowerCase()));
+
+  return (
+    <div className="production-run-view">
+      <div className="toolbar production-run-toolbar">
+        <Button variant="ghost" onClick={onBack}>
+          ← Back to Setup
+        </Button>
+        <span className="toolbar-divider" />
+        {!playing ? (
+          <Button variant="primary" onClick={controls.play} disabled={state.finished}>
+            ▶ Play
+          </Button>
+        ) : (
+          <Button variant="secondary" onClick={controls.pause}>
+            ⏸ Pause
+          </Button>
+        )}
+        <Button variant="ghost" onClick={controls.reset}>
+          ⟲ Reset
+        </Button>
+        <select className="input input-sm" value={speed} onChange={(e) => controls.setSpeed(Number(e.target.value))}>
+          {[0.5, 1, 2, 4, 8].map((s) => (
+            <option key={s} value={s}>
+              {s}x
+            </option>
+          ))}
+        </select>
+        <span className="toolbar-divider" />
+        <span className="production-run-clock">
+          {fmtTime(metrics.clockMin)} / {fmtTime(metrics.shiftTimeMin)}
+        </span>
+        {state.finished && <span className="production-run-finished">Shift finished</span>}
+      </div>
+
+      {state.warnings.length > 0 && (
+        <div className="production-run-warnings">
+          {state.warnings.slice(0, 6).map((w, i) => (
+            <div key={i}>{w}</div>
+          ))}
+          {state.warnings.length > 6 && <div>…and {state.warnings.length - 6} more.</div>}
+        </div>
+      )}
+
+      <div className="simulation-body">
+        <div className={`sim-canvas-wrap ${isFullscreen ? 'sim-canvas-fullscreen' : ''}`} ref={panelRef}>
+          <div className="toolbar sim-canvas-toolbar">
+            <Button variant="ghost" onClick={() => zoomAt({ x: viewSize.width / 2, y: viewSize.height / 2 }, zoom / 1.25)}>
+              − Zoom
+            </Button>
+            <span className="toolbar-zoom-readout">{Math.round(zoom * 100)}%</span>
+            <Button variant="ghost" onClick={() => zoomAt({ x: viewSize.width / 2, y: viewSize.height / 2 }, zoom * 1.25)}>
+              + Zoom
+            </Button>
+            <Button variant="ghost" onClick={() => fitToPage()}>
+              Fit to Page
+            </Button>
+            <span className="toolbar-divider" />
+            <Button variant="ghost" onClick={toggleFullscreen}>
+              {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+            </Button>
+          </div>
+          <div className="sim-svg-wrap" ref={wrapperRef} style={!isFullscreen ? { height: canvasHeight } : undefined}>
+            <svg
+              ref={svgRef}
+              width="100%"
+              height="100%"
+              viewBox={`0 0 ${viewSize.width} ${viewSize.height}`}
+              className={`layout-svg ${panning ? 'layout-svg-panning' : ''}`}
+              onPointerDown={handleCanvasPointerDown}
+              onPointerMove={handleCanvasPointerMove}
+              onPointerUp={handleCanvasPointerUp}
+            >
+              <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
+                <g transform={`translate(${LABEL_MARGIN}, ${LABEL_MARGIN})`}>
+                  <MachinesLayer
+                    machines={machines}
+                    operators={operators}
+                    clockMin={metrics.clockMin}
+                    selectedMachineId={selectedMachineId}
+                    onSelectMachine={onSelectMachine}
+                    assignmentByMachineId={assignmentByMachineId}
+                    constructionColorMap={constructionColorMap}
+                    operatorLabelById={operatorLabelById}
+                    isDetailed={isDetailed}
+                  />
+
+                  {operators.map((op, index) => {
+                    const route = displayedRoutes[op.id];
+                    return route ? (
+                      <polyline
+                        key={`route-${op.id}`}
+                        points={route.map((p) => `${p.x},${p.y}`).join(' ')}
+                        className="operator-path"
+                        fill="none"
+                        style={{ stroke: operatorColor(index) }}
+                      />
+                    ) : null;
+                  })}
+
+                  {operators.map((op, index) => {
+                    const isMovingBetween = op.phase === 'walking';
+                    const isMovingWithin = op.phase === 'servicing' && op.serviceSubPhase === 'moving';
+                    const isMoving = isMovingBetween || isMovingWithin;
+                    const targetMachine = machines.find((m) => m.id === op.targetMachineId) ?? null;
+                    return (
+                      <g key={op.id} transform={`translate(${op.x}, ${op.y})`} className="operator-token">
+                        {isMoving && <circle r={16} className="operator-walk-ring" style={{ stroke: operatorColor(index) }} />}
+                        <g transform={`rotate(${operatorFacing(op.currentZoneLabel, op.x, targetMachine)})`}>
+                          <circle cy={-6} r={3} className="operator-head" />
+                          <ellipse cy={1.5} rx={6} ry={4.5} className={`operator-shoulders operator-${op.phase}`} style={{ fill: operatorColor(index) }} />
+                          <path d="M-4.5,-1 L-7,-6.5 M4.5,-1 L7,-6.5" className="operator-arms" />
+                        </g>
+                        <g transform="translate(0, 24)">
+                          <rect x={-72} y={-11} width={144} height={18} rx={9} className="operator-label-bg" />
+                          <text textAnchor="middle" y={2} className="operator-label-text">
+                            {op.label}: {operatorStatusLabel(op)}
+                          </text>
+                        </g>
+                      </g>
+                    );
+                  })}
+                </g>
+              </g>
+            </svg>
+          </div>
+          {!isFullscreen && (
+            <div
+              className={`production-canvas-resize-handle ${resizingCanvas ? 'active' : ''}`}
+              onPointerDown={handleResizeHandlePointerDown}
+              onPointerMove={handleResizeHandlePointerMove}
+              onPointerUp={handleResizeHandlePointerUp}
+              title="Drag to resize the canvas height"
+            >
+              <span />
+            </div>
+          )}
+          <div className="legend">
+            <span className="legend-item"><span className="legend-swatch sim-machine-running" /> Running</span>
+            <span className="legend-item"><span className="legend-swatch sim-machine-stopped" /> Needs service / stopped</span>
+            <span className="legend-item"><span className="legend-swatch sim-machine-unassigned" /> Unassigned Construction</span>
+          </div>
+
+          <div className="timeline-heading">
+            <strong>Operator Timeline</strong>
+            <span className="production-timeline-heading-actions">
+              <button
+                type="button"
+                className="production-timeline-toggle"
+                onClick={() => setShowOperatorTimeline((prev) => !prev)}
+              >
+                {showOperatorTimeline ? 'Hide list' : `Show list (${operatorTimelineList.length})`}
+              </button>
+            </span>
+          </div>
+          {showOperatorTimeline && (
+            <>
+              <input
+                className="input input-sm production-timeline-search"
+                placeholder="Search operator…"
+                value={operatorTimelineSearch}
+                onChange={(e) => setOperatorTimelineSearch(e.target.value)}
+              />
+              <div className="production-operator-timeline-list">
+                {operatorTimelineList.length === 0 && <p className="empty-hint">No operators match.</p>}
+                {operatorTimelineList.map((op) => (
+                  <div className="operator-timeline layout-operator-timeline production-operator-timeline" key={op.id}>
+                    <div className="timeline-heading">
+                      <button
+                        type="button"
+                        className="production-operator-name-btn"
+                        style={{ color: colorByOperatorId.get(op.id) ?? '#94a3b8' }}
+                        onClick={() => setUtilFilterOperatorId(utilFilterOperatorId === op.id ? null : op.id)}
+                        title="Click to filter the Operator Utilization card to this operator"
+                      >
+                        {utilFilterOperatorId === op.id ? '● ' : ''}
+                        {op.label}
+                      </button>
+                      <span>{operatorStatusLabel(op)}</span>
+                    </div>
+                    <div className="operator-timeline-track">
+                      {op.timeline.map((segment, segIndex) => {
+                        const width = ((Math.min(segment.endMin, metrics.shiftTimeMin) - segment.startMin) / (metrics.shiftTimeMin || 1)) * 100;
+                        const item = timelineKinds.find((entry) => entry.kind === segment.kind);
+                        const isSelected = selectedOperatorHighlight?.operatorId === op.id && selectedOperatorHighlight.index === segIndex;
+                        return (
+                          <button
+                            key={`${segment.startMin}-${segIndex}`}
+                            type="button"
+                            className={`operator-timeline-segment ${isSelected ? 'selected' : ''}`}
+                            title={`${segment.label}: ${Math.round((segment.endMin - segment.startMin) * 10) / 10} min — click to highlight machines`}
+                            onClick={() => setSelectedOperatorHighlight(isSelected ? null : { operatorId: op.id, index: segIndex })}
+                            style={{ width: `${Math.max(0, width)}%`, background: item?.color ?? '#c084fc' }}
+                          />
+                        );
+                      })}
+                      {metrics.clockMin < metrics.shiftTimeMin && (
+                        <div className="operator-timeline-current" style={{ left: `${(timelineDuration / (metrics.shiftTimeMin || 1)) * 100}%` }} />
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+          <div className="timeline-summary">
+            {allOperatorTimelineKinds.map(({ kind, label, color }) => {
+              const minutes = displayedOperators.reduce(
+                (total, op) =>
+                  total +
+                  op.timeline
+                    .filter((segment) => segment.kind === kind)
+                    .reduce((t, segment) => t + Math.max(0, Math.min(segment.endMin, timelineDuration) - segment.startMin), 0),
+                0,
+              );
+              const denominator = timelineDuration * (displayedOperators.length || 1);
+              const percentage = denominator > 0 ? (minutes / denominator) * 100 : 0;
+              return (
+                <div key={kind} className="timeline-summary-item">
+                  <span className="legend-dot" style={{ background: color }} />
+                  <span>{label}</span>
+                  <strong>{Math.round(percentage * 10) / 10}%</strong>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="machine-timelines">
+            <div className="timeline-heading">
+              <strong>Machine Timeline{selectedOperator ? ` — ${selectedOperator.label} (${machineTimelineRows.length} machines)` : ''}</strong>
+              <span className="production-timeline-heading-actions">
+                {!showMachineTimeline
+                  ? ''
+                  : selectedOperator
+                    ? 'Click the operator segment again to return to all machines'
+                    : 'Click a bar to view the machine summary'}
+                <button
+                  type="button"
+                  className="production-timeline-toggle"
+                  onClick={() => setShowMachineTimeline((prev) => !prev)}
+                >
+                  {showMachineTimeline ? 'Hide list' : `Show list (${machineTimelineRows.length})`}
+                </button>
+              </span>
+            </div>
+            {showMachineTimeline && (
+              <>
+                <input
+                  className="input input-sm production-timeline-search"
+                  placeholder="Search machine number…"
+                  value={machineTimelineSearch}
+                  onChange={(e) => setMachineTimelineSearch(e.target.value)}
+                />
+                <MachineTimelineRows
+                  machines={machineTimelineRows}
+                  selectedMachineId={selectedMachineId}
+                  onSelectMachine={onSelectMachine}
+                  allMachineTimelineKinds={allMachineTimelineKinds}
+                  shiftTimeMin={metrics.shiftTimeMin}
+                  selectedOperatorRange={selectedOperatorRange}
+                />
+              </>
+            )}
+            <div className="timeline-summary machine-summary">
+              {allMachineTimelineKinds.map(({ kind, label, color }) => {
+                const aggregateSummary = machinesForSelectedOperator
+                  ? allMachineTimelineKinds.map(({ kind: k }) => ({
+                      kind: k,
+                      minutes: machineTimelineRows.reduce((total, machine) => total + machineSummary(machine.timeline).find((item) => item.kind === k)!.minutes, 0),
+                    }))
+                  : totalMachineSummary;
+                const minutes = (selectedMachine ? machineSummary(selectedMachine.timeline) : aggregateSummary).find((item) => item.kind === kind)!.minutes;
+                const denominator = selectedMachine ? timelineDuration : timelineDuration * machineTimelineRows.length;
+                return (
+                  <div key={kind} className="timeline-summary-item">
+                    <span className="legend-dot" style={{ background: color }} />
+                    <span>{label}</span>
+                    <strong>{denominator > 0 ? Math.round((minutes / denominator) * 1000) / 10 : 0}%</strong>
+                  </div>
+                );
+              })}
+            </div>
+            {selectedMachine && <div className="selected-machine-caption">Machine {selectedMachine.label} summary</div>}
+            {selectedOperatorRange && selectedOperator && (
+              <div className="selected-machine-caption">
+                {selectedOperator.label} highlight: {selectedOperatorRange.label} ({Math.round(selectedOperatorRange.startMin * 10) / 10}–{Math.round(selectedOperatorRange.endMin * 10) / 10} min)
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="dashboard-scroll-outer">
+          <div className="dashboard">
+            <Card title="Shift Time">
+              <div className="metric-row">
+                <span>Elapsed time</span>
+                <strong>{fmtTime(metrics.clockMin)}</strong>
+              </div>
+              <div className="metric-row">
+                <span>Total Shift Time</span>
+                <strong>{fmtTime(metrics.shiftTimeMin)}</strong>
+              </div>
+              <div className="metric-row small">
+                <span>Available (net working time)</span>
+                <span>{fmtTime(Math.max(0, setup.shiftTime - setup.lunchTime - setup.meetingTime))}</span>
+              </div>
+              <div className="progress-bar">
+                <div className="progress-fill" style={{ width: `${Math.min(100, (metrics.clockMin / (metrics.shiftTimeMin || 1)) * 100)}%` }} />
+              </div>
+              {operatorsOnBreak.length > 0 && (
+                <div className="break-banner">
+                  ☕ {operatorsOnBreak.map((op) => op.label).join(', ')} on break — {Math.ceil(Math.max(...operatorsOnBreak.map((op) => op.breakRemainingMin)))} minutes remaining
+                </div>
+              )}
+            </Card>
+
+            <Card title="Output" subtitle="Total finished spools across all machines this shift">
+              <div className="metric-row">
+                <span>#Spool</span>
+                <strong>{totalSpools}</strong>
+              </div>
+              <div className="metric-row">
+                <span>Tonage</span>
+                <strong>{fmt(tonage)} ton</strong>
+              </div>
+              <div className="metric-row">
+                <span>Manhour/ton</span>
+                <strong>{fmt(manHourPerTon)}</strong>
+              </div>
+              <div className="metric-row">
+                <span>OEE (finished spool)</span>
+                <strong>{fmt(outputOee)}%</strong>
+              </div>
+              <div className="metric-row">
+                <span>Machhours/ton</span>
+                <strong>{fmt(machHoursPerTon)}</strong>
+              </div>
+              <div className="metric-row" title="Total Fracture Repairing ÷ Tonage">
+                <span>Fracture/Ton (actual)</span>
+                <strong>{fmt(actualFracturePerTon)}</strong>
+              </div>
+            </Card>
+
+            <Card
+              title="Operator Utilization"
+              subtitle={
+                utilFilterLabel
+                  ? `Filtered to ${utilFilterLabel} — click the operator name again in the timeline to return to the combined view`
+                  : 'Combined across all operators — click an operator name in the timeline to filter to just one'
+              }
+            >
+              {displayedOperators.length === 0 ? (
+                <p className="empty-hint">No operators with any assigned task yet.</p>
+              ) : (
+                <>
+                  <div className="util-bar">
+                    <div className="util-segment util-walk" style={{ width: `${(utilSummary.walking / (utilSummary.elapsed || 1)) * 100}%` }} />
+                    <div className="util-segment util-service" style={{ width: `${(utilSummary.totalService / (utilSummary.elapsed || 1)) * 100}%` }} />
+                  </div>
+                  <div className="metric-row">
+                    <span>Utilization</span>
+                    <strong>{fmt(utilSummary.utilization)}%</strong>
+                  </div>
+                  <div className="metric-row small">
+                    <span>Walking</span>
+                    <span>
+                      {fmtTime(utilSummary.walking)} ({fmt((utilSummary.walking / (utilSummary.elapsed || 1)) * 100)}%)
+                    </span>
+                  </div>
+                  <div className="metric-row small">
+                    <span>Total handle</span>
+                    <span>
+                      {fmtTime(utilSummary.totalService)} ({fmt((utilSummary.totalService / (utilSummary.elapsed || 1)) * 100)}%)
+                    </span>
+                  </div>
+                  {utilSummary.serviceBreakdown.map((s) => (
+                    <div className="metric-row small" key={s.label}>
+                      <span>Handle: {s.label}</span>
+                      <span>
+                        {fmtTime(s.minutes)} ({fmt((s.minutes / (utilSummary.elapsed || 1)) * 100)}%)
+                      </span>
+                    </div>
+                  ))}
+                  <div className="metric-row small">
+                    <span>Idle</span>
+                    <span>
+                      {fmtTime(utilSummary.idle)} ({fmt((utilSummary.idle / (utilSummary.elapsed || 1)) * 100)}%)
+                    </span>
+                  </div>
+                  <div className={`verdict ${utilVerdict.className}`}>{utilVerdict.text}</div>
+                  <label className="target-utilization-field">
+                    <span>Target Utilization</span>
+                    <span className="target-utilization-input-group">
+                      <input
+                        className="input input-sm"
+                        type="number"
+                        min={1}
+                        max={100}
+                        value={targetUtilization}
+                        onChange={(e) => {
+                          const value = parseFloat(e.target.value);
+                          if (Number.isFinite(value)) setTargetUtilization(Math.min(100, Math.max(1, value)));
+                        }}
+                      />
+                      <span>%</span>
+                    </span>
+                  </label>
+                  {Math.abs(operatorRecommendation) >= 0.05 && (
+                    <div className="verdict-recommendation">
+                      #Operator Recommendation: {operatorRecommendation > 0 ? '+' : ''}
+                      {fmt(operatorRecommendation)} operator (target ~{targetUtilization}% utilization)
+                      {!utilFilterOperatorId && theoreticalRequiredMinutes !== null && (
+                        <>
+                          <br />
+                          Based on {fmtTime(theoreticalRequiredMinutes)} of theoretical demand per shift across all planned machines'
+                          Constructions (not on how this run happened to play out)
+                        </>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+            </Card>
+
+            <Card
+              ref={operatorListPanelRef}
+              className={isOperatorListFullscreen ? 'production-operator-list-fullscreen' : ''}
+              title="Operator List"
+              subtitle="Click a column header to sort ascending/descending"
+              actions={
+                <Button variant="ghost" onClick={toggleOperatorListFullscreen}>
+                  {isOperatorListFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+                </Button>
+              }
+            >
+              {displayedOperators.length === 0 ? (
+                <p className="empty-hint">No operators with any assigned task yet.</p>
+              ) : (
+                <div className="machine-timeline-rows production-operator-list-rows">
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        {(
+                          [
+                            ['label', 'Operator'],
+                            ['walking', 'Walking'],
+                            ['totalService', 'Handling'],
+                            ['idle', 'Idle'],
+                            ['utilization', 'Utilization'],
+                          ] as [OperatorSortColumn, string][]
+                        ).map(([column, label]) => (
+                          <th
+                            key={column}
+                            className="production-sortable-th"
+                            onClick={() => toggleOperatorSort(column)}
+                            title="Click to sort ascending/descending"
+                          >
+                            {label} {operatorSort.column === column ? (operatorSort.direction === 'asc' ? '▲' : '▼') : ''}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sortedOperatorRows.map((row) => (
+                        <tr
+                          key={row.id}
+                          className={utilFilterOperatorId === row.id ? 'production-operator-row-active' : ''}
+                          onClick={() => setUtilFilterOperatorId(utilFilterOperatorId === row.id ? null : row.id)}
+                          style={{ cursor: 'pointer' }}
+                        >
+                          <td>
+                            <span className="legend-dot" style={{ background: row.color }} /> {row.label}
+                          </td>
+                          <td>{fmtTime(row.walking)}</td>
+                          <td>{fmtTime(row.totalService)}</td>
+                          <td>{fmtTime(row.idle)}</td>
+                          <td>{fmt(row.utilization)}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Card>
+
+            <Card title="OEE & Downtime" subtitle="Availability across assigned machines (Performance & Quality assumed at 100%)">
+              <div className="oee-gauge-row">
+                <div className="oee-gauge">
+                  <span className="oee-value">{fmt(oee)}%</span>
+                  <span className="oee-caption">OEE (Availability)</span>
+                </div>
+                <div className="metric-col">
+                  <div className="metric-row small">
+                    <span>Planned production</span>
+                    <span>{fmt(plannedProductionMin)} machine-minutes</span>
+                  </div>
+                  <div className="metric-row small">
+                    <span>Total downtime</span>
+                    <span>{fmt(totalDowntimeMin)} machine-minutes</span>
+                  </div>
+                </div>
+              </div>
+              <div className="downtime-bars">
+                {downtimeEntries.map((d) => {
+                  const pct = plannedProductionMin > 0 ? (d.value / plannedProductionMin) * 100 : 0;
+                  const barPct = maxDowntime > 0 ? (d.value / maxDowntime) * 100 : 0;
+                  return (
+                    <div key={d.key} className="downtime-row">
+                      <span className="downtime-label">{d.label}</span>
+                      <div className="downtime-bar-track">
+                        <div className="downtime-bar-fill" style={{ width: `${barPct}%`, background: d.color }} />
+                      </div>
+                      <span className="downtime-value">
+                        {fmt(d.value)}m ({fmt(pct)}%)
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+
+            <Card title="Completed Activities">
+              {completedByLabel.length === 0 && <p className="empty-hint">Nothing completed yet.</p>}
+              {completedByLabel.map(([label, value]) => (
+                <div className="metric-row" key={label}>
+                  <span>{label}</span>
+                  <strong>{value}</strong>
+                </div>
+              ))}
+            </Card>
+
+            <Card title={`Queue (${queue.length})`}>
+              {queue.length === 0 && <p className="empty-hint">No machines waiting.</p>}
+              <ul className="queue-list">
+                {queue.map((m) => (
+                  <li key={m.id}>
+                    <span>Machine {m.label}</span>
+                    <span className="queue-tasks">{m.pendingTasks.map((t) => t.label).join(', ')}</span>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+
+            {selectedMachine && (
+              <Card title={`Machine ${selectedMachine.label}`}>
+                <div className="metric-row">
+                  <span>Status</span>
+                  <strong>{selectedMachine.status}</strong>
+                </div>
+                <div className="metric-row">
+                  <span>Spools this shift</span>
+                  <strong>{selectedMachine.shiftSpoolsCompleted}</strong>
+                </div>
+                <div className="metric-row">
+                  <span>Downtime</span>
+                  <strong>{Math.round(selectedMachine.downtimeMin * 10) / 10} min</strong>
+                </div>
+              </Card>
+            )}
+
+            <Card title="Activity Log">
+              <div className="event-log">
+                {[...state.log].reverse().slice(0, 40).map((e) => (
+                  <div key={e.id} className="log-row">
+                    <span className="log-time">{fmtTime(e.timeMin)}</span>
+                    <span>{e.message}</span>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Renders every machine — the single biggest chunk of DOM in this view at real-factory scale
+ * (~1300+ machines × ~7 SVG nodes each). Wrapped in `memo` so panning/zooming, which only changes
+ * the parent `<g transform>` and none of these props, skips reconciling this subtree entirely
+ * instead of re-diffing every machine on every wheel/drag event. `isDetailed` is a boolean (not
+ * the raw zoom level) specifically so it only flips — and only then invalidates this memo — once
+ * per LOD threshold crossing, not continuously while zooming. */
+const MachinesLayer = memo(function MachinesLayer({
+  machines,
+  operators,
+  clockMin,
+  selectedMachineId,
+  onSelectMachine,
+  assignmentByMachineId,
+  constructionColorMap,
+  operatorLabelById,
+  isDetailed,
+}: {
+  machines: ProductionSimulationState['machines'];
+  operators: ProductionSimulationState['operators'];
+  clockMin: number;
+  selectedMachineId: string | null;
+  onSelectMachine: (id: string) => void;
+  assignmentByMachineId: Map<string, ProductionMachineAssignment>;
+  constructionColorMap: Map<string, string>;
+  operatorLabelById: (id?: string) => string;
+  isDetailed: boolean;
+}) {
+  // Only machines actually mid-service can have a non-trivial zoneColors/progress display, and at
+  // 1300+ machines scanning `operators` per machine (O(machines × operators)) would itself be a
+  // hot spot — build the "who's servicing what" lookup once per render instead.
+  const servicingByMachineId = new Map(
+    operators.filter((op) => op.phase === 'servicing' && op.targetMachineId).map((op) => [op.targetMachineId as string, op]),
+  );
+
+  return (
+    <>
+      {machines.map((m) => {
+        const runtime = m.runtimePerSpool ?? 0;
+        const isStopped = m.status === 'needs-service' || m.status === 'being-serviced';
+        const progress = runtime > 0
+          ? isStopped
+            ? m.runtimePaused && m.runtimeRemainingMin != null
+              ? 1 - m.runtimeRemainingMin / runtime
+              : 1
+            : 1 - (m.nextCompletionAt - clockMin) / runtime
+          : 0;
+        const servicingOperator = servicingByMachineId.get(m.id);
+        const zoneColors = machineZoneColors(m, servicingOperator?.serviceTasks ?? [], servicingOperator?.targetMachineId ?? null);
+        const w = m.widthPx;
+        const h = m.heightPx;
+        const payoffY = m.orientation === 'flipped' ? h * 0.7 : 0;
+        const takeupY = m.orientation === 'flipped' ? 0 : h * 0.7;
+        const takeupProgressY = takeupY + (m.orientation === 'flipped' ? 8 : 20);
+        const payoffTextY = payoffY + h * 0.2;
+        const takeupTextY = takeupY + (m.orientation === 'flipped' ? 20 : 10);
+        const assignment = assignmentByMachineId.get(m.id);
+        const borderColor = assignment?.constructionDetailId ? constructionColorMap.get(assignment.constructionDetailId) : undefined;
+        const isSelected = selectedMachineId === m.id;
+        const tooltip = isDetailed
+          ? [
+              `Machine ${m.label}`,
+              `Construction: ${assignment?.constructionDetailLabel ?? '—'}`,
+              `Doffing: ${operatorLabelById(assignment?.doffingOperatorId)}`,
+              `Loading: ${operatorLabelById(assignment?.loadingOperatorId)}`,
+              `Fracture Repairing: ${operatorLabelById(assignment?.fractureRepairingOperatorId)}`,
+            ].join('\n')
+          : undefined;
+        return (
+          <g
+            key={m.id}
+            transform={`translate(${m.x - w / 2}, ${m.y - h / 2})`}
+            onClick={() => onSelectMachine(m.id)}
+            style={{ cursor: 'pointer' }}
+          >
+            {tooltip && <title>{tooltip}</title>}
+            <rect
+              width={w}
+              height={h}
+              rx={6}
+              className={`machine-box ${m.status === 'running' ? 'sim-machine-running' : m.status === 'unassigned' ? 'sim-machine-unassigned' : 'sim-machine-stopped'} ${
+                m.type === 'bfx' ? 'machine-bfx-outline' : ''
+              } ${isSelected ? 'production-machine-selected' : ''}`}
+              style={borderColor && !isSelected ? { stroke: borderColor, strokeWidth: 2.5 } : undefined}
+            />
+            {zoneColors.payoff && (
+              <rect x={1} y={payoffY} width={w - 2} height={h * 0.3 - 1} rx={4} fill={zoneColors.payoff} opacity={0.9} />
+            )}
+            {zoneColors.takeup && (
+              <rect x={1} y={takeupY} width={w - 2} height={h * 0.3 - 1} rx={4} fill={zoneColors.takeup} opacity={0.9} />
+            )}
+            {isDetailed && (
+              <>
+                <MachineZoneLabels orientation={m.orientation} pairSide={m.pairSide} width={w} height={h} />
+                {m.status !== 'unassigned' && (
+                  <g transform={`translate(${w / 2}, ${takeupProgressY})`}>
+                    <MachineDonut progress={progress} />
+                  </g>
+                )}
+              </>
+            )}
+            <text x={w / 2} y={h / 2 + 10} textAnchor="middle" className="machine-label">
+              {m.label}
+            </text>
+            {isDetailed && m.status !== 'unassigned' && (
+              <>
+                <text x={w / 2} y={payoffTextY} textAnchor="middle" className="machine-sublabel">
+                  {ordinal(m.spoolsSinceLoading)} spl
+                </text>
+                <text x={w / 2} y={takeupTextY} textAnchor="middle" className="machine-sublabel">
+                  {m.shiftSpoolsCompleted} spl
+                </text>
+              </>
+            )}
+          </g>
+        );
+      })}
+    </>
+  );
+});
+
+/** The Machine Timeline table — the other big chunk of DOM at real-factory scale (each of
+ * ~1300+ rows can carry many timeline segments). Memoized for the same reason as MachinesLayer:
+ * this list lives in the same component as the canvas, so without memoization every pan/zoom
+ * tick would also re-diff this entire table. Can also be hidden outright (see showMachineTimeline
+ * in the parent) when even the memoized render is more than needed. */
+const MachineTimelineRows = memo(function MachineTimelineRows({
+  machines,
+  selectedMachineId,
+  onSelectMachine,
+  allMachineTimelineKinds,
+  shiftTimeMin,
+  selectedOperatorRange,
+}: {
+  machines: ProductionSimulationState['machines'];
+  selectedMachineId: string | null;
+  onSelectMachine: (id: string) => void;
+  allMachineTimelineKinds: { kind: MachineTimelineKind; label: string; color: string }[];
+  shiftTimeMin: number;
+  selectedOperatorRange: { startMin: number; endMin: number } | null;
+}) {
+  if (machines.length === 0) return <p className="empty-hint">No machines match.</p>;
+  return (
+    <div className="machine-timeline-rows">
+      {machines.map((machine) => (
+        <button
+          key={machine.id}
+          type="button"
+          className={`machine-timeline-row ${selectedMachineId === machine.id ? 'selected' : ''}`}
+          onClick={() => onSelectMachine(machine.id)}
+        >
+          <span className="machine-timeline-label">{machine.label}</span>
+          <span className="operator-timeline-track">
+            {selectedOperatorRange && (
+              <span
+                className="timeline-range-highlight"
+                style={{
+                  left: `${(selectedOperatorRange.startMin / (shiftTimeMin || 1)) * 100}%`,
+                  width: `${((Math.min(selectedOperatorRange.endMin, shiftTimeMin) - selectedOperatorRange.startMin) / (shiftTimeMin || 1)) * 100}%`,
+                }}
+              />
+            )}
+            {machine.timeline.map((segment, index) => {
+              const item = allMachineTimelineKinds.find((entry) => entry.kind === segment.kind);
+              const width = ((Math.min(segment.endMin, shiftTimeMin) - segment.startMin) / (shiftTimeMin || 1)) * 100;
+              return (
+                <span
+                  key={`${segment.startMin}-${index}`}
+                  className="operator-timeline-segment"
+                  title={`${segment.label}: ${Math.round((segment.endMin - segment.startMin) * 10) / 10} min`}
+                  style={{ width: `${Math.max(0, width)}%`, background: item?.color ?? machineTimelineColor(segment.kind) }}
+                />
+              );
+            })}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+});

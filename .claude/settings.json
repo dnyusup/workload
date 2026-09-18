@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(timeout 30 bash -c 'until curl -sf http://localhost:3000 >/dev/null; do sleep 1; done')",
+      "Bash(node -e \"console.log\\(require.resolve\\('playwright'\\)\\)\")",
+      "Bash(curl -s http://localhost:3000)",
+      "Bash(npx eslint *)",
+      "Bash(npm run *)",
+      "Bash(npx --yes tsx --version)",
+      "Bash(npx tsx *)",
+      "Bash(powershell -Command \"\\(Get-Content 'C:\\\\Users\\\\deni.yusup\\\\powerapps_code\\\\WorkLoad\\\\src\\\\App.css' -Tail 5\\)\")",
+      "Bash(powershell -Command \"\\(Get-Content 'C:\\\\Users\\\\deni.yusup\\\\powerapps_code\\\\WorkLoad\\\\src\\\\App.css'\\).Count\")",
+      "Bash(pac --version)",
+      "Bash(xargs grep -l \"IOperationResult\")",
+      "Bash(grep -n \"machines.map\\(\\(m\\) =>\\\\|<g transform={\\\\`translate\\(\\\\${pan.x}\\\\|const \\\\[zoom, setZoom\\\\]\\\\|const \\\\[pan, setPan\\\\]\" src/components/production/ProductionRunView.tsx)",
+      "Bash(grep -n \"^}\\);$\" src/components/production/ProductionRunView.tsx)"
+    ]
+  }
+}

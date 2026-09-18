@@ -1,0 +1,65 @@
+{
+  "version": "1.0",
+  "appId": "0ee23515-9c40-4e3c-b3ad-7e1c92c1f885",
+  "appDisplayName": "WorkLoad",
+  "region": "prod",
+  "appType": "CodeApp",
+  "environmentId": "aacac48e-e4d6-ed6c-baf2-cb1f68edc68a",
+  "description": " ",
+  "buildPath": "./dist",
+  "buildEntryPoint": "index.html",
+  "localAppUrl": "http://localhost:3000",
+  "logoPath": "Default",
+  "connectionReferences": {
+    "fa7d20ad-9d56-4526-830d-e167ce6cadb3": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_office365users",
+      "displayName": "Office 365 Users",
+      "dataSources": [
+        "office365users"
+      ],
+      "dataSets": {}
+    }
+  },
+  "databaseReferences": {
+    "default.cds": {
+      "dataSources": {
+        "wl_products": {
+          "entitySetName": "mpp_wl_productses",
+          "logicalName": "mpp_wl_products",
+          "isHidden": false
+        },
+        "wl_activities": {
+          "entitySetName": "mpp_wl_activities",
+          "logicalName": "mpp_wl_activity",
+          "isHidden": false
+        },
+        "wl_layouts": {
+          "entitySetName": "mpp_wl_layoutses",
+          "logicalName": "mpp_wl_layouts",
+          "isHidden": false
+        },
+        "wl_productionsetupmachines": {
+          "entitySetName": "mpp_wl_productionsetupmachineses",
+          "logicalName": "mpp_wl_productionsetupmachines",
+          "isHidden": false
+        },
+        "wl_productionsetupoperators": {
+          "entitySetName": "mpp_wl_productionsetupoperatorses",
+          "logicalName": "mpp_wl_productionsetupoperators",
+          "isHidden": false
+        },
+        "wl_productionsetups": {
+          "entitySetName": "mpp_wl_productionsetupses",
+          "logicalName": "mpp_wl_productionsetups",
+          "isHidden": false
+        },
+        "wl_users": {
+          "entitySetName": "mpp_wl_userses",
+          "logicalName": "mpp_wl_users",
+          "isHidden": false
+        }
+      },
+      "environmentVariableName": ""
+    }
+  }
+}

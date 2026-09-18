@@ -1,0 +1,467 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Mpp_wl_activitiesService } from '../../generated/services/Mpp_wl_activitiesService';
+import {
+  Mpp_wl_activitiesmpp_taskname,
+  type Mpp_wl_activities,
+  type Mpp_wl_activitiesBase,
+} from '../../generated/models/Mpp_wl_activitiesModel';
+import { Card } from '../ui/Card';
+import { Button } from '../ui/Button';
+import { SearchableSelect } from '../ui/SearchableSelect';
+
+const TASK_OPTIONS = Object.entries(Mpp_wl_activitiesmpp_taskname).map(([value, label]) => ({
+  value: Number(value) as 0 | 1 | 2,
+  label,
+}));
+
+interface ActivityFields {
+  mpp_constructiontype: string;
+  mpp_taskname: 0 | 1 | 2;
+  mpp_subtaskname: string;
+  mpp_tasktime: number;
+  mpp_numerator: number;
+  mpp_denominator: number;
+  mpp_machcondition: 'Stop' | 'Run';
+  mpp_productcode: string;
+  mpp_machinecode: string;
+  mpp_spooltype: string;
+  mpp_tensilegroup: string;
+  mpp_laylength: number;
+}
+
+interface ActivityRow {
+  id: string;
+  isNew: boolean;
+  dirty: boolean;
+  saving: boolean;
+  error: string | null;
+  fields: ActivityFields;
+}
+
+/** Mirror image of WL_Products' ConstructionDetail/Construction join (see ProductsManager.tsx):
+ * there, Construction is DERIVED from Mach/Product/LayLength/TensileGroup/SpoolType. Here,
+ * Construction is the field the user actually picks/types, so it's the other way round — these
+ * five columns are derived FROM it by splitting on "-" in that same order, and shown read-only. */
+function fieldsFromConstruction(construction: string): Pick<ActivityFields, 'mpp_machinecode' | 'mpp_productcode' | 'mpp_laylength' | 'mpp_tensilegroup' | 'mpp_spooltype'> {
+  const parts = construction.split('-');
+  const [machinecode = '', productcode = '', laylength = '', tensilegroup = '', spooltype = ''] = parts;
+  return {
+    mpp_machinecode: machinecode,
+    mpp_productcode: productcode,
+    mpp_laylength: Number(laylength) || 0,
+    mpp_tensilegroup: tensilegroup,
+    mpp_spooltype: spooltype,
+  };
+}
+
+function emptyFields(): ActivityFields {
+  return {
+    mpp_constructiontype: '',
+    mpp_taskname: 0,
+    mpp_subtaskname: '',
+    mpp_tasktime: 0,
+    mpp_numerator: 1,
+    mpp_denominator: 1,
+    mpp_machcondition: 'Stop',
+    mpp_productcode: '',
+    mpp_machinecode: '',
+    mpp_spooltype: '',
+    mpp_tensilegroup: '',
+    mpp_laylength: 0,
+  };
+}
+
+function fieldsFromRecord(record: Mpp_wl_activities): ActivityFields {
+  const constructionType = record.mpp_constructiontype ?? '';
+  return {
+    mpp_constructiontype: constructionType,
+    mpp_taskname: (record.mpp_taskname ?? 0) as 0 | 1 | 2,
+    mpp_subtaskname: record.mpp_subtaskname ?? '',
+    mpp_tasktime: record.mpp_tasktime ?? 0,
+    mpp_numerator: record.mpp_numerator ?? 1,
+    mpp_denominator: record.mpp_denominator ?? 1,
+    mpp_machcondition: (record.mpp_machcondition ?? '').trim().toLowerCase() === 'run' ? 'Run' : 'Stop',
+    ...fieldsFromConstruction(constructionType),
+  };
+}
+
+export function ActivitiesManager({
+  initialConstructionFilter,
+}: {
+  /** Set when navigating here from WL_Products (double-click on a Construction cell) —
+   * pre-selects that Construction in the filter dropdown below. */
+  initialConstructionFilter?: string;
+} = {}) {
+  const [rows, setRows] = useState<ActivityRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
+  const [constructionFilter, setConstructionFilter] = useState(initialConstructionFilter ?? '');
+  const [sort, setSort] = useState<{ key: keyof ActivityFields; dir: 'asc' | 'desc' } | null>(null);
+
+  useEffect(() => {
+    if (initialConstructionFilter) setConstructionFilter(initialConstructionFilter);
+  }, [initialConstructionFilter]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setLoadError(null);
+    Mpp_wl_activitiesService.getAll({ orderBy: ['mpp_constructiontype asc', 'mpp_taskname asc'] })
+      .then((result) => {
+        if (cancelled) return;
+        if (result.success) {
+          setRows(
+            (result.data ?? []).map((record) => ({
+              id: record.mpp_wl_activityid,
+              isNew: false,
+              dirty: false,
+              saving: false,
+              error: null,
+              fields: fieldsFromRecord(record),
+            })),
+          );
+        } else {
+          setLoadError(result.error?.message ?? 'Failed to load WL_Activities.');
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) setLoadError(err instanceof Error ? err.message : 'Failed to load WL_Activities.');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadToken]);
+
+  const updateField = useCallback(<K extends keyof ActivityFields>(id: string, key: K, value: ActivityFields[K]) => {
+    setRows((prev) =>
+      prev.map((row) => {
+        if (row.id !== id) return row;
+        const fields = { ...row.fields, [key]: value };
+        if (key === 'mpp_constructiontype') Object.assign(fields, fieldsFromConstruction(value as string));
+        return { ...row, dirty: true, fields };
+      }),
+    );
+  }, []);
+
+  const toggleSort = (key: keyof ActivityFields) => {
+    setSort((prev) => (prev?.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }));
+  };
+
+  const constructionOptions = useMemo(() => {
+    const set = new Set(rows.map((r) => r.fields.mpp_constructiontype).filter(Boolean));
+    if (constructionFilter) set.add(constructionFilter);
+    return Array.from(set)
+      .sort((a, b) => a.localeCompare(b))
+      .map((v) => ({ value: v, label: v }));
+  }, [rows, constructionFilter]);
+
+  const visibleRows = useMemo(() => {
+    const filtered = constructionFilter ? rows.filter((r) => r.fields.mpp_constructiontype === constructionFilter) : rows;
+    if (!sort) return filtered;
+    const { key, dir } = sort;
+    const sign = dir === 'asc' ? 1 : -1;
+    return [...filtered].sort((a, b) => {
+      const av = a.fields[key];
+      const bv = b.fields[key];
+      if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * sign;
+      return String(av).localeCompare(String(bv)) * sign;
+    });
+  }, [rows, constructionFilter, sort]);
+
+  const sortIndicator = (key: keyof ActivityFields) => (sort?.key === key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : '');
+
+  const addRow = () => {
+    setRows((prev) => [
+      ...prev,
+      {
+        id: `new-${Date.now()}`,
+        isNew: true,
+        dirty: true,
+        saving: false,
+        error: null,
+        // Pre-fill Construction from the active filter — adding an activity while already
+        // scoped to one Construction almost always means adding it for that same Construction.
+        fields: {
+          ...emptyFields(),
+          mpp_constructiontype: constructionFilter,
+          ...fieldsFromConstruction(constructionFilter),
+        },
+      },
+    ]);
+  };
+
+  const toPayload = (fields: ActivityFields): Omit<Mpp_wl_activitiesBase, 'mpp_wl_activityid'> => ({
+    mpp_constructiontype: fields.mpp_constructiontype,
+    mpp_taskname: fields.mpp_taskname,
+    mpp_subtaskname: fields.mpp_subtaskname || undefined,
+    mpp_tasktime: fields.mpp_tasktime,
+    mpp_numerator: fields.mpp_numerator,
+    mpp_denominator: fields.mpp_denominator,
+    mpp_machcondition: fields.mpp_machcondition,
+    mpp_productcode: fields.mpp_productcode || undefined,
+    mpp_machinecode: fields.mpp_machinecode || undefined,
+    mpp_spooltype: fields.mpp_spooltype || undefined,
+    mpp_tensilegroup: fields.mpp_tensilegroup || undefined,
+    mpp_laylength: fields.mpp_laylength,
+    statecode: 0,
+  });
+
+  const saveRow = async (id: string) => {
+    const row = rows.find((r) => r.id === id);
+    if (!row) return;
+    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, saving: true, error: null } : r)));
+    const payload = toPayload(row.fields);
+    try {
+      if (row.isNew) {
+        const result = await Mpp_wl_activitiesService.create(payload);
+        if (result.success) {
+          setRows((prev) =>
+            prev.map((r) => (r.id === id ? { ...r, id: result.data.mpp_wl_activityid, isNew: false, dirty: false, saving: false } : r)),
+          );
+        } else {
+          setRows((prev) => prev.map((r) => (r.id === id ? { ...r, saving: false, error: result.error?.message ?? 'Failed to create.' } : r)));
+        }
+      } else {
+        const result = await Mpp_wl_activitiesService.update(id, payload);
+        if (result.success) {
+          setRows((prev) => prev.map((r) => (r.id === id ? { ...r, dirty: false, saving: false } : r)));
+        } else {
+          setRows((prev) => prev.map((r) => (r.id === id ? { ...r, saving: false, error: result.error?.message ?? 'Failed to save.' } : r)));
+        }
+      }
+    } catch (err) {
+      setRows((prev) =>
+        prev.map((r) => (r.id === id ? { ...r, saving: false, error: err instanceof Error ? err.message : 'Failed to save.' } : r)),
+      );
+    }
+  };
+
+  const deleteRow = async (id: string) => {
+    const row = rows.find((r) => r.id === id);
+    if (!row) return;
+    if (row.isNew) {
+      setRows((prev) => prev.filter((r) => r.id !== id));
+      return;
+    }
+    const label = `${Mpp_wl_activitiesmpp_taskname[row.fields.mpp_taskname]}${row.fields.mpp_subtaskname ? ' ' + row.fields.mpp_subtaskname : ''}`;
+    if (!window.confirm(`Delete activity "${label}"?`)) return;
+    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, saving: true } : r)));
+    try {
+      await Mpp_wl_activitiesService.delete(id);
+      setRows((prev) => prev.filter((r) => r.id !== id));
+    } catch (err) {
+      setRows((prev) => prev.map((r) => (r.id === id ? { ...r, saving: false, error: err instanceof Error ? err.message : 'Failed to delete.' } : r)));
+    }
+  };
+
+  return (
+    <Card
+      title="WL_Activities"
+      subtitle="Operator activities (Task/SubTask, Time, Numerator/Denominator, MachCondition) per Construction"
+      actions={
+        <div className="data-manager-actions">
+          <Button variant="ghost" onClick={() => setReloadToken((t) => t + 1)} disabled={loading}>
+            Refresh
+          </Button>
+          <Button variant="secondary" onClick={addRow}>
+            + Add Activity
+          </Button>
+        </div>
+      }
+    >
+      {loadError && <p className="construction-selector-error">{loadError}</p>}
+      {loading ? (
+        <p className="data-manager-hint">Loading…</p>
+      ) : (
+        <>
+          <div className="activities-construction-filter">
+            <span className="toolbar-x">Filter by Construction</span>
+            <SearchableSelect
+              value={constructionFilter}
+              onChange={setConstructionFilter}
+              options={constructionOptions}
+              placeholder="All Constructions"
+              searchPlaceholder="Search Construction…"
+            />
+          </div>
+          <div className="data-table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th className="table-sortable-header" onClick={() => toggleSort('mpp_constructiontype')}>
+                  Construction{sortIndicator('mpp_constructiontype')}
+                </th>
+                <th className="table-sortable-header" onClick={() => toggleSort('mpp_taskname')}>
+                  Task{sortIndicator('mpp_taskname')}
+                </th>
+                <th className="table-sortable-header" onClick={() => toggleSort('mpp_subtaskname')}>
+                  SubTask{sortIndicator('mpp_subtaskname')}
+                </th>
+                <th className="table-sortable-header" onClick={() => toggleSort('mpp_tasktime')}>
+                  Time{sortIndicator('mpp_tasktime')}
+                </th>
+                <th className="table-sortable-header" onClick={() => toggleSort('mpp_numerator')}>
+                  Numerator{sortIndicator('mpp_numerator')}
+                </th>
+                <th className="table-sortable-header" onClick={() => toggleSort('mpp_denominator')}>
+                  Denominator{sortIndicator('mpp_denominator')}
+                </th>
+                <th className="table-sortable-header" onClick={() => toggleSort('mpp_machcondition')}>
+                  MachCondition{sortIndicator('mpp_machcondition')}
+                </th>
+                <th className="table-sortable-header" onClick={() => toggleSort('mpp_productcode')}>
+                  Product{sortIndicator('mpp_productcode')}
+                </th>
+                <th className="table-sortable-header" onClick={() => toggleSort('mpp_machinecode')}>
+                  Mach{sortIndicator('mpp_machinecode')}
+                </th>
+                <th className="table-sortable-header" onClick={() => toggleSort('mpp_spooltype')}>
+                  SpoolType{sortIndicator('mpp_spooltype')}
+                </th>
+                <th className="table-sortable-header" onClick={() => toggleSort('mpp_tensilegroup')}>
+                  TensileGroup{sortIndicator('mpp_tensilegroup')}
+                </th>
+                <th className="table-sortable-header" onClick={() => toggleSort('mpp_laylength')}>
+                  LayLength{sortIndicator('mpp_laylength')}
+                </th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {visibleRows.map((row) => (
+                <tr key={row.id}>
+                  <td>
+                    <input
+                      className="input"
+                      value={row.fields.mpp_constructiontype}
+                      onChange={(e) => updateField(row.id, 'mpp_constructiontype', e.target.value)}
+                    />
+                  </td>
+                  <td>
+                    <select
+                      className="input"
+                      value={row.fields.mpp_taskname}
+                      onChange={(e) => updateField(row.id, 'mpp_taskname', Number(e.target.value) as 0 | 1 | 2)}
+                    >
+                      {TASK_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>
+                    <input
+                      className="input"
+                      placeholder="(parent task)"
+                      value={row.fields.mpp_subtaskname}
+                      onChange={(e) => updateField(row.id, 'mpp_subtaskname', e.target.value)}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      className="input"
+                      type="number"
+                      value={row.fields.mpp_tasktime}
+                      onChange={(e) => updateField(row.id, 'mpp_tasktime', parseFloat(e.target.value) || 0)}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      className="input"
+                      type="number"
+                      value={row.fields.mpp_numerator}
+                      onChange={(e) => updateField(row.id, 'mpp_numerator', parseFloat(e.target.value) || 0)}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      className="input"
+                      type="number"
+                      value={row.fields.mpp_denominator}
+                      onChange={(e) => updateField(row.id, 'mpp_denominator', parseFloat(e.target.value) || 0)}
+                    />
+                  </td>
+                  <td>
+                    <select
+                      className="input"
+                      value={row.fields.mpp_machcondition}
+                      onChange={(e) => updateField(row.id, 'mpp_machcondition', e.target.value as 'Stop' | 'Run')}
+                    >
+                      <option value="Stop">Stop</option>
+                      <option value="Run">Run</option>
+                    </select>
+                  </td>
+                  <td>
+                    <input
+                      className="input input-readonly"
+                      value={row.fields.mpp_productcode}
+                      readOnly
+                      title="Derived from Construction — edit Construction instead"
+                    />
+                  </td>
+                  <td>
+                    <input
+                      className="input input-readonly"
+                      value={row.fields.mpp_machinecode}
+                      readOnly
+                      title="Derived from Construction — edit Construction instead"
+                    />
+                  </td>
+                  <td>
+                    <input
+                      className="input input-readonly"
+                      value={row.fields.mpp_spooltype}
+                      readOnly
+                      title="Derived from Construction — edit Construction instead"
+                    />
+                  </td>
+                  <td>
+                    <input
+                      className="input input-readonly"
+                      value={row.fields.mpp_tensilegroup}
+                      readOnly
+                      title="Derived from Construction — edit Construction instead"
+                    />
+                  </td>
+                  <td>
+                    <input
+                      className="input input-readonly"
+                      type="number"
+                      value={row.fields.mpp_laylength}
+                      readOnly
+                      title="Derived from Construction — edit Construction instead"
+                    />
+                  </td>
+                  <td className="data-row-actions">
+                    <Button variant="primary" onClick={() => saveRow(row.id)} disabled={row.saving || !row.dirty}>
+                      {row.saving ? 'Saving…' : 'Save'}
+                    </Button>
+                    <Button variant="danger" onClick={() => deleteRow(row.id)} disabled={row.saving}>
+                      Delete
+                    </Button>
+                    {row.error && <span className="data-row-error">{row.error}</span>}
+                  </td>
+                </tr>
+              ))}
+              {visibleRows.length === 0 && (
+                <tr>
+                  <td colSpan={13} className="data-manager-hint">
+                    {rows.length === 0
+                      ? 'No activities yet — click "+ Add Activity" to create one.'
+                      : `No activities for Construction "${constructionFilter}".`}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+          </div>
+        </>
+      )}
+    </Card>
+  );
+}
