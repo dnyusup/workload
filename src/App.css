@@ -724,6 +724,23 @@
   color: #64748b;
 }
 
+.optimize-utilization-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.optimize-utilization-button svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
 .setup-forecast-utilization {
   display: flex;
   align-items: center;

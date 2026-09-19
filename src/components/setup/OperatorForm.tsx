@@ -2,6 +2,7 @@ import type { OperatorConfig, TaskPriorityMode } from '../../types';
 import { availableTimeMinutes } from '../../lib/calculations';
 import type { SingleOperatorForecast } from '../../lib/singleOperatorUtilization';
 import { Card } from '../ui/Card';
+import { Button } from '../ui/Button';
 import { Field, NumberInput, SelectInput } from '../ui/Field';
 
 const TASK_PRIORITY_OPTIONS: { value: TaskPriorityMode; label: string }[] = [
@@ -12,17 +13,38 @@ const TASK_PRIORITY_OPTIONS: { value: TaskPriorityMode; label: string }[] = [
 export function OperatorForm({
   operator,
   forecast,
+  onOptimize,
   onChange,
 }: {
   operator: OperatorConfig;
   forecast: SingleOperatorForecast;
+  onOptimize: () => void;
   onChange: (next: OperatorConfig) => void;
 }) {
   const set = <K extends keyof OperatorConfig>(key: K) => (v: OperatorConfig[K]) => onChange({ ...operator, [key]: v });
   const available = availableTimeMinutes(operator.shiftTime, operator.lunchTime, operator.meetingTime);
 
   return (
-    <Card title="Operator Activities" subtitle="Work capacity and number of assigned machines">
+    <Card
+      title="Operator Activities"
+      subtitle="Work capacity and number of assigned machines"
+      actions={
+        <Button
+          type="button"
+          variant="ghost"
+          className="optimize-utilization-button"
+          onClick={onOptimize}
+          title="Recalculate assigned machines for zero forecast backlog"
+          aria-label="Optimize utilization"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 19h16M6 16V9m6 7V5m6 11v-4" />
+            <path d="m4 6 4-2 4 2 4-3 4 2" />
+          </svg>
+          Optimize Utilization
+        </Button>
+      }
+    >
       <div className="grid-2">
         <Field
           label="Task Priority"
