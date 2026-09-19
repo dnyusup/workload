@@ -16,6 +16,7 @@ import { availableTimeMinutes, deriveMachineSpec, distanceMeters } from './calcu
 import { machineWidthPx, machineHeightPx } from './layoutConstants';
 import { buildServiceSegments } from './machineZones';
 import { computeWalkingWaypoints, createRoutingRowCache, type RoutingRowCache } from './operatorRouting';
+import { activityFamily, assignedOperatorIdForActivity } from './productionActivityRouting';
 import type { ResolvedConstruction } from './productionConstructionResolver';
 
 function emptyCounts(activities: ActivityConfig[]): Record<ActivityKey, number> {
@@ -29,15 +30,6 @@ const AVERAGE_DIES_PER_CHANGE_EVENT = (7 + 26) / 2;
  * matching the `<family>` / `<family>-sub-*` / `<family>-*` key conventions used throughout the
  * app (see productCatalog.ts) — this decides which of a machine assignment's three operator slots
  * a given task is routed to. */
-function activityFamily(key: ActivityKey): 'doffing' | 'loading' | 'fractureRepairing' | 'diesChange' | 'defectRepairing' | null {
-  if (key === 'doffing' || key.startsWith('doffing-')) return 'doffing';
-  if (key === 'loading' || key.startsWith('loading-')) return 'loading';
-  if (key === 'fractureRepairing' || key.startsWith('fractureRepairing-')) return 'fractureRepairing';
-  if (key === 'diesChange' || key.startsWith('diesChange-')) return 'diesChange';
-  if (key === 'defectRepairing' || key.startsWith('defectRepairing-')) return 'defectRepairing';
-  return null;
-}
-
 interface ProdMachine extends MachineRuntimeState {
   constructionId: string | null;
   cycleLengths: Record<ActivityKey, number>;
@@ -308,14 +300,8 @@ export class ProductionSimulationEngine {
   }
 
   private operatorIdForTask(machineAssignment: ProdMachine, activity: ActivityKey): string | undefined {
-    const family = activityFamily(activity);
     const assignment = this.setup.assignments.find((a) => a.machineId === machineAssignment.id);
-    if (!family || !assignment) return undefined;
-    if (family === 'doffing') return assignment.doffingOperatorId;
-    if (family === 'loading') return assignment.loadingOperatorId;
-    if (family === 'diesChange') return assignment.diesChangeOperatorId ?? assignment.fractureRepairingOperatorId;
-    if (family === 'defectRepairing') return assignment.defectRepairingOperatorId ?? assignment.fractureRepairingOperatorId;
-    return assignment.fractureRepairingOperatorId;
+    return assignedOperatorIdForActivity(assignment, activity);
   }
 
   /** If both Loading Partial1 and Partial2 just came due together on the same machine, the

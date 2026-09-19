@@ -2150,6 +2150,89 @@
   font-size: 0.72rem;
 }
 
+.planned-utilization-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  align-items: center;
+  margin-bottom: 10px;
+  color: #cbd5e1;
+  font-size: 0.78rem;
+}
+
+.planned-utilization-target {
+  color: #facc15;
+}
+
+.planned-utilization-unassigned {
+  color: #fb923c;
+}
+
+.planned-utilization-table-wrap {
+  overflow-x: auto;
+}
+
+.planned-utilization-table {
+  min-width: 760px;
+}
+
+.planned-utilization-table th,
+.planned-utilization-table td {
+  vertical-align: top;
+}
+
+.planned-utilization-table td:last-child {
+  min-width: 260px;
+  color: #cbd5e1;
+  font-size: 0.75rem;
+}
+
+.planned-utilization-machine-table {
+  margin-top: 12px;
+}
+
+.planned-utilization-machine-table .table {
+  min-width: 640px;
+}
+
+.planned-utilization-status {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 3px 7px;
+  white-space: nowrap;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.planned-utilization-status-under-target {
+  color: #bae6fd;
+  background: rgba(56, 189, 248, 0.13);
+}
+
+.planned-utilization-status-above-target {
+  color: #fde68a;
+  background: rgba(250, 204, 21, 0.15);
+}
+
+.planned-utilization-status-overload {
+  color: #fecaca;
+  background: rgba(248, 113, 113, 0.18);
+  font-weight: 700;
+}
+
+.planned-utilization-warning {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border: 1px solid #854d0e;
+  border-radius: 8px;
+  color: #fde68a;
+  background: rgba(161, 98, 7, 0.12);
+  font-size: 0.76rem;
+}
+
 .production-operator-util-block:last-of-type {
   border-bottom: none;
   margin-bottom: 0;

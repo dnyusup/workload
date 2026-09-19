@@ -19,6 +19,7 @@ import { resolveDisplayNames } from '../../lib/userDirectory';
 import { Mpp_wl_productsesService } from '../../generated/services/Mpp_wl_productsesService';
 import type { Mpp_wl_productses } from '../../generated/models/Mpp_wl_productsesModel';
 import { resolveConstructions, type ResolvedConstruction } from '../../lib/productionConstructionResolver';
+import { calculatePlannedUtilization, type PlannedUtilization } from '../../lib/productionUtilization';
 import { buildConstructionColorMap } from '../../lib/constructionColors';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
@@ -296,6 +297,45 @@ export function ProductionSimulationPage() {
 
   const [runState, setRunState] = useState<{ setup: ProductionSetup; resolved: Map<string, ResolvedConstruction>; errors: string[] } | null>(null);
   const [resolving, setResolving] = useState(false);
+  const [plannedResolution, setPlannedResolution] = useState<{
+    utilization: PlannedUtilization | null;
+    errors: string[];
+    loading: boolean;
+  }>({ utilization: null, errors: [], loading: false });
+
+  useEffect(() => {
+    if (!selectedSetup || loadingProducts) return;
+    const productIds = Array.from(
+      new Set(selectedSetup.assignments.map((assignment) => assignment.constructionDetailId).filter((id): id is string => !!id)),
+    );
+    let cancelled = false;
+    Promise.resolve()
+      .then(() => {
+        if (!cancelled) setPlannedResolution((previous) => ({ ...previous, loading: true, errors: [] }));
+        return resolveConstructions(productIds, products);
+      })
+      .then(({ resolved, errors }) => {
+        if (!cancelled) {
+          setPlannedResolution({
+            utilization: calculatePlannedUtilization(selectedSetup, resolved),
+            errors,
+            loading: false,
+          });
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setPlannedResolution({
+            utilization: null,
+            errors: [err instanceof Error ? err.message : 'Failed to resolve Construction Details for planned utilization.'],
+            loading: false,
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSetup, products, loadingProducts]);
 
   const runSimulation = async (setup: ProductionSetup) => {
     if (loadingProducts) return;
@@ -460,6 +500,9 @@ export function ProductionSimulationPage() {
             }
             isAdmin={isAdmin}
             resolving={resolving}
+            plannedUtilization={plannedResolution.utilization}
+            plannedUtilizationErrors={plannedResolution.errors}
+            plannedUtilizationLoading={plannedResolution.loading}
           />
         ) : (
           <Card title="No Setup Selected">
@@ -480,6 +523,9 @@ function ProductionSetupEditor({
   onOperatorCountChange,
   isAdmin,
   resolving,
+  plannedUtilization,
+  plannedUtilizationErrors,
+  plannedUtilizationLoading,
 }: {
   setup: ProductionSetup;
   products: Mpp_wl_productses[];
@@ -489,6 +535,9 @@ function ProductionSetupEditor({
   onOperatorCountChange: (delta: number) => void;
   isAdmin: boolean;
   resolving: boolean;
+  plannedUtilization: PlannedUtilization | null;
+  plannedUtilizationErrors: string[];
+  plannedUtilizationLoading: boolean;
 }) {
   const diesChangeAreas = new Set(['WW', 'BA', 'CA']);
   const defectRepairingAreas = new Set(['CB', 'BU', 'SP', 'CH', 'CR']);
@@ -1140,6 +1189,11 @@ function ProductionSetupEditor({
         onChange={() => {}}
         operatorStart={setup.operatorStart ?? null}
       />
+      <PlannedUtilizationCard
+        utilization={plannedUtilization}
+        errors={plannedUtilizationErrors}
+        loading={plannedUtilizationLoading}
+      />
       <div className="legend">
         <span className="legend-item"><span className="legend-swatch machine-plan-unplanned" /> Not planned</span>
         <span className="legend-item"><span className="legend-swatch machine-plan-planned" /> Construction assigned</span>
@@ -1212,5 +1266,186 @@ function ProductionSetupEditor({
         </div>
       </Card>
     </>
+  );
+}
+
+function PlannedUtilizationCard({
+  utilization,
+  errors,
+  loading,
+}: {
+  utilization: PlannedUtilization | null;
+  errors: string[];
+  loading: boolean;
+}) {
+  const formatMinutes = (minutes: number) => `${minutes.toFixed(1)} min`;
+  const targetPercent = utilization?.targetPercent ?? 85;
+  const statusFor = (percent: number) =>
+    percent > 100 ? 'overload' : percent > targetPercent ? 'above-target' : 'under-target';
+  const labelFor = (percent: number) =>
+    percent > 100 ? 'Overload' : percent > targetPercent ? `Above ${targetPercent}% target` : `Below ${targetPercent}% target`;
+  const contributionSummary = (
+    contributions: PlannedUtilization['operators'][number]['contributions'],
+    availableMinutes: number,
+  ) => {
+    const grouped = new Map<
+      string,
+      { label: string; minutes: number; quantity: number; hasQuantity: boolean; machines: Set<string> }
+    >();
+    contributions.forEach((contribution) => {
+      const current = grouped.get(contribution.activityKey) ?? {
+        label: contribution.activityLabel,
+        minutes: 0,
+        quantity: 0,
+        hasQuantity: false,
+        machines: new Set<string>(),
+      };
+      current.minutes += contribution.plannedMinutes;
+      current.machines.add(contribution.machineId);
+      if (contribution.expectedQuantity !== undefined) {
+        current.quantity += contribution.expectedQuantity;
+        current.hasQuantity = true;
+      }
+      grouped.set(contribution.activityKey, current);
+    });
+    return [...grouped.values()]
+      .map(
+        (contribution) =>
+          `${contribution.label}: ${formatMinutes(contribution.minutes)} (${availableMinutes > 0
+            ? `${((contribution.minutes / availableMinutes) * 100).toFixed(1)}% utilization; `
+            : ''}${contribution.machines.size} machine(s)${
+            contribution.hasQuantity ? `; ${contribution.quantity.toFixed(1)} units` : ''
+          })`,
+      )
+      .join(' · ');
+  };
+  const operatorById = new Map(utilization?.operators.map((operator) => [operator.operatorId, operator]) ?? []);
+
+  return (
+    <Card
+      title="Planned Operator Utilization"
+      subtitle="Service demand from assigned machines, using each Construction's resolved runtime and activity rates"
+    >
+      {loading && <p className="data-manager-hint">Resolving Construction Details and activities…</p>}
+      {errors.length > 0 && (
+        <div className="planned-utilization-warning">
+          <strong>Some planned demand could not be resolved.</strong>
+          <span>{errors.slice(0, 3).join(' ')}</span>
+          {errors.length > 3 && <span>…and {errors.length - 3} more issue(s).</span>}
+        </div>
+      )}
+      {!utilization ? (
+        <p className="data-manager-hint">Assign a Construction Detail to see planned demand.</p>
+      ) : (
+        <>
+          <div className="planned-utilization-summary">
+            <span>Net operator availability: <strong>{formatMinutes(utilization.availableMinutes)}</strong> per shift</span>
+            <span className="planned-utilization-target">Target: <strong>{targetPercent}%</strong></span>
+            {utilization.unassignedMinutes > 0 && (
+              <span className="planned-utilization-unassigned">
+                Unassigned demand: <strong>{formatMinutes(utilization.unassignedMinutes)}</strong>
+              </span>
+            )}
+          </div>
+          <div className="planned-utilization-table-wrap">
+            <table className="table planned-utilization-table">
+              <thead>
+                <tr>
+                  <th>Operator</th>
+                  <th>Planned service</th>
+                  <th>Net available</th>
+                  <th>Utilization</th>
+                  <th>Capacity to target</th>
+                  <th>Activity contribution</th>
+                </tr>
+              </thead>
+              <tbody>
+                {utilization.operators.map((operator) => (
+                  <tr key={operator.operatorId}>
+                    <td>{operator.operatorLabel}</td>
+                    <td>{formatMinutes(operator.plannedMinutes)}</td>
+                    <td>{formatMinutes(operator.availableMinutes)}</td>
+                    <td>
+                      <span className={`planned-utilization-status planned-utilization-status-${statusFor(operator.utilizationPercent)}`}>
+                        {operator.utilizationPercent.toFixed(1)}% · {labelFor(operator.utilizationPercent)}
+                      </span>
+                    </td>
+                    <td>
+                      {formatMinutes(
+                        Math.abs(operator.availableMinutes * (targetPercent / 100) - operator.plannedMinutes),
+                      )}{' '}
+                      {operator.plannedMinutes <= operator.availableMinutes * (targetPercent / 100)
+                        ? 'remaining'
+                        : 'over target'}
+                    </td>
+                    <td>
+                      {operator.contributions.length === 0
+                        ? '—'
+                        : contributionSummary(operator.contributions, operator.availableMinutes)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {utilization.machines.length > 0 && (
+            <div className="planned-utilization-table-wrap planned-utilization-machine-table">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Machine</th>
+                    <th>Construction</th>
+                    <th>Activity</th>
+                    <th>Operator</th>
+                    <th>Utilization contribution</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {utilization.machines.map((machine) => (
+                    machine.contributions.length > 0
+                      ? machine.contributions.map((contribution, index) => {
+                          const operator = contribution.operatorId ? operatorById.get(contribution.operatorId) : undefined;
+                          const contributionPercent =
+                            operator && operator.availableMinutes > 0
+                              ? (contribution.plannedMinutes / operator.availableMinutes) * 100
+                              : null;
+                          const quantity =
+                            contribution.expectedQuantity === undefined
+                              ? ''
+                              : ` · ${contribution.expectedQuantity.toFixed(1)} units`;
+                          return (
+                            <tr key={`${machine.machineId}-${contribution.activityKey}-${index}`}>
+                              <td>{machine.machineLabel}</td>
+                              <td>{machine.constructionLabel}</td>
+                              <td>{contribution.activityLabel}</td>
+                              <td>{operator?.operatorLabel ?? 'Unassigned'}</td>
+                              <td>
+                                {formatMinutes(contribution.plannedMinutes)}
+                                {contributionPercent === null ? ' · —' : ` · ${contributionPercent.toFixed(1)}% of operator shift`}
+                                {quantity}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      : (
+                        <tr key={machine.machineId}>
+                          <td>{machine.machineLabel}</td>
+                          <td>{machine.constructionLabel}</td>
+                          <td colSpan={3}>No resolved activity demand</td>
+                        </tr>
+                      )
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {utilization.unresolvedMachineIds.length > 0 && (
+            <p className="planned-utilization-warning">
+              {utilization.unresolvedMachineIds.length} assigned machine(s) are omitted until their Construction data resolves.
+            </p>
+          )}
+        </>
+      )}
+    </Card>
   );
 }
