@@ -763,6 +763,12 @@
   min-width: 180px;
 }
 
+.activity-table th:nth-child(2),
+.activity-table td:nth-child(2) {
+  width: 96px;
+  min-width: 96px;
+}
+
 .table th {
   text-align: left;
   color: #94a3b8;
