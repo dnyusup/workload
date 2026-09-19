@@ -6,6 +6,10 @@ import type { Mpp_wl_productses } from '../../generated/models/Mpp_wl_productses
 import { useAppConfig } from '../../context/AppConfigContext';
 import { buildActivitiesFromRows, mapProductToSpec } from '../../lib/productCatalog';
 import { deriveMachineSpec, ensureCoreActivities } from '../../lib/calculations';
+import {
+  previewAssignedMachineIds,
+  recommendedMachineCountForForecast,
+} from '../../lib/singleOperatorUtilization';
 import { Card } from '../ui/Card';
 import { SearchableSelect } from '../ui/SearchableSelect';
 
@@ -77,13 +81,21 @@ export function ConstructionDetailSelector({ onApplyingChange }: { onApplyingCha
         setError(built.errors.join(' '));
       }
 
-      setConfig((prev) => ({
-        ...prev,
-        spec: newSpec,
-        activities,
-        selectedProductId: product.mpp_wl_productsid,
-        selectedConstructionDetail: product.mpp_constructiondetailcode,
-      }));
+      setConfig((prev) => {
+        const nextConfig = {
+          ...prev,
+          spec: newSpec,
+          activities,
+          selectedProductId: product.mpp_wl_productsid,
+          selectedConstructionDetail: product.mpp_constructiondetailcode,
+        };
+        const recommendedMachineCount = recommendedMachineCountForForecast(nextConfig);
+        return {
+          ...nextConfig,
+          operator: { ...nextConfig.operator, machHandled: recommendedMachineCount },
+          assignedMachineIds: previewAssignedMachineIds(nextConfig, recommendedMachineCount),
+        };
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load activities for this Construction.');
     } finally {

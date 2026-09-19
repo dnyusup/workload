@@ -35,6 +35,19 @@ function forecastScale(activities: ActivityConfig[], runtimePerSpool: number): n
   return runtimePerSpool > 0 ? runtimePerSpool / (runtimePerSpool + stopMinutesPerSpool) : 1;
 }
 
+export function previewAssignedMachineIds(config: AppConfig, machineCount: number): string[] {
+  const layoutById = new Map(config.layout.map((machine) => [machine.id, machine]));
+  const explicitAssigned = (config.assignedMachineIds ?? []).filter((id) => layoutById.has(id));
+  const handled = Math.max(0, Math.floor(machineCount));
+  return [
+    ...explicitAssigned.slice(0, handled),
+    ...config.layout
+      .filter((machine) => !explicitAssigned.includes(machine.id))
+      .slice(0, Math.max(0, handled - explicitAssigned.length))
+      .map((machine) => machine.id),
+  ];
+}
+
 /**
  * Estimates the setup simulator's single operator using the same deterministic model as the
  * production utilization forecast. All assigned machines share one operator and global activities
@@ -46,19 +59,12 @@ export function calculateSingleOperatorForecast(config: AppConfig): SingleOperat
     config.operator.lunchTime,
     config.operator.meetingTime,
   );
-  const layoutById = new Map(config.layout.map((machine) => [machine.id, machine]));
-  const explicitAssigned = (config.assignedMachineIds ?? []).filter((id) => layoutById.has(id));
   const handled = Math.max(0, Math.floor(config.operator.machHandled));
   // Use the explicit assignment first, then fill the requested count from the remaining layout
   // machines. This keeps the forecast responsive while the user is changing the count before
   // completing the Assign action in the Machine Layout step.
-  const assignedPreviewIds = [
-    ...explicitAssigned.slice(0, handled),
-    ...config.layout
-      .filter((machine) => !explicitAssigned.includes(machine.id))
-      .slice(0, Math.max(0, handled - explicitAssigned.length))
-      .map((machine) => machine.id),
-  ];
+  const layoutById = new Map(config.layout.map((machine) => [machine.id, machine]));
+  const assignedPreviewIds = previewAssignedMachineIds(config, handled);
   const assignedMachines = assignedPreviewIds
     .map((id) => layoutById.get(id))
     .filter((machine): machine is NonNullable<typeof machine> => !!machine);
@@ -170,4 +176,19 @@ export function calculateSingleOperatorForecast(config: AppConfig): SingleOperat
       ? Math.min(100, (forecastBusyMinutes / availableMinutes) * 100)
       : 0,
   };
+}
+
+/** Finds the smallest available machine count whose forecast reaches the requested target. */
+export function recommendedMachineCountForForecast(config: AppConfig, targetPercent = 100): number {
+  if (config.layout.length === 0) return 0;
+
+  for (let machineCount = 1; machineCount <= config.layout.length; machineCount += 1) {
+    const forecast = calculateSingleOperatorForecast({
+      ...config,
+      operator: { ...config.operator, machHandled: machineCount },
+    });
+    if (forecast.forecastUtilizationPercent >= targetPercent) return machineCount;
+  }
+
+  return config.layout.length;
 }
