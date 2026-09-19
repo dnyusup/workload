@@ -398,7 +398,9 @@ export function ProductsManager({
                             value={row.fields[col.key]}
                             readOnly={readOnly}
                             title={
-                              col.readOnly
+                              col.key === 'mpp_constructiondetailcode'
+                                ? row.fields.mpp_constructiondetailcode || 'Construction Detail is empty'
+                                : col.readOnly
                                 ? 'Auto-generated from Mach/Product/LayLength/TensileGroup/SpoolType(/SpoolLength)'
                                 : col.key === 'mpp_dieston' && readOnly
                                   ? 'Dies/Ton is only editable for area WW, CA, BA'

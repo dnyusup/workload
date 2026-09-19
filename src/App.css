@@ -937,6 +937,12 @@
   min-width: 200px;
 }
 
+.products-table th:nth-child(3),
+.products-table td:nth-child(3) {
+  width: 250px;
+  min-width: 220px;
+}
+
 .products-table th:nth-child(7),
 .products-table td:nth-child(7) {
   width: 92px;
