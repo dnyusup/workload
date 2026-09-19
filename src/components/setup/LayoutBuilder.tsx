@@ -46,7 +46,7 @@ type DragState =
       wasAlreadyMultiSelected: boolean;
     }
   | { mode: 'pan'; startVb: Point; startPan: Point }
-  | { mode: 'select'; startVb: Point; currentVb: Point; rightClickId?: string }
+  | { mode: 'select'; startVb: Point; currentVb: Point; rightClick?: boolean; rightClickId?: string }
   | { mode: 'start'; startWorld: Point; startPoint: Point }
   | null;
 
@@ -364,7 +364,7 @@ export function LayoutBuilder({
     if (e.button === 2) {
       e.preventDefault();
       const startVb = toViewBoxPoint(e.clientX, e.clientY);
-      setDrag({ mode: 'select', startVb, currentVb: startVb, rightClickId: id });
+      setDrag({ mode: 'select', startVb, currentVb: startVb, rightClick: true, rightClickId: id });
       return;
     }
     if (e.shiftKey) {
@@ -425,7 +425,7 @@ export function LayoutBuilder({
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
     const vb = toViewBoxPoint(e.clientX, e.clientY);
     if (e.button === 2 || e.shiftKey) {
-      setDrag({ mode: 'select', startVb: vb, currentVb: vb });
+      setDrag({ mode: 'select', startVb: vb, currentVb: vb, rightClick: e.button === 2 });
     } else {
       setSelectedIds(new Set());
       setDrag({ mode: 'pan', startVb: vb, startPan: pan });
@@ -506,7 +506,7 @@ export function LayoutBuilder({
             hitSet.add(machine.id);
           }
         });
-        setSelectedIds((prev) => new Set([...prev, ...hitSet]));
+        setSelectedIds((prev) => (drag.rightClick ? hitSet : new Set([...prev, ...hitSet])));
       }
     }
     const clickedMachine = drag?.mode === 'machine' ? layout.find((m) => m.id === drag.clickedId) : undefined;
