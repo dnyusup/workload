@@ -642,19 +642,43 @@ export function ProductionRunView({
       <div className="simulation-body">
         <div className={`sim-canvas-wrap ${isFullscreen ? 'sim-canvas-fullscreen' : ''}`} ref={panelRef}>
           <div className="toolbar sim-canvas-toolbar">
-            <Button variant="ghost" onClick={() => zoomAt({ x: viewSize.width / 2, y: viewSize.height / 2 }, zoom / 1.25)}>
-              − Zoom
+            <Button
+              variant="ghost"
+              className="toolbar-icon-button"
+              onClick={() => zoomAt({ x: viewSize.width / 2, y: viewSize.height / 2 }, zoom / 1.25)}
+              title="Zoom out"
+              aria-label="Zoom out"
+            >
+              🔍−
             </Button>
             <span className="toolbar-zoom-readout">{Math.round(zoom * 100)}%</span>
-            <Button variant="ghost" onClick={() => zoomAt({ x: viewSize.width / 2, y: viewSize.height / 2 }, zoom * 1.25)}>
-              + Zoom
+            <Button
+              variant="ghost"
+              className="toolbar-icon-button"
+              onClick={() => zoomAt({ x: viewSize.width / 2, y: viewSize.height / 2 }, zoom * 1.25)}
+              title="Zoom in"
+              aria-label="Zoom in"
+            >
+              🔍+
             </Button>
-            <Button variant="ghost" onClick={() => fitToPage()}>
-              Fit to Page
+            <Button
+              variant="ghost"
+              className="toolbar-icon-button"
+              onClick={() => fitToPage()}
+              title="Fit layout to page"
+              aria-label="Fit layout to page"
+            >
+              ⊡
             </Button>
             <span className="toolbar-divider" />
-            <Button variant="ghost" onClick={toggleFullscreen}>
-              {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+            <Button
+              variant="ghost"
+              className="toolbar-icon-button"
+              onClick={toggleFullscreen}
+              title={isFullscreen ? 'Exit fullscreen' : 'Open fullscreen'}
+              aria-label={isFullscreen ? 'Exit fullscreen' : 'Open fullscreen'}
+            >
+              ⛶
             </Button>
           </div>
           <div className="sim-svg-wrap" ref={wrapperRef} style={!isFullscreen ? { height: canvasHeight } : undefined}>

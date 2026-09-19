@@ -809,6 +809,13 @@
   text-align: center;
 }
 
+.toolbar-icon-button {
+  min-width: 42px;
+  padding: 9px 11px;
+  font-size: 1rem;
+  line-height: 1;
+}
+
 .layout-builder-edit-row {
   margin-bottom: 12px;
   padding-bottom: 12px;
