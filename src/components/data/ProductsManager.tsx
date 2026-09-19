@@ -139,6 +139,8 @@ export function ProductsManager({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
+  const [areaFilter, setAreaFilter] = useState('');
+  const [machineFilter, setMachineFilter] = useState('');
   const [sort, setSort] = useState<{ key: keyof ProductFields; dir: 'asc' | 'desc' } | null>(null);
 
   useEffect(() => {
@@ -249,9 +251,11 @@ export function ProductsManager({
 
   const visibleRows = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
-    const filtered = q
-      ? rows.filter((row) => COLUMNS.some((col) => String(row.fields[col.key]).toLowerCase().includes(q)))
-      : rows;
+    const filtered = rows.filter((row) => {
+      if (areaFilter && row.fields.mpp_area !== areaFilter) return false;
+      if (machineFilter && row.fields.mpp_machinecode !== machineFilter) return false;
+      return !q || COLUMNS.some((col) => String(row.fields[col.key]).toLowerCase().includes(q));
+    });
     if (!sort) return filtered;
     const { key, dir } = sort;
     const sign = dir === 'asc' ? 1 : -1;
@@ -261,7 +265,15 @@ export function ProductsManager({
       if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * sign;
       return String(av).localeCompare(String(bv)) * sign;
     });
-  }, [rows, searchTerm, sort]);
+  }, [rows, searchTerm, areaFilter, machineFilter, sort]);
+
+  const machineOptions = useMemo(
+    () =>
+      [...new Set(rows.map((row) => row.fields.mpp_machinecode.trim()).filter(Boolean))].sort((a, b) =>
+        a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }),
+      ),
+    [rows],
+  );
 
   return (
     <Card
@@ -283,12 +295,30 @@ export function ProductsManager({
         <p className="data-manager-hint">Loading…</p>
       ) : (
         <>
-          <input
-            className="input list-search-input"
-            placeholder="Search all columns…"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+          <div className="products-filters">
+            <input
+              className="input list-search-input"
+              placeholder="Search all columns…"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+            <select className="input" value={areaFilter} onChange={(e) => setAreaFilter(e.target.value)}>
+              <option value="">All areas</option>
+              {PRODUCT_AREAS.map((area) => (
+                <option key={area} value={area}>
+                  Area: {area}
+                </option>
+              ))}
+            </select>
+            <select className="input" value={machineFilter} onChange={(e) => setMachineFilter(e.target.value)}>
+              <option value="">All machines</option>
+              {machineOptions.map((machine) => (
+                <option key={machine} value={machine}>
+                  Machine: {machine}
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="data-table-wrap">
             <table className="table">
               <thead>

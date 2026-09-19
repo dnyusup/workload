@@ -184,6 +184,17 @@
   margin-bottom: 10px;
 }
 
+.products-filters {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(150px, 220px) minmax(150px, 220px);
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.products-filters .list-search-input {
+  margin-bottom: 0;
+}
+
 .layout-list-item {
   border: 1px solid #1e293b;
   border-radius: 10px;
