@@ -3,7 +3,7 @@ import { fractureRepairingDenominator } from '../../lib/calculations';
 import { Card } from '../ui/Card';
 
 const PROTECTED_ACTIVITY_KEYS = ['doffing', 'loading', 'fractureRepairing', 'diesChange', 'defectRepairing'];
-const SUB_ACTIVITY_DISABLED_KEYS = ['fractureRepairing', 'diesChange', 'defectRepairing'];
+const SUB_ACTIVITY_DISABLED_KEYS = ['doffing', 'fractureRepairing', 'diesChange', 'defectRepairing'];
 
 const SUB_ACTIVITY_DEFAULTS: Record<string, { label: string; timeMinutes: number; denominator: number }> = {
   doffing: { label: 'Doffing Partial', timeMinutes: 1, denominator: 2 },
