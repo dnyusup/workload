@@ -159,6 +159,20 @@
   min-width: 0;
 }
 
+.layout-manager-sidebar-card {
+  display: flex;
+  flex-direction: column;
+  height: max(360px, calc(100vh - 120px));
+  min-height: 0;
+  overflow: hidden;
+}
+
+.layout-manager-sidebar-card .card-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .layout-name-card {
   margin-bottom: 18px;
 }
@@ -175,9 +189,22 @@
 /* Independently scrollable list body — the create-new-record form above it (name field, +New
  * button, etc.) stays fixed in place instead of scrolling away with a long list. */
 .layout-list-scroll {
-  max-height: 420px;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding-right: 4px;
+}
+
+@media (max-width: 900px) {
+  .layout-manager-sidebar-card {
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+  }
+
+  .layout-manager-sidebar-card .layout-list-scroll {
+    max-height: 420px;
+  }
 }
 
 .list-search-input {

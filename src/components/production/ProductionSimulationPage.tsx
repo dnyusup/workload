@@ -394,6 +394,7 @@ export function ProductionSimulationPage() {
       <Card
         title="Production Setups"
         subtitle="Snapshot of a Layout plus Construction & per-activity operator assignment per machine"
+        className="layout-manager-sidebar-card"
       >
         <div className="production-new-setup">
           {savedLayouts.length === 0 ? (

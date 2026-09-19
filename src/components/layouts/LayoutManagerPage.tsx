@@ -168,6 +168,7 @@ export function LayoutManagerPage() {
       <Card
         title="Saved Layouts"
         subtitle="Create and save machine layouts to reuse in the Simulator"
+        className="layout-manager-sidebar-card"
         actions={
           <Button variant="secondary" onClick={addLayout} disabled={busy}>
             + New Layout
