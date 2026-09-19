@@ -586,49 +586,53 @@ export function ProductionRunView({
 
   const operatorTimelineList = displayedOperators.filter((op) => op.label.toLowerCase().includes(operatorTimelineSearch.trim().toLowerCase()));
 
+  const renderProductionControls = () => (
+    <div className="controls-bar production-run-toolbar">
+      <Button variant="ghost" onClick={onBack}>
+        ← Back to Setup
+      </Button>
+      <ShiftTimeCard
+        elapsedMinutes={metrics.clockMin}
+        totalMinutes={metrics.shiftTimeMin}
+        availableMinutes={Math.max(0, setup.shiftTime - setup.lunchTime - setup.meetingTime)}
+        breakMessage={
+          operatorsOnBreak.length > 0
+            ? `☕ ${operatorsOnBreak.map((op) => op.label).join(', ')} on break — ${Math.ceil(
+                Math.max(...operatorsOnBreak.map((op) => op.breakRemainingMin)),
+              )} minutes remaining`
+            : undefined
+        }
+      />
+      {state.finished && <span className="finished-badge">Shift complete</span>}
+      {!playing ? (
+        <Button variant="primary" onClick={controls.play} disabled={state.finished}>
+          ▶ Play
+        </Button>
+      ) : (
+        <Button variant="secondary" onClick={controls.pause}>
+          ⏸ Pause
+        </Button>
+      )}
+      <div className="speed-group">
+        {[0.5, 1, 2, 4, 8].map((s) => (
+          <button
+            key={s}
+            className={`speed-btn ${speed === s ? 'active' : ''}`}
+            onClick={() => controls.setSpeed(s)}
+          >
+            {s}x
+          </button>
+        ))}
+      </div>
+      <Button variant="secondary" onClick={controls.reset}>
+        ⟲ Reset
+      </Button>
+    </div>
+  );
+
   return (
     <div className="production-run-view">
-      <div className="controls-bar production-run-toolbar">
-        <Button variant="ghost" onClick={onBack}>
-          ← Back to Setup
-        </Button>
-        <ShiftTimeCard
-          elapsedMinutes={metrics.clockMin}
-          totalMinutes={metrics.shiftTimeMin}
-          availableMinutes={Math.max(0, setup.shiftTime - setup.lunchTime - setup.meetingTime)}
-          breakMessage={
-            operatorsOnBreak.length > 0
-              ? `☕ ${operatorsOnBreak.map((op) => op.label).join(', ')} on break — ${Math.ceil(
-                  Math.max(...operatorsOnBreak.map((op) => op.breakRemainingMin)),
-                )} minutes remaining`
-              : undefined
-          }
-        />
-        {state.finished && <span className="finished-badge">Shift complete</span>}
-        {!playing ? (
-          <Button variant="primary" onClick={controls.play} disabled={state.finished}>
-            ▶ Play
-          </Button>
-        ) : (
-          <Button variant="secondary" onClick={controls.pause}>
-            ⏸ Pause
-          </Button>
-        )}
-        <div className="speed-group">
-          {[0.5, 1, 2, 4, 8].map((s) => (
-            <button
-              key={s}
-              className={`speed-btn ${speed === s ? 'active' : ''}`}
-              onClick={() => controls.setSpeed(s)}
-            >
-              {s}x
-            </button>
-          ))}
-        </div>
-        <Button variant="secondary" onClick={controls.reset}>
-          ⟲ Reset
-        </Button>
-      </div>
+      {renderProductionControls()}
 
       {state.warnings.length > 0 && (
         <div className="production-run-warnings">
@@ -641,6 +645,7 @@ export function ProductionRunView({
 
       <div className="simulation-body">
         <div className={`sim-canvas-wrap ${isFullscreen ? 'sim-canvas-fullscreen' : ''}`} ref={panelRef}>
+          {isFullscreen && <div className="sim-canvas-fullscreen-controls">{renderProductionControls()}</div>}
           <div className="toolbar sim-canvas-toolbar">
             <Button
               variant="ghost"
