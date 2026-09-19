@@ -105,50 +105,6 @@ function mergeIntervals(intervals: Interval[]): Interval[] {
   return merged;
 }
 
-/** The gaps left over once `occupied` is cut out of [minX, maxX]. */
-function freeIntervals(occupied: Interval[], minX: number, maxX: number): Interval[] {
-  const merged = mergeIntervals(occupied);
-  const free: Interval[] = [];
-  let cursor = minX;
-  for (const [s, e] of merged) {
-    if (s > cursor) free.push([cursor, s]);
-    cursor = Math.max(cursor, e);
-  }
-  if (cursor < maxX) free.push([cursor, maxX]);
-  return free;
-}
-
-function intersectIntervalLists(a: Interval[], b: Interval[]): Interval[] {
-  const result: Interval[] = [];
-  for (const [aS, aE] of a) {
-    for (const [bS, bE] of b) {
-      const s = Math.max(aS, bS);
-      const e = Math.min(aE, bE);
-      if (s < e) result.push([s, e]);
-    }
-  }
-  return result;
-}
-
-/** Picks the point inside `intervals` closest to `preferredX` — or `preferredX` itself if there's
- * no common-clear corridor at all, which just means the corridor step below degrades to whatever
- * clearance the single nearest aisle already provides. Always the nearest usable gap, not the
- * widest — minimizing the detour matters more than how open the gap looks on a wide layout. */
-function pickCorridorX(intervals: Interval[], preferredX: number): number {
-  if (intervals.length === 0) return preferredX;
-  let best = preferredX;
-  let bestDistance = Infinity;
-  for (const [s, e] of intervals) {
-    const clamped = Math.max(s, Math.min(e, preferredX));
-    const distance = Math.abs(clamped - preferredX);
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      best = clamped;
-    }
-  }
-  return best;
-}
-
 function dedupe(points: RoutePoint[]): RoutePoint[] {
   return points.filter((p, i) => i === 0 || Math.hypot(p.x - points[i - 1].x, p.y - points[i - 1].y) > 0.5);
 }
@@ -185,7 +141,7 @@ export function computeWalkingWaypoints(
   pixelsPerMeter: number = DEFAULT_PIXELS_PER_METER,
   rowCache?: RoutingRowCache,
 ): RoutePoint[] {
-  if (machines.length < 2 || Math.abs(start.y - end.y) < SAME_Y_TOLERANCE) return [start, end];
+  if (machines.length === 0 || Math.abs(start.y - end.y) < SAME_Y_TOLERANCE) return [start, end];
   const scale = pixelsPerMeter > 0 ? pixelsPerMeter : DEFAULT_PIXELS_PER_METER;
   const clearancePx = CORRIDOR_CLEARANCE_METERS * scale;
   const minAisleGapPx = MIN_AISLE_GAP_METERS * scale;
@@ -213,6 +169,29 @@ export function computeWalkingWaypoints(
     const aboveY = adjacentAisleY(rows, startRow, 'above', searchMarginPx);
     const belowY = adjacentAisleY(rows, startRow, 'below', searchMarginPx);
     const aisleY = Math.abs(avgY - aboveY) <= Math.abs(avgY - belowY) ? aboveY : belowY;
+    const occupied = mergeIntervals(rows[startRow].occupiedX);
+    const rowLeft = occupied[0]?.[0] ?? Math.min(start.x, end.x);
+    const rowRight = occupied[occupied.length - 1]?.[1] ?? Math.max(start.x, end.x);
+    const crossesMachineBlock =
+      (start.x >= rowLeft && start.x <= rowRight) ||
+      (end.x >= rowLeft && end.x <= rowRight);
+    if (crossesMachineBlock) {
+      const leftCorridorX = rowLeft - clearancePx - 1;
+      const rightCorridorX = rowRight + clearancePx + 1;
+      const corridorX =
+        Math.abs((start.x + end.x) / 2 - leftCorridorX) <= Math.abs((start.x + end.x) / 2 - rightCorridorX)
+          ? leftCorridorX
+          : rightCorridorX;
+      // Leave the machine row through its boundary aisle first, then go around the
+      // outside edge of the complete row/group before approaching the destination.
+      return dedupe([
+        start,
+        { x: start.x, y: aisleY },
+        { x: corridorX, y: aisleY },
+        { x: corridorX, y: end.y },
+        end,
+      ]);
+    }
     return dedupe([start, { x: start.x, y: aisleY }, { x: end.x, y: aisleY }, end]);
   }
 
@@ -223,18 +202,22 @@ export function computeWalkingWaypoints(
   // Only the rows strictly BETWEEN start and end need a clear corridor — the start/end rows
   // themselves obviously contain the very machines being left/visited, and are already handled by
   // the dedicated exit/entry segments below, not the middle corridor crossing.
-  const spanRows = rows.slice(Math.min(startRow, endRow) + 1, Math.max(startRow, endRow));
   const allX = machines.map((m) => m.x);
   const minX = Math.min(...allX, start.x, end.x) - searchMarginPx;
   const maxX = Math.max(...allX, start.x, end.x) + searchMarginPx;
 
-  let commonFree: Interval[] = [[minX, maxX]];
-  for (const row of spanRows) {
-    commonFree = intersectIntervalLists(commonFree, freeIntervals(row.occupiedX, minX, maxX));
-    if (commonFree.length === 0) break;
-  }
-
-  const corridorX = pickCorridorX(commonFree, (start.x + end.x) / 2);
+  // For adjacent rows, the aisle between the two row bodies is safe and avoids a
+  // needless trip around the entire layout. Only use the outer corridor when the
+  // route must cross one or more intervening rows.
+  const leftOuterX = minX;
+  const rightOuterX = maxX;
+  const preferredX = (start.x + end.x) / 2;
+  const corridorX =
+    Math.abs(endRow - startRow) === 1
+      ? preferredX
+      : Math.abs(preferredX - leftOuterX) <= Math.abs(preferredX - rightOuterX)
+        ? leftOuterX
+        : rightOuterX;
 
   return dedupe([
     start,
