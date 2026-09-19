@@ -80,7 +80,7 @@ export function OutputEstimate({
             <strong>{fmt(tonage)} ton</strong>
           </div>
           <div className="metric-row">
-            <span>OEE (finished spool)</span>
+            <span>OEE</span>
             <strong>{fmt(outputOee)}%</strong>
           </div>
           <div className="metric-row">
