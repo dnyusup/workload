@@ -574,6 +574,13 @@ function ProductionSetupEditor({
       .map((product) => [product.mpp_wl_productsid, product.mpp_area!.trim().toUpperCase()]),
   );
   const operatorLabel = (id?: string) => (id ? setup.operators.find((o) => o.id === id)?.label ?? '—' : '—');
+  const operatorOptions = setup.operators.map((operator) => {
+    const forecast = plannedUtilization?.operators.find((item) => item.operatorId === operator.id)?.forecastUtilizationPercent;
+    return {
+      value: operator.id,
+      label: `${operator.label}${forecast === undefined ? '' : ` (${forecast.toFixed(1)}%)`}`,
+    };
+  });
 
   /** Prefills the bulk-assign fields with whatever the selected machines already have applied —
    * only when every selected machine agrees on that field (same Construction, or same operator
@@ -973,7 +980,7 @@ function ProductionSetupEditor({
           onChange={setBulkDoffingOperatorId}
           placeholder="Select Doffing Operator"
           searchPlaceholder="Search operator…"
-          options={setup.operators.map((o) => ({ value: o.id, label: o.label }))}
+          options={operatorOptions}
         />
         <Button
           variant="secondary"
@@ -994,7 +1001,7 @@ function ProductionSetupEditor({
           onChange={setBulkLoadingOperatorId}
           placeholder="Select Loading Operator"
           searchPlaceholder="Search operator…"
-          options={setup.operators.map((o) => ({ value: o.id, label: o.label }))}
+          options={operatorOptions}
         />
         <Button
           variant="secondary"
@@ -1015,7 +1022,7 @@ function ProductionSetupEditor({
           onChange={setBulkFractureOperatorId}
           placeholder="Select Fracture Repairing Operator"
           searchPlaceholder="Search operator…"
-          options={setup.operators.map((o) => ({ value: o.id, label: o.label }))}
+          options={operatorOptions}
         />
         <Button
           variant="secondary"
@@ -1036,7 +1043,7 @@ function ProductionSetupEditor({
           onChange={setBulkDiesChangeOperatorId}
           placeholder="Select Dies Change Operator"
           searchPlaceholder="Search operator…"
-          options={setup.operators.map((o) => ({ value: o.id, label: o.label }))}
+          options={operatorOptions}
         />
         <Button
           variant="secondary"
@@ -1057,7 +1064,7 @@ function ProductionSetupEditor({
           onChange={setBulkDefectRepairingOperatorId}
           placeholder="Select Defect Repairing Operator"
           searchPlaceholder="Search operator…"
-          options={setup.operators.map((o) => ({ value: o.id, label: o.label }))}
+          options={operatorOptions}
         />
         <Button
           variant="secondary"
