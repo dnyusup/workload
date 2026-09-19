@@ -30,8 +30,11 @@ function operatorLabel(state: SimulationState): string {
   return 'Idle';
 }
 
-export function LayoutCanvas({ state }: { state: SimulationState }) {
+const HIDDEN_SPOOL_LABEL_AREAS = new Set(['WW', 'IS', 'IP', 'BA', 'CA']);
+
+export function LayoutCanvas({ state, area }: { state: SimulationState; area?: string }) {
   const { machines, operator, metrics } = state;
+  const showSpoolLabels = !HIDDEN_SPOOL_LABEL_AREAS.has(area?.trim().toUpperCase() ?? '');
   const [selectedMachineId, setSelectedMachineId] = useState<string | null>(null);
   const [selectedOperatorSegment, setSelectedOperatorSegment] = useState<number | null>(null);
   const isMovingBetweenMachines = operator.phase === 'walking';
@@ -362,12 +365,16 @@ export function LayoutCanvas({ state }: { state: SimulationState }) {
                 <text x={w / 2} y={h / 2 + 10} textAnchor="middle" className="machine-label">
                   {m.label}
                 </text>
-                <text x={w / 2} y={payoffTextY} textAnchor="middle" className="machine-sublabel">
-                  {ordinal(m.spoolsSinceLoading)} spl
-                </text>
-                <text x={w / 2} y={takeupTextY} textAnchor="middle" className="machine-sublabel">
-                  {m.shiftSpoolsCompleted} spl
-                </text>
+                {showSpoolLabels && (
+                  <>
+                    <text x={w / 2} y={payoffTextY} textAnchor="middle" className="machine-sublabel">
+                      {ordinal(m.spoolsSinceLoading)} spl
+                    </text>
+                    <text x={w / 2} y={takeupTextY} textAnchor="middle" className="machine-sublabel">
+                      {m.shiftSpoolsCompleted} spl
+                    </text>
+                  </>
+                )}
               </g>
             );
           })}

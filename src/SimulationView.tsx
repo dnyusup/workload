@@ -31,7 +31,7 @@ export function SimulationView({
         liveSettingsDisabled={playing || state.metrics.clockMin > 0}
       />
       <div className="simulation-body">
-        <LayoutCanvas state={state} />
+        <LayoutCanvas state={state} area={config.spec.area} />
         <Dashboard state={state} config={config} />
       </div>
     </div>
