@@ -969,8 +969,20 @@
 }
 
 .machine-selected {
-  stroke: #38bdf8;
-  stroke-width: 3;
+  stroke: #fef08a;
+  stroke-width: 4;
+  filter: url(#machine-selection-glow);
+}
+
+.machine-selection-hatch {
+  fill: url(#machine-selection-hatch);
+  pointer-events: none;
+}
+
+.machine-selection-hatch-line {
+  stroke: #ffffff;
+  stroke-width: 2;
+  stroke-opacity: 0.42;
 }
 
 .machine-label {

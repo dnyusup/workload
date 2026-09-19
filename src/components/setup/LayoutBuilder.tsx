@@ -1026,6 +1026,14 @@ export function LayoutBuilder({
           onPointerUp={handlePointerUp}
           onContextMenu={(e) => e.preventDefault()}
         >
+          <defs>
+            <pattern id="machine-selection-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+              <line x1="0" y1="0" x2="0" y2="8" className="machine-selection-hatch-line" />
+            </pattern>
+            <filter id="machine-selection-glow" x="-50%" y="-50%" width="200%" height="200%">
+              <feDropShadow dx="0" dy="0" stdDeviation="3" floodColor="#fef08a" floodOpacity="0.95" />
+            </filter>
+          </defs>
           <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
             {layout.map((m, idx) => {
               const assigned = onAssignedChange
@@ -1055,6 +1063,9 @@ export function LayoutBuilder({
                     } ${selectedIds.has(m.id) ? 'machine-selected' : ''} ${statusClass}`}
                     style={appearance?.borderColor && !selectedIds.has(m.id) ? { stroke: appearance.borderColor, strokeWidth: 2.5 } : undefined}
                   />
+                  {selectedIds.has(m.id) && (
+                    <rect width={w} height={h} rx={6} className="machine-selection-hatch" />
+                  )}
                   <MachineZoneLabels orientation={m.orientation} pairSide={m.pairSide} width={w} height={h} />
                   <text x={w / 2} y={h / 2 + 4} textAnchor="middle" className="machine-label">
                     {m.label}
