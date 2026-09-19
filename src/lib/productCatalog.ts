@@ -114,9 +114,6 @@ function buildLoadingActivities(
       denominator: rounddownRatio(maxPoLength, spoolLength),
       denominatorAuto: false,
       machCondition: parseMachCondition(parentRow.mpp_machcondition),
-      // Sourced from WL_Products' POlength columns + WL_Activities — locked so a stray edit in the
-      // Activity Table can't silently drift from that regulation (see the module doc comment above).
-      timeReadOnly: true,
       numeratorReadOnly: true,
       denominatorReadOnly: true,
       loadingInterrupt: weightLoading,
@@ -174,7 +171,6 @@ function buildLoadingActivities(
         denominator: rounddownRatio(poLength, spoolLength),
         denominatorAuto: false,
         machCondition: parseMachCondition(subRow.mpp_machcondition),
-        timeReadOnly: true,
         numeratorReadOnly: true,
         denominatorReadOnly: true,
         loadingPartialSlot: slot,
@@ -200,7 +196,6 @@ function buildLoadingActivities(
           denominator: 1,
           denominatorAuto: false,
           machCondition: parseMachCondition(partial3Row.mpp_machcondition),
-          timeReadOnly: true,
           numeratorReadOnly: true,
           denominatorReadOnly: true,
           loadingPartialSlot: 3,

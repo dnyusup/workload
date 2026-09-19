@@ -46,10 +46,8 @@ export interface ActivityConfig {
   denominator: number;
   denominatorAuto: boolean;
   machCondition: MachCondition;
-  /** Locks the Time field in the Activity Table (display-only) — used for Loading rows whose Time
-   * is sourced straight from WL_Activities via the POlength regulation, so it can't be silently
-   * hand-edited and drift from that source. Unlike numeratorAuto/denominatorAuto this doesn't swap
-   * in a live formula value, it just keeps whatever value was already computed read-only. */
+  /** Optional display-only lock for activity times that must remain sourced from a controlled
+   * external value. */
   timeReadOnly?: boolean;
   /** Same idea as timeReadOnly, for Numerator — distinct from numeratorAuto (which is hardcoded to
    * the Fracture/Ton formula in the UI); this just locks whatever numeric value is already stored. */
