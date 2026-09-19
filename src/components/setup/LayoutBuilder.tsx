@@ -1196,15 +1196,15 @@ export function LayoutBuilder({
                 style={{ cursor: readOnly || !onOperatorStartChange ? 'default' : 'grab' }}
               >
                 <title>Operator start point — drag to move</title>
-                <circle r={25} className="operator-start-halo" />
+                <circle r={21} className="operator-start-halo" />
                 <path
-                  d="M 0 -17 C -10 -17 -16 -10 -16 -1 C -16 10 0 24 0 24 C 0 24 16 10 16 -1 C 16 -10 10 -17 0 -17 Z"
+                  d="M 0 -15 C -9 -15 -14 -9 -14 -1 C -14 9 0 21 0 21 C 0 21 14 9 14 -1 C 14 -9 9 -15 0 -15 Z"
                   className="operator-start-pin"
                 />
-                <circle r={5} className="operator-start-core" />
-                <path d="M 0 -18 L 0 -34" className="operator-start-stem" />
-                <rect x={8} y={-47} width={58} height={22} rx={11} className="operator-start-label-bg" />
-                <text x={37} y={-32} textAnchor="middle" className="operator-start-label">
+                <circle r={4} className="operator-start-core" />
+                <path d="M 0 -16 L 0 -29" className="operator-start-stem" />
+                <rect x={7} y={-41} width={51} height={19} rx={9.5} className="operator-start-label-bg" />
+                <text x={32.5} y={-28} textAnchor="middle" className="operator-start-label">
                   START
                 </text>
               </g>
