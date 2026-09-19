@@ -80,20 +80,21 @@ export function ActivityTable({
 
   return (
     <Card title="Activity Table" subtitle="Time and frequency for each service type per spool cycle">
-      <table className="table">
-        <thead>
-          <tr>
-            <th>Activity</th>
-            <th>Time (min)</th>
-            <th>Numerator</th>
-            <th>Denominator</th>
-            <th>Remark</th>
-            <th>Mach Condition</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {activities.map((a) => {
+      <div className="activity-table-wrap">
+        <table className="table activity-table">
+          <thead>
+            <tr>
+              <th className="activity-column">Activity</th>
+              <th>Time (min)</th>
+              <th>Numerator</th>
+              <th>Denominator</th>
+              <th>Remark</th>
+              <th>Mach Condition</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {activities.map((a) => {
             const autoNumerator =
               a.key === 'diesChange'
                 ? diesPerTon
@@ -114,16 +115,16 @@ export function ActivityTable({
             if (a.numeratorReadOnly || a.denominatorReadOnly || a.timeReadOnly) remarks.push('From WL_Products POlength / WL_Activities');
             const canHaveSubs = !a.parentKey;
             const canRemove = !CORE_ACTIVITY_KEYS.includes(a.key);
-            return (
-              <tr key={a.key}>
-                <td className={a.parentKey ? 'activity-sub-row' : ''}>
-                  {a.parentKey && <span className="activity-sub-marker">↳ </span>}
-                  <input
-                    className="input"
-                    value={a.label}
-                    onChange={(e) => update(a.key, { label: e.target.value })}
-                  />
-                </td>
+              return (
+                <tr key={a.key}>
+                  <td className={`activity-column ${a.parentKey ? 'activity-sub-row' : ''}`}>
+                    {a.parentKey && <span className="activity-sub-marker">↳ </span>}
+                    <input
+                      className="input"
+                      value={a.label}
+                      onChange={(e) => update(a.key, { label: e.target.value })}
+                    />
+                  </td>
                 <td>
                   <input
                     className={`input ${a.timeReadOnly ? 'input-readonly' : ''}`}
@@ -180,11 +181,12 @@ export function ActivityTable({
                     </button>
                   )}
                 </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
       <button type="button" className="btn btn-secondary activity-add" onClick={addActivity}>
         + Add Activity
       </button>
