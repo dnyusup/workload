@@ -1286,11 +1286,23 @@ export function LayoutBuilder({
               />
             </div>
             <div className="modal-actions">
-              <Button variant="ghost" onClick={() => setResizeOpen(false)}>
-                Batal
+              <Button
+                variant="ghost"
+                className="toolbar-icon-button"
+                onClick={() => setResizeOpen(false)}
+                title="Cancel resize"
+                aria-label="Cancel resize"
+              >
+                ✕
               </Button>
-              <Button variant="primary" onClick={applyResize}>
-                Terapkan
+              <Button
+                variant="primary"
+                className="toolbar-icon-button"
+                onClick={applyResize}
+                title="Apply resize"
+                aria-label="Apply resize"
+              >
+                ✓
               </Button>
             </div>
           </div>
@@ -1314,7 +1326,15 @@ export function LayoutBuilder({
             </div>
             <p className="hint-row">Mesin dalam group akan selalu dipilih dan dipindahkan bersama.</p>
             <div className="modal-actions">
-              <Button variant="ghost" onClick={() => setGroupOpen(false)}>Batal</Button>
+              <Button
+                variant="ghost"
+                className="toolbar-icon-button"
+                onClick={() => setGroupOpen(false)}
+                title="Cancel adding machine group"
+                aria-label="Cancel adding machine group"
+              >
+                ✕
+              </Button>
               <Button variant="primary" onClick={addMachineGroup}>Buat Group</Button>
             </div>
           </div>
