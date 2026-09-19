@@ -210,13 +210,13 @@ export function Dashboard({ state, config }: { state: SimulationState; config: A
         </div>
       </Card>
 
-      <Card title="Operator Utilization" subtitle="Calculated against net working time (excluding lunch/meeting)">
+      <Card title="Man Occupation" subtitle="Calculated against net working time (excluding lunch/meeting)">
         <div className="util-bar">
           <div className="util-segment util-walk" style={{ width: `${(metrics.walkingMin / (workedElapsed || 1)) * 100}%` }} />
           <div className="util-segment util-service" style={{ width: `${(metrics.servicingMin / (workedElapsed || 1)) * 100}%` }} />
         </div>
         <div className="metric-row">
-          <span>Utilization</span>
+          <span>Man Occupation</span>
           <strong>{fmt(utilization)}%</strong>
         </div>
         <div className="metric-row small">
@@ -256,7 +256,7 @@ export function Dashboard({ state, config }: { state: SimulationState; config: A
         </div>
         <div className={`verdict ${verdictClass}`}>{verdict}</div>
         <label className="target-utilization-field">
-          <span>Target Utilization</span>
+          <span>Target Man Occupation</span>
           <span className="target-utilization-input-group">
             <input
               className="input input-sm"
@@ -275,7 +275,7 @@ export function Dashboard({ state, config }: { state: SimulationState; config: A
         {isAdmin && machRecommendation !== 0 && (
           <div className="verdict-recommendation">
             #Mach Recommendation: {machRecommendation > 0 ? `+${machRecommendation}` : machRecommendation} machine
-            {Math.abs(machRecommendation) > 1 ? 's' : ''} (target ~{targetUtilization}% utilization)
+            {Math.abs(machRecommendation) > 1 ? 's' : ''} (target ~{targetUtilization}% man occupation)
           </div>
         )}
       </Card>

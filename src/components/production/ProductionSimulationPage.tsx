@@ -1262,8 +1262,8 @@ function ProductionSetupEditor({
           <Button
             variant="secondary"
             onClick={() => setPlannedUtilizationOpen(true)}
-            title="Show planned operator utilization in fullscreen"
-            aria-label="Show planned operator utilization in fullscreen"
+            title="Show planned man occupation in fullscreen"
+            aria-label="Show planned man occupation in fullscreen"
           >
             📊
           </Button>
@@ -1606,10 +1606,10 @@ function PlannedUtilizationCard({
 
   return (
     <Card
-      title="Planned Operator Utilization"
+      title="Planned Man Occupation"
       subtitle="Ideal due-work plus a deterministic constrained forecast using machine stop time and estimated inter-machine walking"
       actions={
-        <Button variant="ghost" onClick={onClose} title="Close planned operator utilization" aria-label="Close planned operator utilization">
+        <Button variant="ghost" onClick={onClose} title="Close planned man occupation" aria-label="Close planned man occupation">
           ✕
         </Button>
       }
@@ -1621,7 +1621,7 @@ function PlannedUtilizationCard({
         value={searchQuery}
         onChange={(event) => setSearchQuery(event.target.value)}
         placeholder="Search operator, machine, Construction, or activity…"
-        aria-label="Search planned operator utilization"
+        aria-label="Search planned man occupation"
       />
       {errors.length > 0 && (
         <div className="planned-utilization-warning">
@@ -1655,7 +1655,7 @@ function PlannedUtilizationCard({
                       ['ideal', 'Ideal demand'],
                       ['forecast', 'Forecast work'],
                       ['available', 'Net available'],
-                      ['utilization', 'Utilization'],
+                      ['utilization', 'Man Occupation'],
                       ['queue', 'Forecast queue'],
                     ] as [OperatorSortColumn, string][]
                   ).map(([column, label]) => (
@@ -1682,7 +1682,7 @@ function PlannedUtilizationCard({
                     <td>{formatMinutes(operator.availableMinutes)}</td>
                     <td>
                       <span className={`planned-utilization-status planned-utilization-status-${statusFor(operator.forecastUtilizationPercent)}`}>
-                        {operator.forecastUtilizationPercent.toFixed(1)}% forecast
+                        {operator.forecastUtilizationPercent.toFixed(1)}% Forecast Man Occupation
                       </span>
                       <div className="data-manager-hint">{operator.utilizationPercent.toFixed(1)}% ideal demand</div>
                     </td>

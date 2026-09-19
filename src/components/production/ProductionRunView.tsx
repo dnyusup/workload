@@ -68,7 +68,7 @@ function verdictFor(utilization: number): { text: string; className: string } {
 
 const NON_SERVICE_KINDS = new Set(['walking', 'lunch', 'meeting', 'idle']);
 
-/** Same detail level as the single-operator Simulator's Operator Utilization card (Utilization %,
+/** Same detail level as the single-operator Simulator's Man Occupation card (Man Occupation %,
  * Walking, Total service, per-activity service breakdown, Idle) — derived straight from the
  * timeline segments of whichever operator(s) are passed in, so the same function covers both the
  * "all operators combined" default view and a single filtered operator. */
@@ -175,7 +175,7 @@ export function ProductionRunView({
   const [showOperatorTimeline, setShowOperatorTimeline] = useState(false);
   const [operatorTimelineSearch, setOperatorTimelineSearch] = useState('');
   const [selectedOperatorHighlight, setSelectedOperatorHighlight] = useState<{ operatorId: string; index: number } | null>(null);
-  /** Clicking an operator's name in the Operator Timeline filters the Operator Utilization card
+  /** Clicking an operator's name in the Operator Timeline filters the Man Occupation card
    * down to just that operator — independent of selectedOperatorHighlight above, which highlights
    * one specific timeline SEGMENT against the Machine Timeline instead. */
   const [utilFilterOperatorId, setUtilFilterOperatorId] = useState<string | null>(null);
@@ -798,7 +798,7 @@ export function ProductionRunView({
                         className="production-operator-name-btn"
                         style={{ color: colorByOperatorId.get(op.id) ?? '#94a3b8' }}
                         onClick={() => setUtilFilterOperatorId(utilFilterOperatorId === op.id ? null : op.id)}
-                        title="Click to filter the Operator Utilization card to this operator"
+                        title="Click to filter the Man Occupation card to this operator"
                       >
                         {utilFilterOperatorId === op.id ? '● ' : ''}
                         {op.label}
@@ -954,7 +954,7 @@ export function ProductionRunView({
             </Card>
 
             <Card
-              title="Operator Utilization"
+              title="Man Occupation"
               subtitle={
                 utilFilterLabel
                   ? `Filtered to ${utilFilterLabel} — click the operator name again in the timeline to return to the combined view`
@@ -970,7 +970,7 @@ export function ProductionRunView({
                     <div className="util-segment util-service" style={{ width: `${(utilSummary.totalService / (utilSummary.elapsed || 1)) * 100}%` }} />
                   </div>
                   <div className="metric-row">
-                    <span>Utilization</span>
+                    <span>Man Occupation</span>
                     <strong>{fmt(utilSummary.utilization)}%</strong>
                   </div>
                   <div className="metric-row small">
@@ -1001,7 +1001,7 @@ export function ProductionRunView({
                   </div>
                   <div className={`verdict ${utilVerdict.className}`}>{utilVerdict.text}</div>
                   <label className="target-utilization-field">
-                    <span>Target Utilization</span>
+                    <span>Target Man Occupation</span>
                     <span className="target-utilization-input-group">
                       <input
                         className="input input-sm"
@@ -1020,7 +1020,7 @@ export function ProductionRunView({
                   {isAdmin && Math.abs(operatorRecommendation) >= 0.05 && (
                     <div className="verdict-recommendation">
                       #Operator Recommendation: {operatorRecommendation > 0 ? '+' : ''}
-                      {fmt(operatorRecommendation)} operator (target ~{targetUtilization}% utilization)
+                      {fmt(operatorRecommendation)} operator (target ~{targetUtilization}% man occupation)
                       {!utilFilterOperatorId && theoreticalRequiredMinutes !== null && (
                         <>
                           <br />

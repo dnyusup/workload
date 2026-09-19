@@ -71,7 +71,7 @@ function activityMinutesPerProducedSpool(
  * Estimates the fraction of nominal spool output that remains after machine-stop work.
  * This is deliberately deterministic and does not try to reproduce the engine's random initial
  * spool phase or dispatch order. Waiting caused by an operator queue is reported separately as
- * forecastWaitingMinutes; adding that time to operator utilization would mix machine downtime
+ * forecastWaitingMinutes; adding that time to man occupation would mix machine downtime
  * with labor time.
  */
 function machineCapacityScale(construction: ResolvedConstruction, runtimePerSpool: number): number {

@@ -37,13 +37,13 @@ export function OperatorForm({
           className="optimize-utilization-button"
           onClick={onOptimize}
           title="Recalculate assigned machines for zero forecast backlog"
-          aria-label="Optimize utilization"
+          aria-label="Optimize man occupation"
         >
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M4 19h16M6 16V9m6 7V5m6 11v-4" />
             <path d="m4 6 4-2 4 2 4-3 4 2" />
           </svg>
-          Optimize Utilization
+          Optimize Man Occupation
         </Button>
       }
     >
@@ -68,7 +68,7 @@ export function OperatorForm({
             }`}
             title={`Ideal demand ${forecast.utilizationPercent.toFixed(1)}%. Forecast includes ${forecast.forecastServiceMinutes.toFixed(1)} min handling and ${forecast.forecastWalkingMinutes.toFixed(1)} min walking. ${forecast.forecastWaitingMinutes.toFixed(1)} min expected backlog.`}
           >
-            <span>Forecast utilization</span>
+            <span>Forecast Man Occupation</span>
             <strong>{forecast.forecastUtilizationPercent.toFixed(1)}%</strong>
           </div>
         </Field>

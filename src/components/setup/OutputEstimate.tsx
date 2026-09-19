@@ -67,7 +67,7 @@ export function OutputEstimate({
     <div className="output-estimate">
       <div className="output-estimate-heading">
         <h3>Output Estimate</h3>
-        <p>Estimasi deterministik berdasarkan forecast operator utilization dan setup saat ini</p>
+        <p>Estimasi deterministik berdasarkan Forecast Man Occupation dan setup saat ini</p>
       </div>
       <div className="output-estimate-grid">
         <Card title="Output" className="output-estimate-card">
@@ -105,7 +105,7 @@ export function OutputEstimate({
           </div>
         </Card>
 
-        <Card title="Operator Utilization" className="output-estimate-card">
+        <Card title="Man Occupation" className="output-estimate-card">
           <div className="util-bar">
             <div
               className="util-segment util-walk"
@@ -117,7 +117,7 @@ export function OutputEstimate({
             />
           </div>
           <div className="metric-row">
-            <span>Utilization</span>
+            <span>Man Occupation</span>
             <strong>{fmt(forecast.forecastUtilizationPercent)}%</strong>
           </div>
           <div className="metric-row small">
