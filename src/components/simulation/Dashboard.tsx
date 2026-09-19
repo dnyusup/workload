@@ -15,6 +15,18 @@ function fmtTime(min: number) {
   return `${h}h ${m}m`;
 }
 
+function runningMinutesFromTimeline(machines: SimulationState['machines']) {
+  return machines.reduce(
+    (total, machine) =>
+      total +
+      machine.timeline.reduce((machineTotal, segment) => {
+        const isRunning = segment.kind === 'running' || segment.kind.startsWith('running:');
+        return isRunning ? machineTotal + Math.max(0, segment.endMin - segment.startMin) : machineTotal;
+      }, 0),
+    0,
+  );
+}
+
 const defaultDowntimeLabels: Record<string, string> = {
   doffing: 'Doffing',
   loading: 'Loading',
@@ -67,6 +79,14 @@ export function Dashboard({ state, config }: { state: SimulationState; config: A
   const outputOee = scheduledMachineMin > 0 ? (producedMachineMin / scheduledMachineMin) * 100 : 0;
   const scheduledMachineHours = metrics.assignedMachineCount * shiftHours;
   const machHoursPerTon = tonage > 0 ? scheduledMachineHours / tonage : 0;
+  const totalRunningMachineMin = runningMinutesFromTimeline(machines);
+  const runningTimeSpools = metrics.runtimePerSpoolMin > 0
+    ? totalRunningMachineMin / metrics.runtimePerSpoolMin
+    : 0;
+  const runningTimeTonage = (runningTimeSpools * spoolWeightKg) / 1000;
+  const runningTimeOee = scheduledMachineMin > 0 ? (totalRunningMachineMin / scheduledMachineMin) * 100 : 0;
+  const runningTimeManHourPerTon = runningTimeTonage > 0 ? shiftHours / runningTimeTonage : 0;
+  const runningTimeMachHoursPerTon = runningTimeTonage > 0 ? scheduledMachineHours / runningTimeTonage : 0;
   const totalFractureCount = Object.entries(metrics.completedByActivity)
     .filter(([key]) => key === 'fractureRepairing' || key.startsWith('fractureRepairing-'))
     .reduce((sum, [, count]) => sum + count, 0);
@@ -76,6 +96,9 @@ export function Dashboard({ state, config }: { state: SimulationState; config: A
     .filter(([key]) => key === 'defectRepairing' || key.startsWith('defectRepairing-'))
     .reduce((sum, [, count]) => sum + count, 0);
   const actualDefectPerTon = tonage > 0 ? totalDefectRepairingCount / tonage : 0;
+  const runningTimeFracturePerTon = runningTimeTonage > 0 ? totalFractureCount / runningTimeTonage : 0;
+  const runningTimeDiesPerTon = runningTimeTonage > 0 ? metrics.diesChanged / runningTimeTonage : 0;
+  const runningTimeDefectPerTon = runningTimeTonage > 0 ? totalDefectRepairingCount / runningTimeTonage : 0;
 
   let verdict = 'Operator capacity is sufficient.';
   let verdictClass = 'verdict-ok';
@@ -142,6 +165,48 @@ export function Dashboard({ state, config }: { state: SimulationState; config: A
         <div className="metric-row" title="Total Defect Repairing events ÷ Tonage">
           <span>Defect/Ton (actual)</span>
           <strong>{fmt(actualDefectPerTon)}</strong>
+        </div>
+      </Card>
+
+      <Card
+        title="Output (Running Time)"
+        subtitle="Estimated from total machine running time; spool quantity can be decimal"
+      >
+        <div className="metric-row">
+          <span>#Spool (running time)</span>
+          <strong>{fmt(runningTimeSpools)}</strong>
+        </div>
+        <div className="metric-row">
+          <span>Total running time</span>
+          <strong>{fmt(totalRunningMachineMin)} min</strong>
+        </div>
+        <div className="metric-row">
+          <span>Tonage</span>
+          <strong>{fmt(runningTimeTonage)} ton</strong>
+        </div>
+        <div className="metric-row">
+          <span>OEE (running time)</span>
+          <strong>{fmt(runningTimeOee)}%</strong>
+        </div>
+        <div className="metric-row">
+          <span>Manhour/ton</span>
+          <strong>{fmt(runningTimeManHourPerTon)}</strong>
+        </div>
+        <div className="metric-row">
+          <span>Machhours/ton</span>
+          <strong>{fmt(runningTimeMachHoursPerTon)}</strong>
+        </div>
+        <div className="metric-row" title="Total Fracture Repairing dibagi tonage dari running time">
+          <span>Fracture/Ton (running time)</span>
+          <strong>{fmt(runningTimeFracturePerTon)}</strong>
+        </div>
+        <div className="metric-row" title="Total Dies Change events dibagi tonage dari running time">
+          <span>Dies/Ton (running time)</span>
+          <strong>{fmt(runningTimeDiesPerTon)}</strong>
+        </div>
+        <div className="metric-row" title="Total Defect Repairing dibagi tonage dari running time">
+          <span>Defect/Ton (running time)</span>
+          <strong>{fmt(runningTimeDefectPerTon)}</strong>
         </div>
       </Card>
 
