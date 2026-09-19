@@ -19,13 +19,20 @@
 /* Sidebar */
 .sidebar {
   flex: 0 0 auto;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  height: 100vh;
+  max-height: 100vh;
   min-height: 100vh;
   background: #0b1220;
   border-right: 1px solid #1e293b;
   display: flex;
   flex-direction: column;
   transition: width 0.18s ease;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
+  z-index: 20;
 }
 
 .sidebar-collapsed {
