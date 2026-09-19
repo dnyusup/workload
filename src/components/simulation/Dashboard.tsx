@@ -34,7 +34,7 @@ function colorForDowntime(key: string, index: number) {
 }
 
 export function Dashboard({ state, config }: { state: SimulationState; config: AppConfig }) {
-  const { metrics, machines, log, operator } = state;
+  const { metrics, machines, log } = state;
   const [targetUtilization, setTargetUtilization] = useState(85);
   const busyMin = metrics.walkingMin + metrics.servicingMin;
   const workedElapsed = Math.max(0, metrics.clockMin - metrics.breakElapsedMin);
@@ -107,32 +107,6 @@ export function Dashboard({ state, config }: { state: SimulationState; config: A
   return (
     <div className="dashboard-scroll-outer">
     <div className="dashboard">
-      <Card title="Shift Time">
-        <div className="metric-row">
-          <span>Elapsed time</span>
-          <strong>{fmtTime(metrics.clockMin)}</strong>
-        </div>
-        <div className="metric-row">
-          <span>Total Shift Time</span>
-          <strong>{fmtTime(metrics.shiftTimeMin)}</strong>
-        </div>
-        <div className="metric-row small">
-          <span>Available (net working time)</span>
-          <span>{fmtTime(metrics.availableTimeMin)}</span>
-        </div>
-        <div className="progress-bar">
-          <div
-            className="progress-fill"
-            style={{ width: `${Math.min(100, (metrics.clockMin / (metrics.shiftTimeMin || 1)) * 100)}%` }}
-          />
-        </div>
-        {operator.phase === 'break' && (
-          <div className="break-banner">
-            ☕ Operator is on {operator.breakLabel} — {Math.ceil(operator.breakRemainingMin)} minutes remaining
-          </div>
-        )}
-      </Card>
-
       <Card title="Output" subtitle="Actual finished spools this shift — OEE here excludes machine time still mid-spool">
         <div className="metric-row">
           <span>#Spool</span>
@@ -238,7 +212,11 @@ export function Dashboard({ state, config }: { state: SimulationState; config: A
         )}
       </Card>
 
-      <Card title="OEE & Downtime" subtitle="Availability across assigned machines (Performance & Quality assumed at 100%)">
+      <Card
+        title="OEE & Downtime"
+        className="dashboard-oee-card"
+        subtitle="Availability across assigned machines (Performance & Quality assumed at 100%)"
+      >
         <div className="oee-gauge-row">
           <div className="oee-gauge">
             <span className="oee-value">{fmt(oee)}%</span>

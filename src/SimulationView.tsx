@@ -29,6 +29,14 @@ export function SimulationView({
         config={config}
         setConfig={setConfig}
         liveSettingsDisabled={playing || state.metrics.clockMin > 0}
+        elapsedMinutes={state.metrics.clockMin}
+        totalMinutes={state.metrics.shiftTimeMin}
+        availableMinutes={state.metrics.availableTimeMin}
+        breakMessage={
+          state.operator.phase === 'break'
+            ? `☕ Operator is on ${state.operator.breakLabel} — ${Math.ceil(state.operator.breakRemainingMin)} minutes remaining`
+            : undefined
+        }
       />
       <div className="simulation-body">
         <LayoutCanvas state={state} area={config.spec.area} />

@@ -1,6 +1,8 @@
+import type { ReactNode } from 'react';
 import type { AppConfig } from '../../types';
 import { deriveMachineSpec, fractureRepairingDenominator } from '../../lib/calculations';
 import { Button } from '../ui/Button';
+import { ShiftTimeCard } from './ShiftTimeCard';
 
 export function Controls({
   playing,
@@ -14,6 +16,10 @@ export function Controls({
   config,
   setConfig,
   liveSettingsDisabled,
+  elapsedMinutes,
+  totalMinutes,
+  availableMinutes,
+  breakMessage,
 }: {
   playing: boolean;
   speed: number;
@@ -29,6 +35,10 @@ export function Controls({
    * actually started (playing or mid-shift), changing them would restart mid-way through, which is
    * confusing, so they're locked until the next Reset. */
   liveSettingsDisabled: boolean;
+  elapsedMinutes: number;
+  totalMinutes: number;
+  availableMinutes: number;
+  breakMessage?: ReactNode;
 }) {
   const handleMachHandledChange = (value: number) => {
     if (!Number.isFinite(value)) return;
@@ -90,7 +100,12 @@ export function Controls({
           />
         </label>
       </div>
-      <div className="controls-spacer" />
+      <ShiftTimeCard
+        elapsedMinutes={elapsedMinutes}
+        totalMinutes={totalMinutes}
+        availableMinutes={availableMinutes}
+        breakMessage={breakMessage}
+      />
       {finished && <span className="finished-badge">Shift complete</span>}
       {!playing ? (
         <Button variant="primary" onClick={onPlay} disabled={finished}>

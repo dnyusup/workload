@@ -18,6 +18,7 @@ import {
 import { buildConstructionColorMap } from '../../lib/constructionColors';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
+import { ShiftTimeCard } from '../simulation/ShiftTimeCard';
 
 const LABEL_MARGIN = 24;
 const MIN_ZOOM = 0.1;
@@ -584,11 +585,23 @@ export function ProductionRunView({
 
   return (
     <div className="production-run-view">
-      <div className="toolbar production-run-toolbar">
+      <div className="controls-bar production-run-toolbar">
         <Button variant="ghost" onClick={onBack}>
           ← Back to Setup
         </Button>
-        <span className="toolbar-divider" />
+        <ShiftTimeCard
+          elapsedMinutes={metrics.clockMin}
+          totalMinutes={metrics.shiftTimeMin}
+          availableMinutes={Math.max(0, setup.shiftTime - setup.lunchTime - setup.meetingTime)}
+          breakMessage={
+            operatorsOnBreak.length > 0
+              ? `☕ ${operatorsOnBreak.map((op) => op.label).join(', ')} on break — ${Math.ceil(
+                  Math.max(...operatorsOnBreak.map((op) => op.breakRemainingMin)),
+                )} minutes remaining`
+              : undefined
+          }
+        />
+        {state.finished && <span className="finished-badge">Shift complete</span>}
         {!playing ? (
           <Button variant="primary" onClick={controls.play} disabled={state.finished}>
             ▶ Play
@@ -598,21 +611,20 @@ export function ProductionRunView({
             ⏸ Pause
           </Button>
         )}
-        <Button variant="ghost" onClick={controls.reset}>
+        <div className="speed-group">
+          {[0.5, 1, 2, 4, 8].map((s) => (
+            <button
+              key={s}
+              className={`speed-btn ${speed === s ? 'active' : ''}`}
+              onClick={() => controls.setSpeed(s)}
+            >
+              {s}x
+            </button>
+          ))}
+        </div>
+        <Button variant="secondary" onClick={controls.reset}>
           ⟲ Reset
         </Button>
-        <select className="input input-sm" value={speed} onChange={(e) => controls.setSpeed(Number(e.target.value))}>
-          {[0.5, 1, 2, 4, 8].map((s) => (
-            <option key={s} value={s}>
-              {s}x
-            </option>
-          ))}
-        </select>
-        <span className="toolbar-divider" />
-        <span className="production-run-clock">
-          {fmtTime(metrics.clockMin)} / {fmtTime(metrics.shiftTimeMin)}
-        </span>
-        {state.finished && <span className="production-run-finished">Shift finished</span>}
       </div>
 
       {state.warnings.length > 0 && (
@@ -874,29 +886,6 @@ export function ProductionRunView({
 
         <div className="dashboard-scroll-outer">
           <div className="dashboard">
-            <Card title="Shift Time">
-              <div className="metric-row">
-                <span>Elapsed time</span>
-                <strong>{fmtTime(metrics.clockMin)}</strong>
-              </div>
-              <div className="metric-row">
-                <span>Total Shift Time</span>
-                <strong>{fmtTime(metrics.shiftTimeMin)}</strong>
-              </div>
-              <div className="metric-row small">
-                <span>Available (net working time)</span>
-                <span>{fmtTime(Math.max(0, setup.shiftTime - setup.lunchTime - setup.meetingTime))}</span>
-              </div>
-              <div className="progress-bar">
-                <div className="progress-fill" style={{ width: `${Math.min(100, (metrics.clockMin / (metrics.shiftTimeMin || 1)) * 100)}%` }} />
-              </div>
-              {operatorsOnBreak.length > 0 && (
-                <div className="break-banner">
-                  ☕ {operatorsOnBreak.map((op) => op.label).join(', ')} on break — {Math.ceil(Math.max(...operatorsOnBreak.map((op) => op.breakRemainingMin)))} minutes remaining
-                </div>
-              )}
-            </Card>
-
             <Card title="Output" subtitle="Total finished spools across all machines this shift">
               <div className="metric-row">
                 <span>#Spool</span>
@@ -1074,7 +1063,11 @@ export function ProductionRunView({
               )}
             </Card>
 
-            <Card title="OEE & Downtime" subtitle="Availability across assigned machines (Performance & Quality assumed at 100%)">
+            <Card
+              title="OEE & Downtime"
+              className="dashboard-oee-card"
+              subtitle="Availability across assigned machines (Performance & Quality assumed at 100%)"
+            >
               <div className="oee-gauge-row">
                 <div className="oee-gauge">
                   <span className="oee-value">{fmt(oee)}%</span>
