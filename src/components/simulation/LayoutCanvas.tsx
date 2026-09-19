@@ -366,15 +366,13 @@ export function LayoutCanvas({ state, area }: { state: SimulationState; area?: s
                   {m.label}
                 </text>
                 {showSpoolLabels && (
-                  <>
-                    <text x={w / 2} y={payoffTextY} textAnchor="middle" className="machine-sublabel">
-                      {ordinal(m.spoolsSinceLoading)} spl
-                    </text>
-                    <text x={w / 2} y={takeupTextY} textAnchor="middle" className="machine-sublabel">
-                      {m.shiftSpoolsCompleted} spl
-                    </text>
-                  </>
+                  <text x={w / 2} y={payoffTextY} textAnchor="middle" className="machine-sublabel">
+                    {ordinal(m.spoolsSinceLoading)} spl
+                  </text>
                 )}
+                <text x={w / 2} y={takeupTextY} textAnchor="middle" className="machine-sublabel">
+                  {m.shiftSpoolsCompleted} spl
+                </text>
               </g>
             );
           })}
