@@ -4,6 +4,7 @@ import type { Mpp_wl_productses, Mpp_wl_productsesBase } from '../../generated/m
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { PRODUCT_AREAS } from '../../types';
+import { CustomSortControl, type CustomSortLevel } from './CustomSortControl';
 
 interface ProductFields {
   mpp_constructiondetailcode: string;
@@ -145,7 +146,7 @@ export function ProductsManager({
   const [searchTerm, setSearchTerm] = useState('');
   const [areaFilter, setAreaFilter] = useState('');
   const [machineFilter, setMachineFilter] = useState('');
-  const [sort, setSort] = useState<{ key: keyof ProductFields; dir: 'asc' | 'desc' } | null>(null);
+  const [sortLevels, setSortLevels] = useState<CustomSortLevel[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -250,7 +251,10 @@ export function ProductsManager({
   };
 
   const toggleSort = (key: keyof ProductFields) => {
-    setSort((prev) => (prev?.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }));
+    setSortLevels((prev) => {
+      const current = prev[0];
+      return current?.key === key ? [{ key, dir: current.dir === 'asc' ? 'desc' : 'asc' }] : [{ key, dir: 'asc' }];
+    });
   };
 
   const visibleRows = useMemo(() => {
@@ -260,16 +264,26 @@ export function ProductsManager({
       if (machineFilter && row.fields.mpp_machinecode !== machineFilter) return false;
       return !q || COLUMNS.some((col) => String(row.fields[col.key]).toLowerCase().includes(q));
     });
-    if (!sort) return filtered;
-    const { key, dir } = sort;
-    const sign = dir === 'asc' ? 1 : -1;
+    if (!sortLevels.length) return filtered;
     return [...filtered].sort((a, b) => {
-      const av = a.fields[key];
-      const bv = b.fields[key];
-      if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * sign;
-      return String(av).localeCompare(String(bv)) * sign;
+      for (const { key, dir } of sortLevels) {
+        const av = a.fields[key as keyof ProductFields];
+        const bv = b.fields[key as keyof ProductFields];
+        const sign = dir === 'asc' ? 1 : -1;
+        const comparison =
+          typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
+        if (comparison !== 0) return comparison * sign;
+      }
+      return 0;
     });
-  }, [rows, searchTerm, areaFilter, machineFilter, sort]);
+  }, [rows, searchTerm, areaFilter, machineFilter, sortLevels]);
+
+  const sortIndicator = (key: keyof ProductFields) => {
+    const level = sortLevels.findIndex((item) => item.key === key);
+    if (level < 0) return '';
+    const direction = sortLevels[level].dir === 'asc' ? '▲' : '▼';
+    return ` ${level + 1}${direction}`;
+  };
 
   const machineOptions = useMemo(
     () =>
@@ -334,12 +348,16 @@ export function ProductsManager({
                       onClick={() => toggleSort(col.key)}
                     >
                       {col.label}
-                      <span className="table-sort-indicator">
-                        {sort?.key === col.key ? (sort.dir === 'asc' ? '▲' : '▼') : ''}
-                      </span>
+                      <span className="table-sort-indicator">{sortIndicator(col.key)}</span>
                     </th>
                   ))}
-                  <th />
+                  <th className="data-actions-header">
+                    <CustomSortControl
+                      columns={COLUMNS.map(({ key, label }) => ({ key, label }))}
+                      levels={sortLevels}
+                      onChange={setSortLevels}
+                    />
+                  </th>
                 </tr>
               </thead>
               <tbody>

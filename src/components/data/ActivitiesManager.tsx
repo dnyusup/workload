@@ -9,6 +9,7 @@ import { Mpp_wl_productsesService } from '../../generated/services/Mpp_wl_produc
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { SearchableSelect } from '../ui/SearchableSelect';
+import { CustomSortControl, type CustomSortLevel } from './CustomSortControl';
 
 /** DiesChange only applies to Constructions belonging to these Areas (see WL_Products.mpp_area) —
  * everywhere else it's hidden from the Task dropdown, mirroring the Dies/Ton field restriction. */
@@ -103,7 +104,7 @@ export function ActivitiesManager({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
   const [constructionFilter, setConstructionFilter] = useState(initialConstructionFilter ?? '');
-  const [sort, setSort] = useState<{ key: keyof ActivityFields; dir: 'asc' | 'desc' } | null>(null);
+  const [sortLevels, setSortLevels] = useState<CustomSortLevel[]>([]);
   // Construction (mpp_constructioncode) -> Area, sourced from WL_Products, used only to decide
   // whether DiesChange should appear in the Task dropdown for a given row (see DIES_CHANGE_AREAS).
   const [areaByConstruction, setAreaByConstruction] = useState<Map<string, string>>(new Map());
@@ -172,7 +173,10 @@ export function ActivitiesManager({
   }, []);
 
   const toggleSort = (key: keyof ActivityFields) => {
-    setSort((prev) => (prev?.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }));
+    setSortLevels((prev) => {
+      const current = prev[0];
+      return current?.key === key ? [{ key, dir: current.dir === 'asc' ? 'desc' : 'asc' }] : [{ key, dir: 'asc' }];
+    });
   };
 
   const constructionOptions = useMemo(() => {
@@ -185,18 +189,26 @@ export function ActivitiesManager({
 
   const visibleRows = useMemo(() => {
     const filtered = constructionFilter ? rows.filter((r) => r.fields.mpp_constructiontype === constructionFilter) : rows;
-    if (!sort) return filtered;
-    const { key, dir } = sort;
-    const sign = dir === 'asc' ? 1 : -1;
+    if (!sortLevels.length) return filtered;
     return [...filtered].sort((a, b) => {
-      const av = a.fields[key];
-      const bv = b.fields[key];
-      if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * sign;
-      return String(av).localeCompare(String(bv)) * sign;
+      for (const { key, dir } of sortLevels) {
+        const av = a.fields[key as keyof ActivityFields];
+        const bv = b.fields[key as keyof ActivityFields];
+        const sign = dir === 'asc' ? 1 : -1;
+        const comparison =
+          typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
+        if (comparison !== 0) return comparison * sign;
+      }
+      return 0;
     });
-  }, [rows, constructionFilter, sort]);
+  }, [rows, constructionFilter, sortLevels]);
 
-  const sortIndicator = (key: keyof ActivityFields) => (sort?.key === key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : '');
+  const sortIndicator = (key: keyof ActivityFields) => {
+    const level = sortLevels.findIndex((item) => item.key === key);
+    if (level < 0) return '';
+    const direction = sortLevels[level].dir === 'asc' ? '▲' : '▼';
+    return ` ${level + 1}${direction}`;
+  };
 
   /** Special tasks are shown only for their applicable Areas; already-saved values remain visible
    * so changing product master data does not silently hide an existing activity. */
@@ -362,7 +374,26 @@ export function ActivitiesManager({
                 <th className="table-sortable-header" onClick={() => toggleSort('mpp_laylength')}>
                   LayLength{sortIndicator('mpp_laylength')}
                 </th>
-                <th />
+                <th className="data-actions-header">
+                  <CustomSortControl
+                    columns={[
+                      { key: 'mpp_constructiontype', label: 'Construction' },
+                      { key: 'mpp_taskname', label: 'Task' },
+                      { key: 'mpp_subtaskname', label: 'SubTask' },
+                      { key: 'mpp_tasktime', label: 'Time' },
+                      { key: 'mpp_numerator', label: 'Numerator' },
+                      { key: 'mpp_denominator', label: 'Denominator' },
+                      { key: 'mpp_machcondition', label: 'MachCondition' },
+                      { key: 'mpp_productcode', label: 'Product' },
+                      { key: 'mpp_machinecode', label: 'Mach' },
+                      { key: 'mpp_spooltype', label: 'SpoolType' },
+                      { key: 'mpp_tensilegroup', label: 'TensileGroup' },
+                      { key: 'mpp_laylength', label: 'LayLength' },
+                    ]}
+                    levels={sortLevels}
+                    onChange={setSortLevels}
+                  />
+                </th>
               </tr>
             </thead>
             <tbody>

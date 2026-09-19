@@ -143,6 +143,138 @@
   font-size: 0.72rem;
 }
 
+.data-actions-header {
+  position: relative;
+  min-width: 154px;
+  text-align: center;
+}
+
+.custom-sort-control {
+  position: relative;
+  display: inline-flex;
+}
+
+.custom-sort-button {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #334155;
+  border-radius: 7px;
+  background: #111827;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.custom-sort-button:hover,
+.custom-sort-button:focus-visible,
+.custom-sort-button.is-active {
+  border-color: #38bdf8;
+  background: rgba(14, 116, 144, 0.3);
+  color: #7dd3fc;
+}
+
+.custom-sort-button svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.custom-sort-popover {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 8px);
+  right: 0;
+  width: min(470px, calc(100vw - 32px));
+  padding: 12px;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  background: #0f172a;
+  box-shadow: 0 16px 34px rgba(2, 6, 23, 0.45);
+  text-align: left;
+}
+
+.custom-sort-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  color: #e2e8f0;
+  font-size: 0.82rem;
+}
+
+.custom-sort-heading span {
+  color: #94a3b8;
+  font-size: 0.72rem;
+  font-weight: 400;
+}
+
+.custom-sort-level {
+  display: grid;
+  grid-template-columns: 24px minmax(130px, 1fr) minmax(155px, 1.25fr) 26px;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 7px;
+}
+
+.custom-sort-level .input {
+  min-width: 0;
+  padding: 6px 8px;
+  font-size: 0.76rem;
+}
+
+.custom-sort-index {
+  color: #7dd3fc;
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.custom-sort-remove {
+  width: 26px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.custom-sort-remove:hover,
+.custom-sort-remove:focus-visible {
+  background: rgba(248, 113, 113, 0.15);
+  color: #fca5a5;
+}
+
+.custom-sort-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.custom-sort-actions .btn {
+  padding: 6px 9px;
+  font-size: 0.74rem;
+}
+
+.custom-sort-add {
+  color: #7dd3fc;
+}
+
+.custom-sort-clear {
+  color: #fca5a5;
+}
+
 /* Layout selector (inside Setup > Machine Layout step) */
 .layout-selector-card {
   margin-bottom: 18px;
@@ -867,7 +999,7 @@
 
 .table-sort-indicator {
   display: inline-block;
-  width: 10px;
+  min-width: 22px;
   margin-left: 2px;
   color: #38bdf8;
 }
