@@ -42,6 +42,8 @@ export function SetupWizard({ onStart }: { onStart: () => void }) {
                 activities={config.activities}
                 spoolWeight={derived.spoolWeight}
                 fracturePerTon={config.spec.fracturePerTon}
+                diesPerTon={config.spec.diesPerTon}
+                defectsPerTon={config.spec.defectsPerTon}
                 onChange={(activities) => setConfig((prev) => ({ ...prev, activities }))}
               />
               <MovementParamsForm

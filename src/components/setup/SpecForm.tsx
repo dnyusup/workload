@@ -39,6 +39,12 @@ export function SpecForm({
         <Field label="Fracture / Ton">
           <NumberInput value={spec.fracturePerTon} onChange={set('fracturePerTon')} />
         </Field>
+        <Field label="Dies / Ton">
+          <NumberInput value={spec.diesPerTon} onChange={set('diesPerTon')} />
+        </Field>
+        <Field label="Defect / Ton">
+          <NumberInput value={spec.defectsPerTon} onChange={set('defectsPerTon')} />
+        </Field>
       </div>
 
       <div className="divider" />

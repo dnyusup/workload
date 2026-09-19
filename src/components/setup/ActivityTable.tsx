@@ -14,11 +14,15 @@ export function ActivityTable({
   activities,
   spoolWeight,
   fracturePerTon,
+  diesPerTon,
+  defectsPerTon,
   onChange,
 }: {
   activities: ActivityConfig[];
   spoolWeight: number;
   fracturePerTon: number;
+  diesPerTon: number;
+  defectsPerTon: number;
   onChange: (next: ActivityConfig[]) => void;
 }) {
   const update = (key: string, patch: Partial<ActivityConfig>) => {
@@ -90,12 +94,22 @@ export function ActivityTable({
         </thead>
         <tbody>
           {activities.map((a) => {
-            const displayNumerator = a.numeratorAuto ? fracturePerTon : a.numerator;
+            const autoNumerator =
+              a.key === 'diesChange'
+                ? diesPerTon
+                : a.key === 'defectRepairing'
+                  ? defectsPerTon
+                  : fracturePerTon;
+            const displayNumerator = a.numeratorAuto ? autoNumerator : a.numerator;
             const displayDenominator = a.denominatorAuto ? fractureRepairingDenominator(spoolWeight) : a.denominator;
             const numeratorLocked = a.numeratorAuto || a.numeratorReadOnly;
             const denominatorLocked = a.denominatorAuto || a.denominatorReadOnly;
             const remarks: string[] = [];
-            if (a.numeratorAuto) remarks.push('Numerator = Fracture/Ton');
+            if (a.numeratorAuto) {
+              remarks.push(
+                `Numerator = ${a.key === 'diesChange' ? 'Dies/Ton' : a.key === 'defectRepairing' ? 'Defect/Ton' : 'Fracture/Ton'}`,
+              );
+            }
             if (a.denominatorAuto) remarks.push('Denominator = 1000 / SpoolWeight');
             if (a.numeratorReadOnly || a.denominatorReadOnly || a.timeReadOnly) remarks.push('From WL_Products POlength / WL_Activities');
             const canHaveSubs = !a.parentKey;
