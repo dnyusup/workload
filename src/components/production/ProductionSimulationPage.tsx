@@ -1370,8 +1370,6 @@ function PlannedUtilizationCard({
   });
   const statusFor = (percent: number) =>
     percent > 100 ? 'overload' : percent > targetPercent ? 'above-target' : 'under-target';
-  const labelFor = (percent: number) =>
-    percent > 100 ? 'Overload' : percent > targetPercent ? 'Above target' : 'Within target';
   const contributionSummary = (
     contributions: PlannedUtilization['operators'][number]['contributions'],
     availableMinutes: number,
@@ -1589,7 +1587,7 @@ function PlannedUtilizationCard({
                     <td>{formatMinutes(operator.availableMinutes)}</td>
                     <td>
                       <span className={`planned-utilization-status planned-utilization-status-${statusFor(operator.forecastUtilizationPercent)}`}>
-                        {operator.forecastUtilizationPercent.toFixed(1)}% forecast · {labelFor(operator.forecastUtilizationPercent)}
+                        {operator.forecastUtilizationPercent.toFixed(1)}% forecast
                       </span>
                       <div className="data-manager-hint">{operator.utilizationPercent.toFixed(1)}% ideal demand</div>
                     </td>
