@@ -931,16 +931,48 @@
   pointer-events: none;
 }
 
-.operator-start-dot {
-  fill: #38bdf8;
-  stroke: #0b1220;
-  stroke-width: 2;
+.operator-start-halo {
+  fill: rgba(14, 165, 233, 0.12);
+  stroke: #38bdf8;
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+  pointer-events: none;
 }
 
-.operator-start-flag {
-  fill: #38bdf8;
-  stroke: #0b1220;
-  stroke-width: 1;
+.operator-start-pin {
+  fill: #0284c7;
+  stroke: #e0f2fe;
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 4px rgba(56, 189, 248, 0.85));
+}
+
+.operator-start-core {
+  fill: #f8fafc;
+  stroke: #0369a1;
+  stroke-width: 2;
+  pointer-events: none;
+}
+
+.operator-start-stem {
+  stroke: #e0f2fe;
+  stroke-width: 2;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+
+.operator-start-label-bg {
+  fill: #075985;
+  stroke: #7dd3fc;
+  stroke-width: 1.5;
+  pointer-events: none;
+}
+
+.operator-start-label {
+  fill: #f0f9ff;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  pointer-events: none;
 }
 
 .machine-box {

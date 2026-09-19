@@ -1195,9 +1195,18 @@ export function LayoutBuilder({
                 onPointerDown={handleStartPointerDown}
                 style={{ cursor: readOnly || !onOperatorStartChange ? 'default' : 'grab' }}
               >
-                <title>Titik start operator</title>
-                <circle r={10} className="operator-start-dot" />
-                <path d="M 0 -10 L 0 -32 L 16 -26 L 0 -20 Z" className="operator-start-flag" />
+                <title>Operator start point — drag to move</title>
+                <circle r={25} className="operator-start-halo" />
+                <path
+                  d="M 0 -17 C -10 -17 -16 -10 -16 -1 C -16 10 0 24 0 24 C 0 24 16 10 16 -1 C 16 -10 10 -17 0 -17 Z"
+                  className="operator-start-pin"
+                />
+                <circle r={5} className="operator-start-core" />
+                <path d="M 0 -18 L 0 -34" className="operator-start-stem" />
+                <rect x={8} y={-47} width={58} height={22} rx={11} className="operator-start-label-bg" />
+                <text x={37} y={-32} textAnchor="middle" className="operator-start-label">
+                  START
+                </text>
               </g>
             )}
             {measurement && (
