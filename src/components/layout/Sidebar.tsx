@@ -4,7 +4,7 @@ import type { UserRole } from '../../context/AuthContext';
 export type AppPage = 'simulator' | 'layouts' | 'production' | 'products' | 'activities' | 'users';
 
 const MENU: { page: AppPage; label: string; icon: string; roles: UserRole[] }[] = [
-  { page: 'simulator', label: 'Simulator', icon: '▶️', roles: ['admin', 'contribute', 'guest'] },
+  { page: 'simulator', label: 'Work Load Simulator', icon: '▶️', roles: ['admin', 'contribute', 'guest'] },
   { page: 'layouts', label: 'Layout Builder', icon: '📐', roles: ['admin', 'contribute'] },
   { page: 'production', label: 'Production Simulation', icon: '🏭', roles: ['admin', 'contribute'] },
   { page: 'products', label: 'WL_Products', icon: '📦', roles: ['admin'] },
@@ -25,7 +25,7 @@ export function iconForPage(page: AppPage): string {
 }
 
 export function labelForPage(page: AppPage): string {
-  return MENU.find((item) => item.page === page)?.label ?? 'Simulator';
+  return MENU.find((item) => item.page === page)?.label ?? 'Work Load Simulator';
 }
 
 export function Sidebar({ page, role, onNavigate }: { page: AppPage; role: UserRole; onNavigate: (page: AppPage) => void }) {
