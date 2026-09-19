@@ -46,7 +46,7 @@ type DragState =
       wasAlreadyMultiSelected: boolean;
     }
   | { mode: 'pan'; startVb: Point; startPan: Point }
-  | { mode: 'select'; startVb: Point; currentVb: Point }
+  | { mode: 'select'; startVb: Point; currentVb: Point; rightClickId?: string }
   | { mode: 'start'; startWorld: Point; startPoint: Point }
   | null;
 
@@ -361,6 +361,12 @@ export function LayoutBuilder({
     const groupIds = selectMachineGroups && clickedMachine?.groupId
       ? new Set(layout.filter((m) => m.groupId === clickedMachine.groupId).map((m) => m.id))
       : new Set([id]);
+    if (e.button === 2) {
+      e.preventDefault();
+      const startVb = toViewBoxPoint(e.clientX, e.clientY);
+      setDrag({ mode: 'select', startVb, currentVb: startVb, rightClickId: id });
+      return;
+    }
     if (e.shiftKey) {
       setSelectedIds((prev) => {
         const next = new Set(prev);
@@ -418,7 +424,7 @@ export function LayoutBuilder({
     }
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
     const vb = toViewBoxPoint(e.clientX, e.clientY);
-    if (e.shiftKey) {
+    if (e.button === 2 || e.shiftKey) {
       setDrag({ mode: 'select', startVb: vb, currentVb: vb });
     } else {
       setSelectedIds(new Set());
@@ -470,6 +476,23 @@ export function LayoutBuilder({
   const handlePointerUp = () => {
     if (drag?.mode === 'select') {
       const { startVb, currentVb } = drag;
+      const rightClickId = drag.rightClickId;
+      const movedEnough = Math.hypot(currentVb.x - startVb.x, currentVb.y - startVb.y) >= DRAG_THRESHOLD;
+      if (rightClickId && !movedEnough) {
+        const clickedMachine = layout.find((machine) => machine.id === rightClickId);
+        const selectedGroupIds =
+          selectMachineGroups && clickedMachine?.groupId
+            ? layout.filter((machine) => machine.groupId === clickedMachine.groupId).map((machine) => machine.id)
+            : [rightClickId];
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          const shouldRemove = selectedGroupIds.every((id) => next.has(id));
+          selectedGroupIds.forEach((id) => (shouldRemove ? next.delete(id) : next.add(id)));
+          return next;
+        });
+        setDrag(null);
+        return;
+      }
       const minVb = { x: Math.min(startVb.x, currentVb.x), y: Math.min(startVb.y, currentVb.y) };
       const maxVb = { x: Math.max(startVb.x, currentVb.x), y: Math.max(startVb.y, currentVb.y) };
       const minWorld = { x: (minVb.x - pan.x) / zoom, y: (minVb.y - pan.y) / zoom };
@@ -1006,6 +1029,7 @@ export function LayoutBuilder({
           onPointerDown={handleCanvasPointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
+          onContextMenu={(e) => e.preventDefault()}
         >
           <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
             {layout.map((m, idx) => {
@@ -1023,6 +1047,7 @@ export function LayoutBuilder({
                   key={m.id}
                   transform={`translate(${m.x}, ${m.y})`}
                   onPointerDown={handleMachinePointerDown(m.id)}
+                  onContextMenu={(e) => e.preventDefault()}
                   style={{ cursor: 'grab' }}
                 >
                   {appearance?.tooltip && <title>{appearance.tooltip}</title>}
