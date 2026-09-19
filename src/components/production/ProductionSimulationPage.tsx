@@ -1324,7 +1324,7 @@ function PlannedUtilizationCard({
   return (
     <Card
       title="Planned Operator Utilization"
-      subtitle="Service demand from assigned machines, using each Construction's resolved runtime and activity rates"
+      subtitle="Ideal due-work plus a deterministic constrained forecast using machine stop time and estimated inter-machine walking"
     >
       {loading && <p className="data-manager-hint">Resolving Construction Details and activities…</p>}
       {errors.length > 0 && (
@@ -1341,6 +1341,9 @@ function PlannedUtilizationCard({
           <div className="planned-utilization-summary">
             <span>Net operator availability: <strong>{formatMinutes(utilization.availableMinutes)}</strong> per shift</span>
             <span className="planned-utilization-target">Target: <strong>{targetPercent}%</strong></span>
+            <span title="The ideal figure is the capacity requirement. The forecast accounts for stop-work downtime and estimated walking; exact random phase and dispatch queues remain visible in the actual run.">
+              Ideal demand / forecast: <strong>capacity requirement / expected completed work</strong>
+            </span>
             {utilization.unassignedMinutes > 0 && (
               <span className="planned-utilization-unassigned">
                 Unassigned demand: <strong>{formatMinutes(utilization.unassignedMinutes)}</strong>
@@ -1352,11 +1355,12 @@ function PlannedUtilizationCard({
               <thead>
                 <tr>
                   <th>Operator</th>
-                  <th>Planned service</th>
+                  <th>Ideal demand</th>
+                  <th>Forecast work</th>
                   <th>Net available</th>
                   <th>Utilization</th>
-                  <th>Capacity to target</th>
-                  <th>Activity contribution</th>
+                  <th>Forecast queue</th>
+                  <th>Ideal activity contribution</th>
                 </tr>
               </thead>
               <tbody>
@@ -1364,19 +1368,19 @@ function PlannedUtilizationCard({
                   <tr key={operator.operatorId}>
                     <td>{operator.operatorLabel}</td>
                     <td>{formatMinutes(operator.plannedMinutes)}</td>
+                    <td>
+                      {formatMinutes(operator.forecastServiceMinutes)} handling + {formatMinutes(operator.forecastWalkingMinutes)} walking
+                    </td>
                     <td>{formatMinutes(operator.availableMinutes)}</td>
                     <td>
-                      <span className={`planned-utilization-status planned-utilization-status-${statusFor(operator.utilizationPercent)}`}>
-                        {operator.utilizationPercent.toFixed(1)}% · {labelFor(operator.utilizationPercent)}
+                      <span className={`planned-utilization-status planned-utilization-status-${statusFor(operator.forecastUtilizationPercent)}`}>
+                        {operator.forecastUtilizationPercent.toFixed(1)}% forecast · {labelFor(operator.forecastUtilizationPercent)}
                       </span>
+                      <div className="data-manager-hint">{operator.utilizationPercent.toFixed(1)}% ideal demand</div>
                     </td>
                     <td>
-                      {formatMinutes(
-                        Math.abs(operator.availableMinutes * (targetPercent / 100) - operator.plannedMinutes),
-                      )}{' '}
-                      {operator.plannedMinutes <= operator.availableMinutes * (targetPercent / 100)
-                        ? 'remaining'
-                        : 'over target'}
+                      {formatMinutes(operator.forecastWaitingMinutes)}
+                      {operator.forecastWaitingMinutes > 0 ? ' backlog' : ' expected'}
                     </td>
                     <td>
                       {operator.contributions.length === 0
@@ -1397,7 +1401,7 @@ function PlannedUtilizationCard({
                     <th>Construction</th>
                     <th>Activity</th>
                     <th>Operator</th>
-                    <th>Utilization contribution</th>
+                    <th>Ideal utilization contribution</th>
                   </tr>
                 </thead>
                 <tbody>
