@@ -823,33 +823,95 @@ export function LayoutBuilder({
               <Button variant="secondary" onClick={() => setGroupOpen(true)}>
                 + Add Group Machine
               </Button>
-              <Button variant="ghost" onClick={toggleType} disabled={selectedIds.size === 0}>
-                Toggle BF X
+              <Button
+                variant="ghost"
+                className="toolbar-icon-button"
+                onClick={toggleType}
+                disabled={selectedIds.size === 0}
+                title="Toggle selected machine type between BF and X"
+                aria-label="Toggle machine type between BF and X"
+              >
+                ⇄
               </Button>
-              <Button variant="ghost" onClick={toggleOrientation} disabled={selectedIds.size === 0}>
-                Flip Orientation
+              <Button
+                variant="ghost"
+                className="toolbar-icon-button"
+                onClick={toggleOrientation}
+                disabled={selectedIds.size === 0}
+                title="Flip selected machine orientation"
+                aria-label="Flip machine orientation"
+              >
+                🔄
               </Button>
-              <Button variant="ghost" onClick={cyclePairSide} disabled={selectedIds.size === 0}>
-                {soleSelected ? `Pair: ${soleSelected.pairSide}` : 'Cycle Pair Side'}
+              <Button
+                variant="ghost"
+                className="toolbar-icon-button"
+                onClick={cyclePairSide}
+                disabled={selectedIds.size === 0}
+                title={soleSelected ? `Cycle pair side (current: ${soleSelected.pairSide})` : 'Cycle pair side'}
+                aria-label="Cycle pair side"
+              >
+                ⟳
               </Button>
-              <Button variant="ghost" onClick={openResize} disabled={selectedIds.size === 0}>
-                Resize
+              <Button
+                variant="ghost"
+                className="toolbar-icon-button"
+                onClick={openResize}
+                disabled={selectedIds.size === 0}
+                title="Resize selected machine(s)"
+                aria-label="Resize selected machines"
+              >
+                ⤢
               </Button>
-              <Button variant="danger" onClick={removeSelected} disabled={selectedIds.size === 0}>
-                Remove{selectedIds.size > 1 ? ` (${selectedIds.size})` : ''}
+              <Button
+                variant="danger"
+                className="toolbar-icon-button"
+                onClick={removeSelected}
+                disabled={selectedIds.size === 0}
+                title={`Remove selected machine${selectedIds.size > 1 ? 's' : ''}`}
+                aria-label={`Remove selected machine${selectedIds.size > 1 ? 's' : ''}`}
+              >
+                🗑
               </Button>
-              <Button variant="ghost" onClick={clearAll}>
-                Clear All
+              <Button
+                variant="ghost"
+                className="toolbar-icon-button"
+                onClick={clearAll}
+                title="Clear all machines from the layout"
+                aria-label="Clear all machines"
+              >
+                🧹
               </Button>
               <span className="toolbar-divider" />
-              <Button variant="ghost" onClick={undo} disabled={history.length === 0} title="Undo (Ctrl+Z)">
-                ↶ Undo
+              <Button
+                variant="ghost"
+                className="toolbar-icon-button"
+                onClick={undo}
+                disabled={history.length === 0}
+                title="Undo (Ctrl+Z)"
+                aria-label="Undo"
+              >
+                ↶
               </Button>
-              <Button variant="ghost" onClick={copySelection} disabled={selectedIds.size === 0} title="Copy (Ctrl+C)">
-                Copy
+              <Button
+                variant="ghost"
+                className="toolbar-icon-button"
+                onClick={copySelection}
+                disabled={selectedIds.size === 0}
+                title="Copy selected machine(s) (Ctrl+C)"
+                aria-label="Copy selected machines"
+              >
+                ⧉
               </Button>
-              <Button variant="ghost" onClick={pasteClipboard} disabled={!clipboard} title="Paste (Ctrl+V)">
-                Paste
+              <Button
+                variant="ghost"
+                className="toolbar-icon-button"
+                onClick={pasteClipboard}
+                disabled={!clipboard}
+                title="Paste copied machine(s) (Ctrl+V)"
+                aria-label="Paste copied machines"
+              >
+                📋
               </Button>
               <span className="toolbar-divider" />
             </>
@@ -893,8 +955,14 @@ export function LayoutBuilder({
             📏
           </Button>
           {measureMode && measurement && !measurement.done && (
-            <Button variant="ghost" onClick={finishMeasuring} title="Finish this measurement (Enter)">
-              Finish Measuring
+            <Button
+              variant="ghost"
+              className="toolbar-icon-button"
+              onClick={finishMeasuring}
+              title="Finish this measurement (Enter)"
+              aria-label="Finish measuring"
+            >
+              ✓
             </Button>
           )}
           {onOperatorStartChange && !readOnly && (
@@ -902,14 +970,22 @@ export function LayoutBuilder({
               <span className="toolbar-divider" />
               <Button
                 variant={placingStart ? 'primary' : 'ghost'}
+                className="toolbar-icon-button"
                 onClick={togglePlacingStart}
                 title="Click on the canvas to set where the operator stands before the simulation starts (Esc to cancel)"
+                aria-label={operatorStart ? 'Move operator start point' : 'Set operator start point'}
               >
-                📍 {operatorStart ? 'Move Start Point' : 'Set Start Point'}
+                📍
               </Button>
               {operatorStart && (
-                <Button variant="ghost" onClick={removeOperatorStart} title="Remove the operator start point">
-                  Remove Start
+                <Button
+                  variant="ghost"
+                  className="toolbar-icon-button"
+                  onClick={removeOperatorStart}
+                  title="Remove the operator start point"
+                  aria-label="Remove operator start point"
+                >
+                  ✕
                 </Button>
               )}
             </>
@@ -943,14 +1019,23 @@ export function LayoutBuilder({
           </p>
           <Button
             variant="primary"
+            className="toolbar-icon-button"
             onClick={assignSelection}
             disabled={selectedIds.size === 0 || assignCapacity <= 0}
             title={assignCapacity <= 0 ? 'Already at the machHandled limit — unassign some first' : 'Assign the selected machine(s) to this operator'}
+            aria-label="Assign selected machines"
           >
-            Assign Selection
+            📌
           </Button>
-          <Button variant="ghost" onClick={unassignSelection} disabled={selectedIds.size === 0}>
-            Unassign Selection
+          <Button
+            variant="ghost"
+            className="toolbar-icon-button"
+            onClick={unassignSelection}
+            disabled={selectedIds.size === 0}
+            title="Unassign selected machine(s) from this operator"
+            aria-label="Unassign selected machines"
+          >
+            ↩
           </Button>
         </div>
       )}
@@ -1023,19 +1108,23 @@ export function LayoutBuilder({
           />
           <Button
             variant="secondary"
+            className="toolbar-icon-button"
             onClick={() => pasteRowExtend('left')}
             disabled={selectedIds.size === 0}
             title="Duplicate the selected machine(s) to the left, numbers shifted by Step, repeated Count times"
+            aria-label="Paste repeated machines to the left"
           >
-            ← Paste
+            ←
           </Button>
           <Button
             variant="secondary"
+            className="toolbar-icon-button"
             onClick={() => pasteRowExtend('right')}
             disabled={selectedIds.size === 0}
             title="Duplicate the selected machine(s) to the right, numbers shifted by Step, repeated Count times"
+            aria-label="Paste repeated machines to the right"
           >
-            Paste →
+            →
           </Button>
         </div>
       )}
