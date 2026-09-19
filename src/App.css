@@ -741,6 +741,35 @@
   stroke-width: 1.8;
 }
 
+.setup-reset-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  padding: 8px;
+}
+
+.btn.setup-reset-button:not(:disabled) {
+  background: #075985;
+  border-color: #22d3ee;
+  color: #ecfeff;
+  box-shadow: 0 0 0 1px rgb(34 211 238 / 20%), 0 3px 10px rgb(8 145 178 / 22%);
+}
+
+.btn.setup-reset-button:not(:disabled):hover {
+  filter: brightness(1.18);
+}
+
+.setup-reset-button svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
 .setup-forecast-utilization {
   display: flex;
   align-items: center;

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useAppConfig } from '../../context/AppConfigContext';
 import { deriveMachineSpec, syncAutoActivityValues } from '../../lib/calculations';
 import {
@@ -15,6 +15,7 @@ import { MovementParamsForm } from './MovementParams';
 import { LayoutBuilder } from './LayoutBuilder';
 import { ConstructionDetailSelector } from './ConstructionDetailSelector';
 import { LayoutSelector } from './LayoutSelector';
+import type { AppConfig } from '../../types';
 
 const STEPS = ['Setup', 'Machine Layout'];
 
@@ -22,6 +23,9 @@ export function SetupWizard({ onStart }: { onStart: () => void }) {
   const { config, setConfig } = useAppConfig();
   const [step, setStep] = useState(0);
   const [applyingConstruction, setApplyingConstruction] = useState(false);
+  const [constructionBaseline, setConstructionBaseline] = useState<AppConfig | null>(
+    () => (config.selectedProductId ? config : null),
+  );
   const derived = deriveMachineSpec(config.spec);
   const forecast = calculateSingleOperatorForecast(config);
   const optimizeUtilization = () => {
@@ -38,13 +42,35 @@ export function SetupWizard({ onStart }: { onStart: () => void }) {
   const layoutIds = new Set(config.layout.map((m) => m.id));
   const assignedCount = (config.assignedMachineIds ?? []).filter((id) => layoutIds.has(id)).length;
   const canStart = config.layout.length > 0 && config.operator.machHandled > 0 && assignedCount === config.operator.machHandled;
+  const setupChanged = useMemo(
+    () => constructionBaseline !== null && JSON.stringify(config) !== JSON.stringify(constructionBaseline),
+    [config, constructionBaseline],
+  );
 
   return (
     <div className="setup-wizard">
-      <ConstructionDetailSelector onApplyingChange={setApplyingConstruction} />
+      <ConstructionDetailSelector
+        onApplyingChange={setApplyingConstruction}
+        onApplied={setConstructionBaseline}
+      />
       <div className="setup-stepper-row">
         <Stepper steps={STEPS} current={step} onSelect={setStep} disabled={applyingConstruction} />
         <div className="setup-nav">
+          <Button
+            variant="ghost"
+            className="setup-reset-button"
+            disabled={applyingConstruction || !setupChanged}
+            onClick={() => {
+              if (constructionBaseline) setConfig(() => constructionBaseline);
+            }}
+            title="Reset setup to the selected Construction Detail"
+            aria-label="Reset setup to the selected Construction Detail"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 7v5h5" />
+              <path d="M5.2 12a7 7 0 1 0 2-5" />
+            </svg>
+          </Button>
           <Button variant="ghost" disabled={step === 0 || applyingConstruction} onClick={() => setStep((s) => Math.max(0, s - 1))}>
             &larr; Previous
           </Button>

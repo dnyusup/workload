@@ -10,6 +10,7 @@ import {
   previewAssignedMachineIds,
   recommendedMachineCountForForecast,
 } from '../../lib/singleOperatorUtilization';
+import type { AppConfig } from '../../types';
 import { Card } from '../ui/Card';
 import { SearchableSelect } from '../ui/SearchableSelect';
 
@@ -17,7 +18,13 @@ function escapeODataString(value: string): string {
   return value.replace(/'/g, "''");
 }
 
-export function ConstructionDetailSelector({ onApplyingChange }: { onApplyingChange?: (applying: boolean) => void }) {
+export function ConstructionDetailSelector({
+  onApplyingChange,
+  onApplied,
+}: {
+  onApplyingChange?: (applying: boolean) => void;
+  onApplied?: (config: AppConfig) => void;
+}) {
   const { config, setConfig } = useAppConfig();
   const [products, setProducts] = useState<Mpp_wl_productses[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
@@ -81,21 +88,21 @@ export function ConstructionDetailSelector({ onApplyingChange }: { onApplyingCha
         setError(built.errors.join(' '));
       }
 
-      setConfig((prev) => {
-        const nextConfig = {
-          ...prev,
-          spec: newSpec,
-          activities,
-          selectedProductId: product.mpp_wl_productsid,
-          selectedConstructionDetail: product.mpp_constructiondetailcode,
-        };
-        const recommendedMachineCount = recommendedMachineCountForForecast(nextConfig);
-        return {
-          ...nextConfig,
-          operator: { ...nextConfig.operator, machHandled: recommendedMachineCount },
-          assignedMachineIds: previewAssignedMachineIds(nextConfig, recommendedMachineCount),
-        };
-      });
+      const nextConfig = {
+        ...config,
+        spec: newSpec,
+        activities,
+        selectedProductId: product.mpp_wl_productsid,
+        selectedConstructionDetail: product.mpp_constructiondetailcode,
+      };
+      const recommendedMachineCount = recommendedMachineCountForForecast(nextConfig);
+      const appliedConfig: AppConfig = {
+        ...nextConfig,
+        operator: { ...nextConfig.operator, machHandled: recommendedMachineCount },
+        assignedMachineIds: previewAssignedMachineIds(nextConfig, recommendedMachineCount),
+      };
+      setConfig(() => appliedConfig);
+      onApplied?.(appliedConfig);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load activities for this Construction.');
     } finally {
