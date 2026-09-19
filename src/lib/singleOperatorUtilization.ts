@@ -178,17 +178,20 @@ export function calculateSingleOperatorForecast(config: AppConfig): SingleOperat
   };
 }
 
-/** Finds the smallest available machine count whose forecast reaches the requested target. */
-export function recommendedMachineCountForForecast(config: AppConfig, targetPercent = 100): number {
+/** Finds the largest available machine count that still leaves no forecast backlog. */
+export function recommendedMachineCountForForecast(config: AppConfig): number {
   if (config.layout.length === 0) return 0;
 
+  let recommended = 0;
   for (let machineCount = 1; machineCount <= config.layout.length; machineCount += 1) {
     const forecast = calculateSingleOperatorForecast({
       ...config,
       operator: { ...config.operator, machHandled: machineCount },
     });
-    if (forecast.forecastUtilizationPercent >= targetPercent) return machineCount;
+    if (forecast.forecastWaitingMinutes <= 0.0001) {
+      recommended = machineCount;
+    }
   }
 
-  return config.layout.length;
+  return recommended;
 }
