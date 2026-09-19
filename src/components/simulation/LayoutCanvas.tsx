@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { MachineTimelineKind, OperatorTimelineKind, SimulationState } from '../../types';
 import { MachineZoneLabels } from '../ui/MachineZoneLabels';
 import { MachineDonut } from './MachineDonut';
@@ -32,7 +32,15 @@ function operatorLabel(state: SimulationState): string {
 
 const HIDDEN_SPOOL_LABEL_AREAS = new Set(['WW', 'IS', 'IP', 'BA', 'CA']);
 
-export function LayoutCanvas({ state, area }: { state: SimulationState; area?: string }) {
+export function LayoutCanvas({
+  state,
+  area,
+  fullscreenControls,
+}: {
+  state: SimulationState;
+  area?: string;
+  fullscreenControls?: ReactNode;
+}) {
   const { machines, operator, metrics } = state;
   const showSpoolLabels = !HIDDEN_SPOOL_LABEL_AREAS.has(area?.trim().toUpperCase() ?? '');
   const [selectedMachineId, setSelectedMachineId] = useState<string | null>(null);
@@ -277,6 +285,7 @@ export function LayoutCanvas({ state, area }: { state: SimulationState; area?: s
 
   return (
     <div className={`sim-canvas-wrap ${isFullscreen ? 'sim-canvas-fullscreen' : ''}`} ref={panelRef}>
+      {isFullscreen && fullscreenControls && <div className="sim-canvas-fullscreen-controls">{fullscreenControls}</div>}
       <div className="toolbar sim-canvas-toolbar">
         <Button
           variant="ghost"

@@ -39,7 +39,33 @@ export function SimulationView({
         }
       />
       <div className="simulation-body">
-        <LayoutCanvas state={state} area={config.spec.area} />
+        <LayoutCanvas
+          state={state}
+          area={config.spec.area}
+          fullscreenControls={
+            <Controls
+              playing={playing}
+              speed={speed}
+              onPlay={controls.play}
+              onPause={controls.pause}
+              onReset={controls.reset}
+              onSpeedChange={controls.setSpeed}
+              onBack={onBack}
+              finished={state.finished}
+              config={config}
+              setConfig={setConfig}
+              liveSettingsDisabled={playing || state.metrics.clockMin > 0}
+              elapsedMinutes={state.metrics.clockMin}
+              totalMinutes={state.metrics.shiftTimeMin}
+              availableMinutes={state.metrics.availableTimeMin}
+              breakMessage={
+                state.operator.phase === 'break'
+                  ? `☕ Operator is on ${state.operator.breakLabel} — ${Math.ceil(state.operator.breakRemainingMin)} minutes remaining`
+                  : undefined
+              }
+            />
+          }
+        />
         <Dashboard state={state} config={config} />
       </div>
     </div>

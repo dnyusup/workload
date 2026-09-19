@@ -1499,6 +1499,14 @@
   margin-bottom: 8px;
 }
 
+.sim-canvas-fullscreen-controls {
+  margin-bottom: 12px;
+}
+
+.sim-canvas-fullscreen-controls .controls-bar {
+  margin: 0;
+}
+
 .sim-svg-wrap {
   border: 1px dashed #1e293b;
   border-radius: 10px;
