@@ -514,6 +514,7 @@ function ProductionSetupEditor({
   const [appliedDiesChangeOperatorId, setAppliedDiesChangeOperatorId] = useState('');
   const [appliedDefectRepairingOperatorId, setAppliedDefectRepairingOperatorId] = useState('');
   const [importMessage, setImportMessage] = useState<string | null>(null);
+  const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
 
@@ -837,19 +838,38 @@ function ProductionSetupEditor({
       assignments: setup.assignments.map((a) => (patchByMachineId.has(a.machineId) ? { ...a, ...patchByMachineId.get(a.machineId) } : a)),
     });
     setActionError(null);
-    try {
-      await updateMachineAssignments(
-        setup.id,
-        Array.from(patchByMachineId.entries()).map(([machineId, patch]) => ({ machineId, patch })),
+    const changes = Array.from(patchByMachineId.entries()).map(([machineId, patch]) => ({ machineId, patch }));
+    if (changes.length === 0) {
+      setImportMessage(
+        errors.length > 0
+          ? `Import finished with ${errors.length} issue(s): ${errors.slice(0, 5).join(' ')}${errors.length > 5 ? ' …' : ''}`
+          : 'Import did not contain any valid machine assignments.',
       );
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Failed to save imported assignments.');
+      return;
     }
-    setImportMessage(
-      errors.length > 0
-        ? `Import finished with ${errors.length} issue(s): ${errors.slice(0, 5).join(' ')}${errors.length > 5 ? ' …' : ''}`
-        : `Successfully imported ${patchByMachineId.size} row(s).`,
-    );
+    setImportProgress({ done: 0, total: changes.length });
+    setImportMessage(`Importing assignments: 0/${changes.length}`);
+    let saveError: string | null = null;
+    try {
+      await updateMachineAssignments(setup.id, changes, (done, total) => {
+        setImportProgress({ done, total });
+        setImportMessage(`Importing assignments: ${done}/${total}`);
+      });
+    } catch (err) {
+      saveError = err instanceof Error ? err.message : 'Failed to save imported assignments.';
+      setActionError(saveError);
+    } finally {
+      setImportProgress(null);
+    }
+    if (saveError) {
+      setImportMessage(`Import stopped after a save error: ${saveError}`);
+    } else {
+      setImportMessage(
+        errors.length > 0
+          ? `Import finished with ${errors.length} issue(s): ${errors.slice(0, 5).join(' ')}${errors.length > 5 ? ' …' : ''}`
+          : `Successfully imported ${changes.length} row(s).`,
+      );
+    }
   };
 
   const persistHeader = useDebouncedCallback((patch: Partial<ProductionSetup>) => {
@@ -1140,12 +1160,12 @@ function ProductionSetupEditor({
               className="production-csv-input"
               onChange={(e) => {
                 const file = e.target.files?.[0];
-                if (file) importCsv(file);
+                if (file && !importProgress) void importCsv(file);
                 e.target.value = '';
               }}
             />
-            <Button variant="ghost" onClick={() => importInputRef.current?.click()}>
-              Import CSV
+            <Button variant="ghost" onClick={() => importInputRef.current?.click()} disabled={importProgress !== null}>
+              {importProgress ? `Importing… ${importProgress.done}/${importProgress.total}` : 'Import CSV'}
             </Button>
             <Button variant="secondary" onClick={exportCsv}>
               Export CSV
@@ -1153,7 +1173,12 @@ function ProductionSetupEditor({
           </div>
         }
       >
-        {importMessage && <p className="data-manager-hint">{importMessage}</p>}
+        {importProgress && (
+          <p className="data-manager-hint" role="status" aria-live="polite">
+            {importMessage}
+          </p>
+        )}
+        {!importProgress && importMessage && <p className="data-manager-hint">{importMessage}</p>}
         <div className="machine-timeline-rows">
           <table className="table">
             <thead>
