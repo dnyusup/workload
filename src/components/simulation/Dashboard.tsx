@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { AppConfig, DowntimeReason, SimulationState } from '../../types';
 import { deriveMachineSpec } from '../../lib/calculations';
 import { Card } from '../ui/Card';
+import { useAuth } from '../../context/AuthContext';
 
 function fmt(v: number) {
   return Math.round(v * 10) / 10;
@@ -34,7 +35,9 @@ function colorForDowntime(key: string, index: number) {
 }
 
 export function Dashboard({ state, config }: { state: SimulationState; config: AppConfig }) {
+  const { user } = useAuth();
   const { metrics, machines, log } = state;
+  const isAdmin = user.role === 'admin';
   const [targetUtilization, setTargetUtilization] = useState(85);
   const busyMin = metrics.walkingMin + metrics.servicingMin;
   const workedElapsed = Math.max(0, metrics.clockMin - metrics.breakElapsedMin);
@@ -204,7 +207,7 @@ export function Dashboard({ state, config }: { state: SimulationState; config: A
             <span>%</span>
           </span>
         </label>
-        {machRecommendation !== 0 && (
+        {isAdmin && machRecommendation !== 0 && (
           <div className="verdict-recommendation">
             #Mach Recommendation: {machRecommendation > 0 ? `+${machRecommendation}` : machRecommendation} machine
             {Math.abs(machRecommendation) > 1 ? 's' : ''} (target ~{targetUtilization}% utilization)

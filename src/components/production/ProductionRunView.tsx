@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MachineTimelineKind, OperatorTimelineKind, ProductionMachineAssignment, ProductionSetup, ProductionSimulationState } from '../../types';
 import type { ResolvedConstruction } from '../../lib/productionConstructionResolver';
 import { useProductionSimulation } from '../../hooks/useProductionSimulation';
+import { useAuth } from '../../context/AuthContext';
 
 const HIDDEN_SPOOL_LABEL_AREAS = new Set(['WW', 'IS', 'IP', 'BA', 'CA']);
 import { MachineZoneLabels } from '../ui/MachineZoneLabels';
@@ -127,7 +128,9 @@ export function ProductionRunView({
   allProductIds: string[];
   onBack: () => void;
 }) {
+  const { user } = useAuth();
   const { state, playing, speed, controls } = useProductionSimulation(setup, resolved, resolveErrors);
+  const isAdmin = user.role === 'admin';
   const { machines, operators, metrics } = state;
   const [targetUtilization, setTargetUtilization] = useState(85);
   const constructionColorMap = useMemo(() => buildConstructionColorMap(allProductIds), [allProductIds]);
@@ -985,7 +988,7 @@ export function ProductionRunView({
                       <span>%</span>
                     </span>
                   </label>
-                  {Math.abs(operatorRecommendation) >= 0.05 && (
+                  {isAdmin && Math.abs(operatorRecommendation) >= 0.05 && (
                     <div className="verdict-recommendation">
                       #Operator Recommendation: {operatorRecommendation > 0 ? '+' : ''}
                       {fmt(operatorRecommendation)} operator (target ~{targetUtilization}% utilization)
