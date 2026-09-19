@@ -2,7 +2,8 @@ import type { ActivityConfig, MachCondition } from '../../types';
 import { fractureRepairingDenominator } from '../../lib/calculations';
 import { Card } from '../ui/Card';
 
-const CORE_ACTIVITY_KEYS = ['doffing', 'loading', 'fractureRepairing'];
+const PROTECTED_ACTIVITY_KEYS = ['doffing', 'loading', 'fractureRepairing', 'diesChange', 'defectRepairing'];
+const SUB_ACTIVITY_DISABLED_KEYS = ['fractureRepairing', 'diesChange', 'defectRepairing'];
 
 const SUB_ACTIVITY_DEFAULTS: Record<string, { label: string; timeMinutes: number; denominator: number }> = {
   doffing: { label: 'Doffing Partial', timeMinutes: 1, denominator: 2 },
@@ -74,7 +75,7 @@ export function ActivityTable({
 
   const removeActivity = (key: string) => {
     if (activities.length <= 1) return;
-    if (CORE_ACTIVITY_KEYS.includes(key)) return;
+    if (PROTECTED_ACTIVITY_KEYS.includes(key)) return;
     onChange(activities.filter((activity) => activity.key !== key));
   };
 
@@ -113,7 +114,7 @@ export function ActivityTable({
             if (a.denominatorAuto) remarks.push('Denominator = 1000 / SpoolWeight');
             if (a.numeratorReadOnly || a.denominatorReadOnly || a.timeReadOnly) remarks.push('From WL_Products POlength / WL_Activities');
             const canHaveSubs = !a.parentKey;
-            const canRemove = !CORE_ACTIVITY_KEYS.includes(a.key);
+            const canRemove = !PROTECTED_ACTIVITY_KEYS.includes(a.key);
               return (
                 <tr key={a.key} title={remarks.length > 0 ? remarks.join(' · ') : undefined}>
                   <td className={`activity-column ${a.parentKey ? 'activity-sub-row' : ''}`}>
@@ -171,8 +172,12 @@ export function ActivityTable({
                     <button
                       type="button"
                       className="btn btn-ghost table-sub-add"
-                      disabled={a.key === 'fractureRepairing'}
-                      title={a.key === 'fractureRepairing' ? 'Belum ada regulasi untuk Sub Fracture Repairing' : undefined}
+                      disabled={SUB_ACTIVITY_DISABLED_KEYS.includes(a.key)}
+                      title={
+                        SUB_ACTIVITY_DISABLED_KEYS.includes(a.key)
+                          ? `Belum ada regulasi untuk Sub ${a.label}`
+                          : undefined
+                      }
                       onClick={() => addSubActivity(a.key)}
                     >
                       + Sub {a.label}
