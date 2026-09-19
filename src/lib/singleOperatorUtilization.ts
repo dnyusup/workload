@@ -49,11 +49,17 @@ export function calculateSingleOperatorForecast(config: AppConfig): SingleOperat
   const layoutById = new Map(config.layout.map((machine) => [machine.id, machine]));
   const explicitAssigned = (config.assignedMachineIds ?? []).filter((id) => layoutById.has(id));
   const handled = Math.max(0, Math.floor(config.operator.machHandled));
-  const assignedMachines = (
-    explicitAssigned.length > 0
-      ? explicitAssigned.slice(0, handled)
-      : config.layout.slice(0, handled).map((machine) => machine.id)
-  )
+  // Use the explicit assignment first, then fill the requested count from the remaining layout
+  // machines. This keeps the forecast responsive while the user is changing the count before
+  // completing the Assign action in the Machine Layout step.
+  const assignedPreviewIds = [
+    ...explicitAssigned.slice(0, handled),
+    ...config.layout
+      .filter((machine) => !explicitAssigned.includes(machine.id))
+      .slice(0, Math.max(0, handled - explicitAssigned.length))
+      .map((machine) => machine.id),
+  ];
+  const assignedMachines = assignedPreviewIds
     .map((id) => layoutById.get(id))
     .filter((machine): machine is NonNullable<typeof machine> => !!machine);
   const derived = deriveMachineSpec(config.spec);
