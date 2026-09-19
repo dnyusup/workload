@@ -62,6 +62,7 @@ export function SetupWizard({ onStart }: { onStart: () => void }) {
               layout={config.layout}
               machHandled={config.operator.machHandled}
               assignedMachineIds={config.assignedMachineIds ?? []}
+              selectMachineGroups={false}
               onAssignedChange={(assignedMachineIds) => setConfig((prev) => ({ ...prev, assignedMachineIds }))}
               pixelsPerMeter={config.movement.pixelsPerMeter}
               onChange={(layout) => setConfig((prev) => ({ ...prev, layout }))}

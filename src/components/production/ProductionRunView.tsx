@@ -2,6 +2,8 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MachineTimelineKind, OperatorTimelineKind, ProductionMachineAssignment, ProductionSetup, ProductionSimulationState } from '../../types';
 import type { ResolvedConstruction } from '../../lib/productionConstructionResolver';
 import { useProductionSimulation } from '../../hooks/useProductionSimulation';
+
+const HIDDEN_SPOOL_LABEL_AREAS = new Set(['WW', 'IS', 'IP', 'BA', 'CA']);
 import { MachineZoneLabels } from '../ui/MachineZoneLabels';
 import { MachineDonut } from '../simulation/MachineDonut';
 import {
@@ -129,6 +131,10 @@ export function ProductionRunView({
   const [targetUtilization, setTargetUtilization] = useState(85);
   const constructionColorMap = useMemo(() => buildConstructionColorMap(allProductIds), [allProductIds]);
   const assignmentByMachineId = useMemo(() => new Map(setup.assignments.map((a) => [a.machineId, a])), [setup.assignments]);
+  const areaByConstructionId = useMemo(
+    () => new Map([...resolved].map(([id, construction]) => [id, construction.spec.area.trim().toUpperCase()])),
+    [resolved],
+  );
   const operatorLabelMap = useMemo(() => new Map(setup.operators.map((o) => [o.id, o.label])), [setup.operators]);
   const operatorLabelById = useCallback((id?: string) => (id ? operatorLabelMap.get(id) ?? '—' : '—'), [operatorLabelMap]);
 
@@ -656,6 +662,7 @@ export function ProductionRunView({
                     selectedMachineId={selectedMachineId}
                     onSelectMachine={onSelectMachine}
                     assignmentByMachineId={assignmentByMachineId}
+                    areaByConstructionId={areaByConstructionId}
                     constructionColorMap={constructionColorMap}
                     operatorLabelById={operatorLabelById}
                     isDetailed={isDetailed}
@@ -1172,6 +1179,7 @@ const MachinesLayer = memo(function MachinesLayer({
   selectedMachineId,
   onSelectMachine,
   assignmentByMachineId,
+  areaByConstructionId,
   constructionColorMap,
   operatorLabelById,
   isDetailed,
@@ -1182,6 +1190,7 @@ const MachinesLayer = memo(function MachinesLayer({
   selectedMachineId: string | null;
   onSelectMachine: (id: string) => void;
   assignmentByMachineId: Map<string, ProductionMachineAssignment>;
+  areaByConstructionId: Map<string, string>;
   constructionColorMap: Map<string, string>;
   operatorLabelById: (id?: string) => string;
   isDetailed: boolean;
@@ -1215,6 +1224,8 @@ const MachinesLayer = memo(function MachinesLayer({
         const payoffTextY = payoffY + h * 0.2;
         const takeupTextY = takeupY + (m.orientation === 'flipped' ? 20 : 10);
         const assignment = assignmentByMachineId.get(m.id);
+        const area = assignment?.constructionDetailId ? areaByConstructionId.get(assignment.constructionDetailId) : undefined;
+        const showSpoolLabels = !HIDDEN_SPOOL_LABEL_AREAS.has(area ?? '');
         const borderColor = assignment?.constructionDetailId ? constructionColorMap.get(assignment.constructionDetailId) : undefined;
         const isSelected = selectedMachineId === m.id;
         const tooltip = isDetailed
@@ -1264,9 +1275,11 @@ const MachinesLayer = memo(function MachinesLayer({
             </text>
             {isDetailed && m.status !== 'unassigned' && (
               <>
-                <text x={w / 2} y={payoffTextY} textAnchor="middle" className="machine-sublabel">
-                  {ordinal(m.spoolsSinceLoading)} spl
-                </text>
+                {showSpoolLabels && (
+                  <text x={w / 2} y={payoffTextY} textAnchor="middle" className="machine-sublabel">
+                    {ordinal(m.spoolsSinceLoading)} spl
+                  </text>
+                )}
                 <text x={w / 2} y={takeupTextY} textAnchor="middle" className="machine-sublabel">
                   {m.shiftSpoolsCompleted} spl
                 </text>

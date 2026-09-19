@@ -447,6 +447,7 @@ export function ProductionSimulationPage() {
             onOperatorCountChange={(delta) =>
               setSummaries((prev) => prev.map((s) => (s.id === selectedSetup.id ? { ...s, operatorCount: s.operatorCount + delta } : s)))
             }
+            isAdmin={isAdmin}
             resolving={resolving}
           />
         ) : (
@@ -466,6 +467,7 @@ function ProductionSetupEditor({
   onLocalChange,
   onRun,
   onOperatorCountChange,
+  isAdmin,
   resolving,
 }: {
   setup: ProductionSetup;
@@ -474,6 +476,7 @@ function ProductionSetupEditor({
   onLocalChange: (patch: Partial<ProductionSetup>) => void;
   onRun: () => void;
   onOperatorCountChange: (delta: number) => void;
+  isAdmin: boolean;
   resolving: boolean;
 }) {
   const diesChangeAreas = new Set(['WW', 'BA', 'CA']);
@@ -1025,8 +1028,13 @@ function ProductionSetupEditor({
           <Field label="Walking Speed (m/min)">
             <NumberInput value={setup.movement.walkingSpeed} min={0} onChange={(v) => onHeaderChange({ movement: { ...setup.movement, walkingSpeed: v } })} />
           </Field>
-          <Field label="Layout Scale (px/meter)">
-            <NumberInput value={setup.movement.pixelsPerMeter} min={1} onChange={(v) => onHeaderChange({ movement: { ...setup.movement, pixelsPerMeter: v } })} />
+          <Field label="Layout Scale (px/meter)" hint={isAdmin ? undefined : 'Only Admin can edit Layout Scale'}>
+            <NumberInput
+              value={setup.movement.pixelsPerMeter}
+              min={1}
+              readOnly={!isAdmin}
+              onChange={isAdmin ? (v) => onHeaderChange({ movement: { ...setup.movement, pixelsPerMeter: v } }) : undefined}
+            />
           </Field>
         </div>
         {!canRun && <p className="data-manager-hint">Add at least 1 operator and assign a Construction Detail to at least 1 machine before running the simulation.</p>}
@@ -1094,6 +1102,7 @@ function ProductionSetupEditor({
       <LayoutBuilder
         layout={setup.layout}
         readOnly
+        selectMachineGroups={false}
         onSelectionChange={setSelectedMachineIds}
         machineAppearance={machineAppearance}
         sidePanel={assignSelectionCard}

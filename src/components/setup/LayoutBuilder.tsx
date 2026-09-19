@@ -74,6 +74,7 @@ export function LayoutBuilder({
   onAssignedChange,
   pixelsPerMeter = DEFAULT_PIXELS_PER_METER,
   readOnly = false,
+  selectMachineGroups = true,
   onSelectionChange,
   machineAppearance,
   sidePanel,
@@ -97,6 +98,8 @@ export function LayoutBuilder({
    * callers that only need machine *selection* against a fixed layout (e.g. Production Simulation
    * assigning Construction/operators to a shift-selected group). */
   readOnly?: boolean;
+  /** When false, group members can be selected individually for assignment; dragging still moves the whole group. */
+  selectMachineGroups?: boolean;
   /** Notified whenever the selection changes — lets a parent drive a "bulk action on selection"
    * panel without owning the selection state itself. */
   onSelectionChange?: (ids: string[]) => void;
@@ -355,7 +358,7 @@ export function LayoutBuilder({
     e.stopPropagation();
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
     const clickedMachine = layout.find((m) => m.id === id);
-    const groupIds = clickedMachine?.groupId
+    const groupIds = selectMachineGroups && clickedMachine?.groupId
       ? new Set(layout.filter((m) => m.groupId === clickedMachine.groupId).map((m) => m.id))
       : new Set([id]);
     if (e.shiftKey) {
@@ -370,7 +373,21 @@ export function LayoutBuilder({
     const wasAlreadyMultiSelected = selectedIds.has(id) && selectedIds.size > 1;
     if (!selectedIds.has(id)) setSelectedIds(groupIds);
     if (readOnly) return;
-    const movingIds = wasAlreadyMultiSelected ? new Set([...selectedIds, ...groupIds]) : groupIds;
+    // Selection may be individual (so each group member can receive a different assignment),
+    // but dragging any member must always move its complete group. Expand every selected
+    // machine to its group only for the movement operation.
+    const movingIds = new Set<string>();
+    const moveSelection = wasAlreadyMultiSelected ? new Set([...selectedIds, ...groupIds]) : groupIds;
+    moveSelection.forEach((selectedId) => {
+      const selected = layout.find((machine) => machine.id === selectedId);
+      if (selected?.groupId) {
+        layout
+          .filter((machine) => machine.groupId === selected.groupId)
+          .forEach((machine) => movingIds.add(machine.id));
+      } else {
+        movingIds.add(selectedId);
+      }
+    });
     const positions = new Map<string, Point>();
     layout.forEach((m) => {
       if (movingIds.has(m.id)) positions.set(m.id, { x: m.x, y: m.y });
@@ -463,7 +480,11 @@ export function LayoutBuilder({
       if (hits.length > 0) {
         const hitSet = new Set(hits);
         layout.forEach((machine) => {
-          if (machine.groupId && hits.some((id) => layout.find((candidate) => candidate.id === id)?.groupId === machine.groupId)) {
+          if (
+            selectMachineGroups &&
+            machine.groupId &&
+            hits.some((id) => layout.find((candidate) => candidate.id === id)?.groupId === machine.groupId)
+          ) {
             hitSet.add(machine.id);
           }
         });
