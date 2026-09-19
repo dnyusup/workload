@@ -16,6 +16,7 @@ const STEPS = ['Setup', 'Machine Layout'];
 export function SetupWizard({ onStart }: { onStart: () => void }) {
   const { config, setConfig } = useAppConfig();
   const [step, setStep] = useState(0);
+  const [applyingConstruction, setApplyingConstruction] = useState(false);
   const derived = deriveMachineSpec(config.spec);
 
   const layoutIds = new Set(config.layout.map((m) => m.id));
@@ -24,10 +25,10 @@ export function SetupWizard({ onStart }: { onStart: () => void }) {
 
   return (
     <div className="setup-wizard">
-      <ConstructionDetailSelector />
-      <Stepper steps={STEPS} current={step} onSelect={setStep} />
+      <ConstructionDetailSelector onApplyingChange={setApplyingConstruction} />
+      <Stepper steps={STEPS} current={step} onSelect={setStep} disabled={applyingConstruction} />
 
-      <div className="setup-step-body">
+      <fieldset className={`setup-step-body setup-form-disabled${applyingConstruction ? ' is-applying' : ''}`} disabled={applyingConstruction}>
         {step === 0 && (
           <div className="setup-columns">
             <div className="setup-column">
@@ -73,7 +74,7 @@ export function SetupWizard({ onStart }: { onStart: () => void }) {
             />
           </>
         )}
-      </div>
+      </fieldset>
 
       <div className="setup-nav">
         <Button variant="ghost" disabled={step === 0} onClick={() => setStep((s) => Math.max(0, s - 1))}>

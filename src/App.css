@@ -557,6 +557,18 @@
   color: #f87171;
 }
 
+.setup-form-disabled {
+  border: 0;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.setup-form-disabled.is-applying {
+  cursor: wait;
+  opacity: 0.72;
+}
+
 /* Form primitives */
 .grid-2 {
   display: grid;

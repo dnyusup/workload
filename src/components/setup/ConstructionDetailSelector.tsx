@@ -13,7 +13,7 @@ function escapeODataString(value: string): string {
   return value.replace(/'/g, "''");
 }
 
-export function ConstructionDetailSelector() {
+export function ConstructionDetailSelector({ onApplyingChange }: { onApplyingChange?: (applying: boolean) => void }) {
   const { config, setConfig } = useAppConfig();
   const [products, setProducts] = useState<Mpp_wl_productses[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
@@ -52,6 +52,7 @@ export function ConstructionDetailSelector() {
     const product = products.find((p) => p.mpp_wl_productsid === productId);
     if (!product) return;
     setApplying(true);
+    onApplyingChange?.(true);
     setError(null);
     try {
       const newSpec = mapProductToSpec(product);
@@ -87,6 +88,7 @@ export function ConstructionDetailSelector() {
       setError(err instanceof Error ? err.message : 'Failed to load activities for this Construction.');
     } finally {
       setApplying(false);
+      onApplyingChange?.(false);
     }
   };
 
