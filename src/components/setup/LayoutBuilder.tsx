@@ -1004,7 +1004,7 @@ export function LayoutBuilder({
       }
     >
       {machHandled !== undefined && onAssignedChange && (
-        <div className="toolbar layout-builder-edit-row">
+        <div className="toolbar layout-builder-edit-row layout-builder-assignment-row">
           <p className="hint-row" style={{ margin: 0 }}>
             Total machines: <strong>{layout.length}</strong> &middot; Assigned to operator:{' '}
             <strong>{assignedCount}</strong> / {machHandled}

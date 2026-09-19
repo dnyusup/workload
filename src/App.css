@@ -1098,6 +1098,10 @@
   border-bottom: 1px dashed #1e293b;
 }
 
+.layout-builder-assignment-row {
+  justify-content: center;
+}
+
 .layout-canvas-wrap {
   position: relative;
   border: 1px dashed #1e293b;
