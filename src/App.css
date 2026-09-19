@@ -2329,6 +2329,29 @@
   margin-bottom: 10px;
 }
 
+.production-assign-mode-row {
+  display: grid;
+  grid-template-columns: minmax(110px, auto) minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.production-assign-mode-row label {
+  color: #94a3b8;
+  font-size: 0.78rem;
+}
+
+.production-assign-mode-hint {
+  color: #64748b;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.production-assign-mode-hint.is-pending {
+  color: #fbbf24;
+}
+
 .production-assign-row .input {
   flex: 1;
 }

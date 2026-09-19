@@ -33,6 +33,17 @@ const TASK_PRIORITY_OPTIONS: { value: TaskPriorityMode; label: string }[] = [
   { value: 'quickest', label: 'Quickest Task' },
 ];
 
+type OperatorAssignmentType = 'multi' | 'split';
+const OPERATOR_ASSIGNMENT_TYPE_STORAGE_KEY = 'workload-production-operator-assignment-type';
+
+function readOperatorAssignmentType(): OperatorAssignmentType {
+  try {
+    return localStorage.getItem(OPERATOR_ASSIGNMENT_TYPE_STORAGE_KEY) === 'split' ? 'split' : 'multi';
+  } catch {
+    return 'multi';
+  }
+}
+
 function downloadCsv(filename: string, headers: string[], rows: (string | number)[][]) {
   const escape = (value: string | number) => {
     const str = String(value ?? '');
@@ -549,6 +560,10 @@ function ProductionSetupEditor({
   const [bulkOperatorPrefix, setBulkOperatorPrefix] = useState('Opr');
   const [addingBulkOperators, setAddingBulkOperators] = useState(false);
   const [bulkConstructionId, setBulkConstructionId] = useState('');
+  const [operatorAssignmentType, setOperatorAssignmentType] = useState<OperatorAssignmentType>(
+    readOperatorAssignmentType,
+  );
+  const [bulkMultiOperatorId, setBulkMultiOperatorId] = useState('');
   const [bulkDoffingOperatorId, setBulkDoffingOperatorId] = useState('');
   const [bulkLoadingOperatorId, setBulkLoadingOperatorId] = useState('');
   const [bulkFractureOperatorId, setBulkFractureOperatorId] = useState('');
@@ -558,6 +573,7 @@ function ProductionSetupEditor({
   // change or Apply click) — compared against the bulk* form values above to flag an Apply button
   // yellow whenever the dropdown has moved away from what's currently on the machines.
   const [appliedConstructionId, setAppliedConstructionId] = useState('');
+  const [appliedMultiOperatorId, setAppliedMultiOperatorId] = useState('');
   const [appliedDoffingOperatorId, setAppliedDoffingOperatorId] = useState('');
   const [appliedLoadingOperatorId, setAppliedLoadingOperatorId] = useState('');
   const [appliedFractureOperatorId, setAppliedFractureOperatorId] = useState('');
@@ -615,13 +631,23 @@ function ProductionSetupEditor({
     const fracture = commonValue((a) => a.fractureRepairingOperatorId);
     const diesChange = commonValue((a) => a.diesChangeOperatorId);
     const defectRepairing = commonValue((a) => a.defectRepairingOperatorId);
+    const allOperatorIds = selectedAssignments.flatMap((assignment) => [
+      assignment.doffingOperatorId ?? '',
+      assignment.loadingOperatorId ?? '',
+      assignment.fractureRepairingOperatorId ?? '',
+      assignment.diesChangeOperatorId ?? '',
+      assignment.defectRepairingOperatorId ?? '',
+    ]);
+    const multiOperator = allOperatorIds.length > 0 && new Set(allOperatorIds).size === 1 ? allOperatorIds[0] : '';
     setBulkConstructionId(construction);
+    setBulkMultiOperatorId(multiOperator);
     setBulkDoffingOperatorId(doffing);
     setBulkLoadingOperatorId(loading);
     setBulkFractureOperatorId(fracture);
     setBulkDiesChangeOperatorId(diesChange);
     setBulkDefectRepairingOperatorId(defectRepairing);
     setAppliedConstructionId(construction);
+    setAppliedMultiOperatorId(multiOperator);
     setAppliedDoffingOperatorId(doffing);
     setAppliedLoadingOperatorId(loading);
     setAppliedFractureOperatorId(fracture);
@@ -634,7 +660,7 @@ function ProductionSetupEditor({
     // setup.assignments and stomp over the pending dropdown state. Explicit apply/unplan handlers
     // update applied*/bulk* state themselves for the field(s) they actually touch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedMachineIds]);
+  }, [selectedMachineIds, operatorAssignmentType]);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -732,12 +758,14 @@ function ProductionSetupEditor({
       defectRepairingOperatorId: undefined,
     });
     setBulkConstructionId('');
+    setBulkMultiOperatorId('');
     setBulkDoffingOperatorId('');
     setBulkLoadingOperatorId('');
     setBulkFractureOperatorId('');
     setBulkDiesChangeOperatorId('');
     setBulkDefectRepairingOperatorId('');
     setAppliedConstructionId('');
+    setAppliedMultiOperatorId('');
     setAppliedDoffingOperatorId('');
     setAppliedLoadingOperatorId('');
     setAppliedFractureOperatorId('');
@@ -831,6 +859,28 @@ function ProductionSetupEditor({
     if (!product) return;
     applyBulk({ constructionDetailId: product.mpp_wl_productsid, constructionDetailLabel: product.mpp_constructiondetailcode });
     setAppliedConstructionId(bulkConstructionId);
+  };
+
+  const applyMultiTaskOperator = (operatorId: string) => {
+    const patch = {
+      doffingOperatorId: operatorId || undefined,
+      loadingOperatorId: operatorId || undefined,
+      fractureRepairingOperatorId: operatorId || undefined,
+      diesChangeOperatorId: operatorId || undefined,
+      defectRepairingOperatorId: operatorId || undefined,
+    };
+    void applyBulk(patch);
+    setBulkMultiOperatorId(operatorId);
+    setAppliedMultiOperatorId(operatorId);
+  };
+
+  const changeOperatorAssignmentType = (value: OperatorAssignmentType) => {
+    setOperatorAssignmentType(value);
+    try {
+      localStorage.setItem(OPERATOR_ASSIGNMENT_TYPE_STORAGE_KEY, value);
+    } catch {
+      // The selected mode still applies for this session if browser storage is unavailable.
+    }
   };
 
   const operatorLabelOrBlank = (id?: string) => (id ? setup.operators.find((o) => o.id === id)?.label ?? '' : '');
@@ -983,6 +1033,7 @@ function ProductionSetupEditor({
   const canRun = setup.operators.length > 0 && setup.assignments.some((a) => a.constructionDetailId);
 
   const constructionDirty = bulkConstructionId !== appliedConstructionId;
+  const multiOperatorDirty = bulkMultiOperatorId !== appliedMultiOperatorId;
   const doffingDirty = bulkDoffingOperatorId !== appliedDoffingOperatorId;
   const loadingDirty = bulkLoadingOperatorId !== appliedLoadingOperatorId;
   const fractureDirty = bulkFractureOperatorId !== appliedFractureOperatorId;
@@ -998,6 +1049,18 @@ function ProductionSetupEditor({
         </Button>
       }
     >
+      <div className="production-assign-mode-row">
+        <label htmlFor="production-operator-assignment-type">Opr Assign Type</label>
+        <select
+          id="production-operator-assignment-type"
+          className="input"
+          value={operatorAssignmentType}
+          onChange={(event) => changeOperatorAssignmentType(event.target.value as OperatorAssignmentType)}
+        >
+          <option value="multi">Multi Task</option>
+          <option value="split">Split Task</option>
+        </select>
+      </div>
       <div className="production-assign-row">
         <SearchableSelect
           value={bulkConstructionId}
@@ -1017,111 +1080,131 @@ function ProductionSetupEditor({
           Apply
         </Button>
       </div>
-      <div className="production-assign-row">
-        <SearchableSelect
-          value={bulkDoffingOperatorId}
-          onChange={setBulkDoffingOperatorId}
-          placeholder="Select Doffing Operator"
-          searchPlaceholder="Search operator…"
-          options={operatorOptions}
-        />
-        <Button
-          variant="secondary"
-          className={doffingDirty ? 'btn-pending' : ''}
-          onClick={() => {
-            applyBulk({ doffingOperatorId: bulkDoffingOperatorId || undefined });
-            setAppliedDoffingOperatorId(bulkDoffingOperatorId);
-          }}
-          disabled={selectedMachineIds.length === 0}
-          title="Apply Doffing operator to selection"
-        >
-          Doff
-        </Button>
-      </div>
-      <div className="production-assign-row">
-        <SearchableSelect
-          value={bulkLoadingOperatorId}
-          onChange={setBulkLoadingOperatorId}
-          placeholder="Select Loading Operator"
-          searchPlaceholder="Search operator…"
-          options={operatorOptions}
-        />
-        <Button
-          variant="secondary"
-          className={loadingDirty ? 'btn-pending' : ''}
-          onClick={() => {
-            applyBulk({ loadingOperatorId: bulkLoadingOperatorId || undefined });
-            setAppliedLoadingOperatorId(bulkLoadingOperatorId);
-          }}
-          disabled={selectedMachineIds.length === 0}
-          title="Apply Loading operator to selection"
-        >
-          Load
-        </Button>
-      </div>
-      <div className="production-assign-row">
-        <SearchableSelect
-          value={bulkFractureOperatorId}
-          onChange={setBulkFractureOperatorId}
-          placeholder="Select Fracture Repairing Operator"
-          searchPlaceholder="Search operator…"
-          options={operatorOptions}
-        />
-        <Button
-          variant="secondary"
-          className={fractureDirty ? 'btn-pending' : ''}
-          onClick={() => {
-            applyBulk({ fractureRepairingOperatorId: bulkFractureOperatorId || undefined });
-            setAppliedFractureOperatorId(bulkFractureOperatorId);
-          }}
-          disabled={selectedMachineIds.length === 0}
-          title="Apply Fracture Repairing operator to selection"
-        >
-          Fract
-        </Button>
-      </div>
-      <div className="production-assign-row">
-        <SearchableSelect
-          value={bulkDiesChangeOperatorId}
-          onChange={setBulkDiesChangeOperatorId}
-          placeholder="Select Dies Change Operator"
-          searchPlaceholder="Search operator…"
-          options={operatorOptions}
-        />
-        <Button
-          variant="secondary"
-          className={diesChangeDirty ? 'btn-pending' : ''}
-          onClick={() => {
-            applyBulk({ diesChangeOperatorId: bulkDiesChangeOperatorId || undefined });
-            setAppliedDiesChangeOperatorId(bulkDiesChangeOperatorId);
-          }}
-          disabled={selectedMachineIds.length === 0}
-          title="Apply Dies Change operator to selection"
-        >
-          Dies
-        </Button>
-      </div>
-      <div className="production-assign-row">
-        <SearchableSelect
-          value={bulkDefectRepairingOperatorId}
-          onChange={setBulkDefectRepairingOperatorId}
-          placeholder="Select Defect Repairing Operator"
-          searchPlaceholder="Search operator…"
-          options={operatorOptions}
-        />
-        <Button
-          variant="secondary"
-          className={defectRepairingDirty ? 'btn-pending' : ''}
-          onClick={() => {
-            applyBulk({ defectRepairingOperatorId: bulkDefectRepairingOperatorId || undefined });
-            setAppliedDefectRepairingOperatorId(bulkDefectRepairingOperatorId);
-          }}
-          disabled={selectedMachineIds.length === 0}
-          title="Apply Defect Repairing operator to selection"
-        >
-          Defect
-        </Button>
-      </div>
+      {operatorAssignmentType === 'multi' ? (
+        <div className="production-assign-row">
+          <SearchableSelect
+            value={bulkMultiOperatorId}
+            onChange={(operatorId) => {
+              setBulkMultiOperatorId(operatorId);
+              if (selectedMachineIds.length > 0) applyMultiTaskOperator(operatorId);
+            }}
+            placeholder="Select Operator"
+            searchPlaceholder="Search operator…"
+            options={operatorOptions}
+          />
+          <span className={`production-assign-mode-hint${multiOperatorDirty ? ' is-pending' : ''}`}>
+            All activities
+          </span>
+        </div>
+      ) : (
+        <>
+          <div className="production-assign-row">
+            <SearchableSelect
+              value={bulkDoffingOperatorId}
+              onChange={setBulkDoffingOperatorId}
+              placeholder="Select Doffing Operator"
+              searchPlaceholder="Search operator…"
+              options={operatorOptions}
+            />
+            <Button
+              variant="secondary"
+              className={doffingDirty ? 'btn-pending' : ''}
+              onClick={() => {
+                applyBulk({ doffingOperatorId: bulkDoffingOperatorId || undefined });
+                setAppliedDoffingOperatorId(bulkDoffingOperatorId);
+              }}
+              disabled={selectedMachineIds.length === 0}
+              title="Apply Doffing operator to selection"
+            >
+              Doff
+            </Button>
+          </div>
+          <div className="production-assign-row">
+            <SearchableSelect
+              value={bulkLoadingOperatorId}
+              onChange={setBulkLoadingOperatorId}
+              placeholder="Select Loading Operator"
+              searchPlaceholder="Search operator…"
+              options={operatorOptions}
+            />
+            <Button
+              variant="secondary"
+              className={loadingDirty ? 'btn-pending' : ''}
+              onClick={() => {
+                applyBulk({ loadingOperatorId: bulkLoadingOperatorId || undefined });
+                setAppliedLoadingOperatorId(bulkLoadingOperatorId);
+              }}
+              disabled={selectedMachineIds.length === 0}
+              title="Apply Loading operator to selection"
+            >
+              Load
+            </Button>
+          </div>
+          <div className="production-assign-row">
+            <SearchableSelect
+              value={bulkFractureOperatorId}
+              onChange={setBulkFractureOperatorId}
+              placeholder="Select Fracture Repairing Operator"
+              searchPlaceholder="Search operator…"
+              options={operatorOptions}
+            />
+            <Button
+              variant="secondary"
+              className={fractureDirty ? 'btn-pending' : ''}
+              onClick={() => {
+                applyBulk({ fractureRepairingOperatorId: bulkFractureOperatorId || undefined });
+                setAppliedFractureOperatorId(bulkFractureOperatorId);
+              }}
+              disabled={selectedMachineIds.length === 0}
+              title="Apply Fracture Repairing operator to selection"
+            >
+              Fract
+            </Button>
+          </div>
+          <div className="production-assign-row">
+            <SearchableSelect
+              value={bulkDiesChangeOperatorId}
+              onChange={setBulkDiesChangeOperatorId}
+              placeholder="Select Dies Change Operator"
+              searchPlaceholder="Search operator…"
+              options={operatorOptions}
+            />
+            <Button
+              variant="secondary"
+              className={diesChangeDirty ? 'btn-pending' : ''}
+              onClick={() => {
+                applyBulk({ diesChangeOperatorId: bulkDiesChangeOperatorId || undefined });
+                setAppliedDiesChangeOperatorId(bulkDiesChangeOperatorId);
+              }}
+              disabled={selectedMachineIds.length === 0}
+              title="Apply Dies Change operator to selection"
+            >
+              Dies
+            </Button>
+          </div>
+          <div className="production-assign-row">
+            <SearchableSelect
+              value={bulkDefectRepairingOperatorId}
+              onChange={setBulkDefectRepairingOperatorId}
+              placeholder="Select Defect Repairing Operator"
+              searchPlaceholder="Search operator…"
+              options={operatorOptions}
+            />
+            <Button
+              variant="secondary"
+              className={defectRepairingDirty ? 'btn-pending' : ''}
+              onClick={() => {
+                applyBulk({ defectRepairingOperatorId: bulkDefectRepairingOperatorId || undefined });
+                setAppliedDefectRepairingOperatorId(bulkDefectRepairingOperatorId);
+              }}
+              disabled={selectedMachineIds.length === 0}
+              title="Apply Defect Repairing operator to selection"
+            >
+              Defect
+            </Button>
+          </div>
+        </>
+      )}
     </Card>
   );
 
