@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAppConfig } from '../../context/AppConfigContext';
 import { deriveMachineSpec } from '../../lib/calculations';
+import { calculateSingleOperatorForecast } from '../../lib/singleOperatorUtilization';
 import { Stepper } from '../ui/Stepper';
 import { Button } from '../ui/Button';
 import { SpecForm } from './SpecForm';
@@ -18,6 +19,7 @@ export function SetupWizard({ onStart }: { onStart: () => void }) {
   const [step, setStep] = useState(0);
   const [applyingConstruction, setApplyingConstruction] = useState(false);
   const derived = deriveMachineSpec(config.spec);
+  const forecast = calculateSingleOperatorForecast(config);
 
   const layoutIds = new Set(config.layout.map((m) => m.id));
   const assignedCount = (config.assignedMachineIds ?? []).filter((id) => layoutIds.has(id)).length;
@@ -51,6 +53,7 @@ export function SetupWizard({ onStart }: { onStart: () => void }) {
               <SpecForm spec={config.spec} onChange={(spec) => setConfig((prev) => ({ ...prev, spec }))} />
               <OperatorForm
                 operator={config.operator}
+                forecast={forecast}
                 onChange={(operator) => setConfig((prev) => ({ ...prev, operator }))}
               />
             </div>

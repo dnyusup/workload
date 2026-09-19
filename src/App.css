@@ -724,6 +724,41 @@
   color: #64748b;
 }
 
+.setup-forecast-utilization {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 1px;
+  padding: 5px 8px;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  font-size: 0.7rem;
+  line-height: 1.2;
+}
+
+.setup-forecast-utilization strong {
+  font-size: 0.78rem;
+}
+
+.setup-forecast-utilization-under-target {
+  color: #86efac;
+  background: rgb(20 83 45 / 18%);
+  border-color: rgb(34 197 94 / 40%);
+}
+
+.setup-forecast-utilization-above-target {
+  color: #fde68a;
+  background: rgb(133 77 14 / 18%);
+  border-color: rgb(234 179 8 / 40%);
+}
+
+.setup-forecast-utilization-overload {
+  color: #fca5a5;
+  background: rgb(127 29 29 / 18%);
+  border-color: rgb(239 68 68 / 40%);
+}
+
 .input {
   background: #0b1220;
   border: 1px solid #1e293b;

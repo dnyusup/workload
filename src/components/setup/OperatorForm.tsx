@@ -1,5 +1,6 @@
 import type { OperatorConfig, TaskPriorityMode } from '../../types';
 import { availableTimeMinutes } from '../../lib/calculations';
+import type { SingleOperatorForecast } from '../../lib/singleOperatorUtilization';
 import { Card } from '../ui/Card';
 import { Field, NumberInput, SelectInput } from '../ui/Field';
 
@@ -10,9 +11,11 @@ const TASK_PRIORITY_OPTIONS: { value: TaskPriorityMode; label: string }[] = [
 
 export function OperatorForm({
   operator,
+  forecast,
   onChange,
 }: {
   operator: OperatorConfig;
+  forecast: SingleOperatorForecast;
   onChange: (next: OperatorConfig) => void;
 }) {
   const set = <K extends keyof OperatorConfig>(key: K) => (v: OperatorConfig[K]) => onChange({ ...operator, [key]: v });
@@ -29,6 +32,19 @@ export function OperatorForm({
         </Field>
         <Field label="# Assigned Machines">
           <NumberInput value={operator.machHandled} min={0} onChange={set('machHandled')} />
+          <div
+            className={`setup-forecast-utilization ${
+              forecast.forecastUtilizationPercent >= 100
+                ? 'setup-forecast-utilization-overload'
+                : forecast.forecastUtilizationPercent >= 85
+                  ? 'setup-forecast-utilization-above-target'
+                  : 'setup-forecast-utilization-under-target'
+            }`}
+            title={`Ideal demand ${forecast.utilizationPercent.toFixed(1)}%. Forecast includes ${forecast.forecastServiceMinutes.toFixed(1)} min handling and ${forecast.forecastWalkingMinutes.toFixed(1)} min walking. ${forecast.forecastWaitingMinutes.toFixed(1)} min expected backlog.`}
+          >
+            <span>Forecast utilization</span>
+            <strong>{forecast.forecastUtilizationPercent.toFixed(1)}%</strong>
+          </div>
         </Field>
         <Field label="Shift Time (min)">
           <NumberInput value={operator.shiftTime} onChange={set('shiftTime')} />
