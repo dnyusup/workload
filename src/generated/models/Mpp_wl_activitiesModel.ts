@@ -6,7 +6,8 @@ export const Mpp_wl_activitiesmpp_taskname = {
   0: 'Doffing',
   1: 'Loading',
   2: 'FractureRepairing',
-  3: 'DiesChange'
+  3: 'DiesChange',
+  4: 'DefectRepairing'
 } as const;
 export type Mpp_wl_activitiesmpp_taskname = keyof typeof Mpp_wl_activitiesmpp_taskname;
 export const Mpp_wl_activitiesstatecode = {

@@ -221,15 +221,18 @@
             "Doffing",
             "Loading",
             "FractureRepairing",
-            "DiesChange"
+            "DiesChange",
+            "DefectRepairing"
           ],
           "x-ms-enum-values": [
             0,
             1,
             2,
-            3
+            3,
+            4
           ],
           "Color": [
+            null,
             null,
             null,
             null,
