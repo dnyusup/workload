@@ -23,6 +23,8 @@ export function OperatorForm({
 }) {
   const set = <K extends keyof OperatorConfig>(key: K) => (v: OperatorConfig[K]) => onChange({ ...operator, [key]: v });
   const available = availableTimeMinutes(operator.shiftTime, operator.lunchTime, operator.meetingTime);
+  const highBacklogAtCapacity =
+    forecast.forecastUtilizationPercent >= 100 && forecast.forecastWaitingMinutes > 5;
 
   return (
     <Card
@@ -56,11 +58,13 @@ export function OperatorForm({
           <NumberInput value={operator.machHandled} min={0} onChange={set('machHandled')} />
           <div
             className={`setup-forecast-utilization ${
-              forecast.forecastUtilizationPercent >= 100
-                ? 'setup-forecast-utilization-overload'
-                : forecast.forecastUtilizationPercent >= 85
-                  ? 'setup-forecast-utilization-above-target'
-                  : 'setup-forecast-utilization-under-target'
+              highBacklogAtCapacity
+                ? 'setup-forecast-utilization-above-target'
+                : forecast.forecastUtilizationPercent >= 90
+                ? 'setup-forecast-utilization-under-target'
+                : forecast.forecastUtilizationPercent >= 80
+                  ? 'setup-forecast-utilization-blue'
+                  : 'setup-forecast-utilization-orange'
             }`}
             title={`Ideal demand ${forecast.utilizationPercent.toFixed(1)}%. Forecast includes ${forecast.forecastServiceMinutes.toFixed(1)} min handling and ${forecast.forecastWalkingMinutes.toFixed(1)} min walking. ${forecast.forecastWaitingMinutes.toFixed(1)} min expected backlog.`}
           >

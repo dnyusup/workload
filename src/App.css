@@ -805,6 +805,18 @@
   border-color: rgb(239 68 68 / 40%);
 }
 
+.setup-forecast-utilization-blue {
+  color: #bfdbfe;
+  background: rgb(30 64 175 / 18%);
+  border-color: rgb(59 130 246 / 45%);
+}
+
+.setup-forecast-utilization-orange {
+  color: #fed7aa;
+  background: rgb(154 52 18 / 18%);
+  border-color: rgb(249 115 22 / 45%);
+}
+
 .input {
   background: #0b1220;
   border: 1px solid #1e293b;
