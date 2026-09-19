@@ -524,11 +524,19 @@
 
 .construction-selector-meta {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  flex: 1 1 420px;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 16px;
+  row-gap: 4px;
   font-size: 0.78rem;
   color: #94a3b8;
   padding-bottom: 4px;
+}
+
+.construction-selector-meta span {
+  white-space: nowrap;
 }
 
 .construction-selector-status {
