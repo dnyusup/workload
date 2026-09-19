@@ -1084,17 +1084,20 @@ function ProductionSetupEditor({
         <div className="production-assign-row">
           <SearchableSelect
             value={bulkMultiOperatorId}
-            onChange={(operatorId) => {
-              setBulkMultiOperatorId(operatorId);
-              if (selectedMachineIds.length > 0) applyMultiTaskOperator(operatorId);
-            }}
+            onChange={setBulkMultiOperatorId}
             placeholder="Select Operator"
             searchPlaceholder="Search operator…"
             options={operatorOptions}
           />
-          <span className={`production-assign-mode-hint${multiOperatorDirty ? ' is-pending' : ''}`}>
-            All activities
-          </span>
+          <Button
+            variant="secondary"
+            className={multiOperatorDirty ? 'btn-pending' : ''}
+            onClick={() => applyMultiTaskOperator(bulkMultiOperatorId)}
+            disabled={selectedMachineIds.length === 0}
+            title="Apply the selected operator to all activities"
+          >
+            Apply
+          </Button>
         </div>
       ) : (
         <>

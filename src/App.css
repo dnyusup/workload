@@ -2342,16 +2342,6 @@
   font-size: 0.78rem;
 }
 
-.production-assign-mode-hint {
-  color: #64748b;
-  font-size: 0.72rem;
-  white-space: nowrap;
-}
-
-.production-assign-mode-hint.is-pending {
-  color: #fbbf24;
-}
-
 .production-assign-row .input {
   flex: 1;
 }
