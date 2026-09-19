@@ -5,14 +5,18 @@ import type { ActivityConfig, MachCondition, MachineSpecInput } from '../types';
 import { fractureRepairingDenominator } from './calculations';
 
 const WEIGHT_LOADING_AREAS = ['WW', 'BA', 'CA', 'IS', 'IP'];
+const DIES_CHANGE_AREAS = ['WW', 'BA', 'CA'];
+const DEFECT_REPAIRING_AREAS = ['CB', 'BU', 'SP', 'CH', 'CR'];
 
 const TASK_KEY_BY_LABEL: Record<string, string> = {
   Doffing: 'doffing',
   Loading: 'loading',
   FractureRepairing: 'fractureRepairing',
+  DiesChange: 'diesChange',
+  DefectRepairing: 'defectRepairing',
 };
 
-const TASK_ORDER = ['Doffing', 'Loading', 'FractureRepairing'] as const;
+const TASK_ORDER = ['Doffing', 'Loading', 'FractureRepairing', 'DiesChange', 'DefectRepairing'] as const;
 
 function parseNumber(value: unknown, fallback = 0): number {
   if (typeof value === 'number') return Number.isFinite(value) ? value : fallback;
@@ -46,6 +50,8 @@ export function mapProductToSpec(product: Mpp_wl_productses): MachineSpecInput {
     spoolLength: parseNumber(product.mpp_spoollength, 0),
     linearDensity: parseNumber(product.mpp_lineardensity, 0),
     fracturePerTon: parseNumber(product.mpp_fractureperton, 0),
+    diesPerTon: parseNumber(product.mpp_dieston, 0),
+    defectsPerTon: parseNumber(product.mpp_defectston, 0),
   };
 }
 
@@ -216,7 +222,10 @@ function buildLoadingActivities(
  * buildLoadingActivities — and otherwise falls back to the generic per-task handling below. */
 export function buildActivitiesFromRows(
   rows: Mpp_wl_activities[],
-  product: Pick<Mpp_wl_productses, 'mpp_area' | 'mpp_polength1' | 'mpp_polength2' | 'mpp_polength3' | 'mpp_spoollength'>,
+  product: Pick<
+    Mpp_wl_productses,
+    'mpp_area' | 'mpp_polength1' | 'mpp_polength2' | 'mpp_polength3' | 'mpp_spoollength' | 'mpp_dieston' | 'mpp_defectston'
+  >,
   spoolWeight: number,
   fracturePerTon: number,
 ): { activities: ActivityConfig[]; errors: string[] } {
@@ -233,26 +242,37 @@ export function buildActivitiesFromRows(
       continue;
     }
 
-    const displayLabel = taskLabel === 'FractureRepairing' ? 'Fracture Repairing' : taskLabel;
+    const displayLabel =
+      taskLabel === 'FractureRepairing' ? 'Fracture Repairing' : taskLabel === 'DiesChange' ? 'Dies Change' : taskLabel === 'DefectRepairing' ? 'Defect Repairing' : taskLabel;
     const taskRows = rows.filter((row) => taskLabelText(row) === taskLabel);
     const parentRow = taskRows.find((row) => !row.mpp_subtaskname?.trim());
     const subRows = taskRows.filter((row) => row.mpp_subtaskname?.trim());
     const isFractureParent = taskKey === 'fractureRepairing';
+    const area = (product.mpp_area ?? '').trim().toUpperCase();
+    const isDiesChangeParent = taskKey === 'diesChange' && DIES_CHANGE_AREAS.includes(area);
+    const isDefectRepairingParent = taskKey === 'defectRepairing' && DEFECT_REPAIRING_AREAS.includes(area);
+    const regulatedRate = isDiesChangeParent
+      ? parseNumber(product.mpp_dieston, 0)
+      : isDefectRepairingParent
+        ? parseNumber(product.mpp_defectston, 0)
+        : 0;
+    const isTonRegulatedParent = isFractureParent || isDiesChangeParent || isDefectRepairingParent;
 
-    if (parentRow) {
+    if (parentRow && (taskKey !== 'diesChange' || isDiesChangeParent) && (taskKey !== 'defectRepairing' || isDefectRepairingParent)) {
       result.push({
         key: taskKey,
         label: displayLabel,
         timeMinutes: parseNumber(parentRow.mpp_tasktime, 0),
-        numerator: isFractureParent ? fracturePerTon : parseNumber(parentRow.mpp_numerator, 1),
-        numeratorAuto: isFractureParent,
-        denominator: isFractureParent ? fractureRepairingDenominator(spoolWeight) : parseNumber(parentRow.mpp_denominator, 1),
-        denominatorAuto: isFractureParent,
+        numerator: isTonRegulatedParent ? (isFractureParent ? fracturePerTon : regulatedRate) : parseNumber(parentRow.mpp_numerator, 1),
+        numeratorAuto: isTonRegulatedParent,
+        denominator: isTonRegulatedParent ? fractureRepairingDenominator(spoolWeight) : parseNumber(parentRow.mpp_denominator, 1),
+        denominatorAuto: isTonRegulatedParent,
         machCondition: parseMachCondition(parentRow.mpp_machcondition),
       });
     }
 
-    subRows.forEach((row) => {
+    if (taskKey !== 'diesChange' && taskKey !== 'defectRepairing') {
+      subRows.forEach((row) => {
       result.push({
         key: `${taskKey}-sub-${row.mpp_wl_activityid}`,
         parentKey: taskKey,
@@ -264,7 +284,8 @@ export function buildActivitiesFromRows(
         denominatorAuto: false,
         machCondition: parseMachCondition(row.mpp_machcondition),
       });
-    });
+      });
+    }
   }
 
   return { activities: result, errors };

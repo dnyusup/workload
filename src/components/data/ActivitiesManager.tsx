@@ -13,15 +13,16 @@ import { SearchableSelect } from '../ui/SearchableSelect';
 /** DiesChange only applies to Constructions belonging to these Areas (see WL_Products.mpp_area) —
  * everywhere else it's hidden from the Task dropdown, mirroring the Dies/Ton field restriction. */
 const DIES_CHANGE_AREAS = ['WW', 'CA', 'BA'];
+const DEFECT_REPAIRING_AREAS = ['CB', 'BU', 'SP', 'CH', 'CR'];
 
 const TASK_OPTIONS = Object.entries(Mpp_wl_activitiesmpp_taskname).map(([value, label]) => ({
-  value: Number(value) as 0 | 1 | 2 | 3,
+  value: Number(value) as 0 | 1 | 2 | 3 | 4,
   label,
 }));
 
 interface ActivityFields {
   mpp_constructiontype: string;
-  mpp_taskname: 0 | 1 | 2 | 3;
+  mpp_taskname: 0 | 1 | 2 | 3 | 4;
   mpp_subtaskname: string;
   mpp_tasktime: number;
   mpp_numerator: number;
@@ -80,7 +81,7 @@ function fieldsFromRecord(record: Mpp_wl_activities): ActivityFields {
   const constructionType = record.mpp_constructiontype ?? '';
   return {
     mpp_constructiontype: constructionType,
-    mpp_taskname: (record.mpp_taskname ?? 0) as 0 | 1 | 2 | 3,
+    mpp_taskname: (record.mpp_taskname ?? 0) as 0 | 1 | 2 | 3 | 4,
     mpp_subtaskname: record.mpp_subtaskname ?? '',
     mpp_tasktime: record.mpp_tasktime ?? 0,
     mpp_numerator: record.mpp_numerator ?? 1,
@@ -197,13 +198,14 @@ export function ActivitiesManager({
 
   const sortIndicator = (key: keyof ActivityFields) => (sort?.key === key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : '');
 
-  /** DiesChange (value 3) only shows up for Constructions whose Area is WW/CA/BA; already-saved
-   * rows with DiesChange keep showing it regardless, so switching Area away doesn't silently hide
-   * the selected value. */
+  /** Special tasks are shown only for their applicable Areas; already-saved values remain visible
+   * so changing product master data does not silently hide an existing activity. */
   const taskOptionsFor = (row: ActivityRow) => {
     const area = areaByConstruction.get(row.fields.mpp_constructiontype) ?? '';
-    if (DIES_CHANGE_AREAS.includes(area) || row.fields.mpp_taskname === 3) return TASK_OPTIONS;
-    return TASK_OPTIONS.filter((opt) => opt.value !== 3);
+    const allowed = new Set<number>([0, 1, 2]);
+    if (DIES_CHANGE_AREAS.includes(area) || row.fields.mpp_taskname === 3) allowed.add(3);
+    if (DEFECT_REPAIRING_AREAS.includes(area) || row.fields.mpp_taskname === 4) allowed.add(4);
+    return TASK_OPTIONS.filter((opt) => allowed.has(opt.value));
   };
 
   const addRow = () => {
@@ -377,7 +379,7 @@ export function ActivitiesManager({
                     <select
                       className="input"
                       value={row.fields.mpp_taskname}
-                      onChange={(e) => updateField(row.id, 'mpp_taskname', Number(e.target.value) as 0 | 1 | 2 | 3)}
+                      onChange={(e) => updateField(row.id, 'mpp_taskname', Number(e.target.value) as 0 | 1 | 2 | 3 | 4)}
                     >
                       {taskOptionsFor(row).map((opt) => (
                         <option key={opt.value} value={opt.value}>

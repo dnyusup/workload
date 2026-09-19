@@ -6,6 +6,8 @@ export interface MachineSpecInput {
   spoolLength: number;
   linearDensity: number;
   fracturePerTon: number;
+  diesPerTon: number;
+  defectsPerTon: number;
 }
 
 export const PRODUCT_AREAS = ['BU', 'CB', 'SP', 'CH', 'CR', 'WW', 'IS', 'IP', 'CA', 'BA'] as const;
@@ -127,6 +129,8 @@ export interface PendingTask {
   activity: ActivityKey;
   label: string;
   timeMinutes: number;
+  /** Number of dies changed for a DiesChange event, when applicable. */
+  quantity?: number;
   /** Production Simulation only: which ProductionOperator this specific task belongs to (resolved
    * from the machine's per-activity operator assignment). Undefined in the single-operator
    * Simulator, where every task implicitly belongs to the one shared operator. */

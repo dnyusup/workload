@@ -20,6 +20,7 @@ interface ProductFields {
   mpp_lineardensity: string;
   mpp_fractureperton: string;
   mpp_dieston: string;
+  mpp_defectston: string;
   mpp_polength1: number;
   mpp_polength2: number;
   mpp_polength3: number;
@@ -49,6 +50,7 @@ const COLUMNS: { key: keyof ProductFields; label: string; type: 'text' | 'number
   { key: 'mpp_lineardensity', label: 'LinearDensity', type: 'text' },
   { key: 'mpp_fractureperton', label: 'Fracture/Ton', type: 'text' },
   { key: 'mpp_dieston', label: 'Dies/Ton', type: 'text' },
+  { key: 'mpp_defectston', label: 'Defect/Ton', type: 'text' },
   { key: 'mpp_polength1', label: 'POlength1', type: 'number' },
   { key: 'mpp_polength2', label: 'POlength2', type: 'number' },
   { key: 'mpp_polength3', label: 'POlength3', type: 'number' },
@@ -100,6 +102,7 @@ function emptyFields(): ProductFields {
     mpp_lineardensity: '',
     mpp_fractureperton: '',
     mpp_dieston: '',
+    mpp_defectston: '',
     mpp_polength1: 0,
     mpp_polength2: 0,
     mpp_polength3: 0,
@@ -120,6 +123,7 @@ function fieldsFromRecord(record: Mpp_wl_productses): ProductFields {
     mpp_lineardensity: record.mpp_lineardensity ?? '',
     mpp_fractureperton: record.mpp_fractureperton ?? '',
     mpp_dieston: record.mpp_dieston ?? '',
+    mpp_defectston: record.mpp_defectston ?? '',
     mpp_polength1: record.mpp_polength1 ?? 0,
     mpp_polength2: record.mpp_polength2 ?? 0,
     mpp_polength3: record.mpp_polength3 ?? 0,

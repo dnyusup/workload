@@ -22,6 +22,8 @@ function emptyCounts(activities: ActivityConfig[]): Record<ActivityKey, number> 
   return Object.fromEntries(activities.map((a) => [a.key, 0]));
 }
 
+const GLOBAL_EVENT_ACTIVITIES = new Set(['fractureRepairing', 'diesChange', 'defectRepairing']);
+
 /** Root activity family an activity key belongs to (doffing / loading / fractureRepairing),
  * matching the `<family>` / `<family>-sub-*` / `<family>-*` key conventions used throughout the
  * app (see productCatalog.ts) — this decides which of a machine assignment's three operator slots
@@ -30,6 +32,8 @@ function activityFamily(key: ActivityKey): 'doffing' | 'loading' | 'fractureRepa
   if (key === 'doffing' || key.startsWith('doffing-')) return 'doffing';
   if (key === 'loading' || key.startsWith('loading-')) return 'loading';
   if (key === 'fractureRepairing' || key.startsWith('fractureRepairing-')) return 'fractureRepairing';
+  if (key === 'diesChange' || key.startsWith('diesChange-')) return 'fractureRepairing';
+  if (key === 'defectRepairing' || key.startsWith('defectRepairing-')) return 'fractureRepairing';
   return null;
 }
 
@@ -62,6 +66,10 @@ interface ConstructionFractureState {
   cycle: number;
   globalSpoolsCompleted: number;
   fractureEventsTriggered: number;
+  diesChangeCycle: number;
+  diesChangeEventsTriggered: number;
+  defectRepairingCycle: number;
+  defectRepairingEventsTriggered: number;
 }
 
 function findActivity(activities: ActivityConfig[], key: ActivityKey): ActivityConfig {
@@ -186,8 +194,18 @@ export class ProductionSimulationEngine {
       const groupMachines = this.machinesByConstruction.get(id) ?? [];
       const cycle = groupMachines[0]?.cycleLengths.fractureRepairing ?? Infinity;
       const initialSpools = groupMachines.reduce((sum, m) => sum + m.spoolsCompleted, 0);
-      const fractureEventsTriggered = Number.isFinite(cycle) && cycle > 0 ? Math.floor(initialSpools / cycle) : 0;
-      this.fractureByConstruction.set(id, { cycle, globalSpoolsCompleted: initialSpools, fractureEventsTriggered });
+      const diesChangeCycle = groupMachines[0]?.cycleLengths.diesChange ?? Infinity;
+      const defectRepairingCycle = groupMachines[0]?.cycleLengths.defectRepairing ?? Infinity;
+      this.fractureByConstruction.set(id, {
+        cycle,
+        globalSpoolsCompleted: initialSpools,
+        fractureEventsTriggered: Number.isFinite(cycle) && cycle > 0 ? Math.floor(initialSpools / cycle) : 0,
+        diesChangeCycle,
+        diesChangeEventsTriggered: Number.isFinite(diesChangeCycle) && diesChangeCycle > 0 ? Math.floor(initialSpools / diesChangeCycle) : 0,
+        defectRepairingCycle,
+        defectRepairingEventsTriggered:
+          Number.isFinite(defectRepairingCycle) && defectRepairingCycle > 0 ? Math.floor(initialSpools / defectRepairingCycle) : 0,
+      });
     });
 
     // All operators begin the shift standing at the layout's single configured start point, if
@@ -310,7 +328,7 @@ export class ProductionSimulationEngine {
       dueCounts.set(key, Number.isFinite(cycle) && cycle > 0 ? Math.floor(machine.spoolsCompleted / cycle) : 0);
       handledCounts.set(key, machine.completedByActivity[key] ?? 0);
     });
-    machine.activities.filter((a) => a.key !== 'fractureRepairing').forEach((activity) => {
+    machine.activities.filter((a) => !GLOBAL_EVENT_ACTIVITIES.has(a.key)).forEach((activity) => {
       const { key } = activity;
       if (activity.loadingInterrupt) return;
       const cycle = machine.cycleLengths[key];
@@ -458,6 +476,72 @@ export class ProductionSimulationEngine {
       this.addLog(atMin, `Fracture occurred (${constructionLabel}) — Machine ${target.label} will be serviced while running`);
     }
     return true;
+  }
+
+  private injectGlobalActivityForConstruction(
+    constructionId: string,
+    activityKey: 'diesChange' | 'defectRepairing',
+    atMin: number,
+  ): boolean {
+    const candidates = (this.machinesByConstruction.get(constructionId) ?? []).filter((m) => m.status === 'running');
+    if (candidates.length === 0) return false;
+    const target = candidates[Math.floor(Math.random() * candidates.length)];
+    if (target.pendingTasks.some((t) => t.activity === activityKey)) return false;
+    const activity = findActivity(target.activities, activityKey);
+    const quantity = activityKey === 'diesChange' ? (Math.random() < 0.5 ? 7 : 26) : undefined;
+    const assignedOperatorId = this.operatorIdForTask(target, activityKey);
+    if (!assignedOperatorId) {
+      const warnKey = `${target.id}:${activityKey}`;
+      if (!this.warnedNoOperator.has(warnKey)) {
+        this.warnedNoOperator.add(warnKey);
+        this.warnings.push(`Machine ${target.label}: "${activity.label}" is due but has no operator assigned.`);
+      }
+    }
+    const label = quantity ? `${activity.label} (${quantity} dies)` : activity.label;
+    target.pendingTasks.push({
+      activity: activityKey,
+      label,
+      timeMinutes: activity.timeMinutes * (quantity ?? 1),
+      quantity,
+      assignedOperatorId,
+    });
+    const constructionLabel = this.constructionLabelById.get(constructionId) ?? constructionId;
+    if (isStopActivity(target.activities, activityKey)) {
+      target.runtimeRemainingMin = Math.max(0, target.nextCompletionAt - atMin);
+      target.runtimePaused = true;
+      target.status = 'needs-service';
+      target.queuedSince = atMin;
+      target.nextCompletionAt = Number.POSITIVE_INFINITY;
+      this.addLog(atMin, `${label} (${constructionLabel}) — scheduled on Machine ${target.label} after the current runtime`);
+    } else {
+      this.addLog(atMin, `${label} (${constructionLabel}) — Machine ${target.label} will be serviced while running`);
+    }
+    return true;
+  }
+
+  private triggerMidRuntimeGlobalActivityForConstruction(
+    constructionId: string,
+    activityKey: 'diesChange' | 'defectRepairing',
+    atMin: number,
+  ) {
+    const state = this.fractureByConstruction.get(constructionId);
+    if (!state) return;
+    const cycle = activityKey === 'diesChange' ? state.diesChangeCycle : state.defectRepairingCycle;
+    if (!Number.isFinite(cycle) || cycle <= 0) return;
+    const groupMachines = this.machinesByConstruction.get(constructionId) ?? [];
+    const fractionalSpools = groupMachines.reduce((total, machine) => {
+      if (machine.status !== 'running' || machine.runtimePerSpool <= 0) return total;
+      const elapsed = machine.runtimePerSpool - (machine.nextCompletionAt - atMin);
+      return total + Math.max(0, Math.min(1, elapsed / machine.runtimePerSpool));
+    }, state.globalSpoolsCompleted);
+    let eventsTriggered =
+      activityKey === 'diesChange' ? state.diesChangeEventsTriggered : state.defectRepairingEventsTriggered;
+    while (fractionalSpools >= (eventsTriggered + 1) * cycle) {
+      if (!this.injectGlobalActivityForConstruction(constructionId, activityKey, atMin)) break;
+      eventsTriggered += 1;
+    }
+    if (activityKey === 'diesChange') state.diesChangeEventsTriggered = eventsTriggered;
+    else state.defectRepairingEventsTriggered = eventsTriggered;
   }
 
   private accumulateDowntime(deltaMin: number) {
@@ -870,7 +954,11 @@ export class ProductionSimulationEngine {
       const startMin = this.metrics.clockMin;
       this.advanceMachines(startMin, startMin + step);
       this.machines.forEach((machine) => this.triggerMidRuntimeLoading(machine, startMin + step));
-      this.fractureByConstruction.forEach((_, constructionId) => this.triggerMidRuntimeFractureForConstruction(constructionId, startMin + step));
+      this.fractureByConstruction.forEach((_, constructionId) => {
+        this.triggerMidRuntimeFractureForConstruction(constructionId, startMin + step);
+        this.triggerMidRuntimeGlobalActivityForConstruction(constructionId, 'diesChange', startMin + step);
+        this.triggerMidRuntimeGlobalActivityForConstruction(constructionId, 'defectRepairing', startMin + step);
+      });
       this.operators.forEach((operator, i) => this.advanceOperator(operator, this.metrics.perOperator[i], startMin, step));
       this.servicingOperatorByMachineId.clear();
       this.operators.forEach((op) => {

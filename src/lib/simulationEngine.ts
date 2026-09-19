@@ -27,6 +27,8 @@ function emptyDowntime(activities: ActivityConfig[] = []): Record<DowntimeReason
   return { ...Object.fromEntries(activities.map((activity) => [activity.key, 0])), waiting: 0 };
 }
 
+const GLOBAL_EVENT_ACTIVITIES = new Set(['fractureRepairing', 'diesChange', 'defectRepairing']);
+
 function dueBreakKind(label: string | null): 'lunch' | 'meeting' {
   return label?.toLowerCase().includes('meeting') ? 'meeting' : 'lunch';
 }
@@ -74,7 +76,7 @@ export class SimulationEngine {
    * across the whole line reaches its cycle length, then lands on a random currently-running
    * machine (applied once that machine's current spool finishes, never interrupting it mid-run). */
   private globalSpoolsCompleted = 0;
-  private fractureEventsTriggered = 0;
+  private globalEventCounts = new Map<ActivityKey, number>();
 
   constructor(config: AppConfig) {
     this.config = config;
@@ -101,7 +103,7 @@ export class SimulationEngine {
       const startSpools = assigned ? Math.floor(Math.random() * theoreticalSpoolsPerShift) : 0;
       // Per-machine cycle catch-up only applies to Doffing/Loading — Fracture Repairing is global.
       const completedByActivity = emptyCounts(config.activities);
-      config.activities.filter((activity) => activity.key !== 'fractureRepairing').forEach(({ key }) => {
+      config.activities.filter((activity) => !GLOBAL_EVENT_ACTIVITIES.has(activity.key)).forEach(({ key }) => {
         const cycle = this.cycleLengths[key];
         completedByActivity[key] = Number.isFinite(cycle) && cycle > 0 ? Math.floor(startSpools / cycle) : 0;
       });
@@ -155,11 +157,13 @@ export class SimulationEngine {
     });
 
     this.globalSpoolsCompleted = this.machines.reduce((sum, m) => sum + m.spoolsCompleted, 0);
-    const fractureCycle = this.cycleLengths.fractureRepairing;
-    this.fractureEventsTriggered =
-      Number.isFinite(fractureCycle) && fractureCycle > 0
-        ? Math.floor(this.globalSpoolsCompleted / fractureCycle)
-        : 0;
+    config.activities.filter((activity) => GLOBAL_EVENT_ACTIVITIES.has(activity.key)).forEach((activity) => {
+      const cycle = this.cycleLengths[activity.key];
+      this.globalEventCounts.set(
+        activity.key,
+        Number.isFinite(cycle) && cycle > 0 ? Math.floor(this.globalSpoolsCompleted / cycle) : 0,
+      );
+    });
 
     const start = this.config.operatorStart ?? this.machines[0] ?? { x: 0, y: 0 };
     this.operator = {
@@ -313,7 +317,7 @@ export class SimulationEngine {
       dueCounts.set(key, Number.isFinite(cycle) && cycle > 0 ? Math.floor(machine.spoolsCompleted / cycle) : 0);
       handledCounts.set(key, machine.completedByActivity[key] ?? 0);
     });
-    this.config.activities.filter((activity) => activity.key !== 'fractureRepairing').forEach((activity) => {
+    this.config.activities.filter((activity) => !GLOBAL_EVENT_ACTIVITIES.has(activity.key)).forEach((activity) => {
       const { key } = activity;
       if (activity.loadingInterrupt) return;
       const cycle = this.cycleLengths[key];
@@ -362,28 +366,32 @@ export class SimulationEngine {
     }
   }
 
-  /** Picks a random currently-running machine to carry a Fracture Repairing task. It only takes
-   * effect once that machine's own spool naturally completes — never interrupts a run in progress. */
-  private injectFractureTask(atMin: number): boolean {
+  /** Picks a random currently-running machine for a line-level event. It only takes effect once
+   * that machine's own spool naturally completes — never interrupts a run in progress. */
+  private injectGlobalActivityTask(activityKey: ActivityKey, atMin: number): boolean {
     const candidates = this.machines.filter((m) => m.status === 'running');
     if (candidates.length === 0) return false;
     const target = candidates[Math.floor(Math.random() * candidates.length)];
-    if (target.pendingTasks.some((t) => t.activity === 'fractureRepairing')) return false;
-    const activity = this.findActivity('fractureRepairing');
+    if (target.pendingTasks.some((t) => t.activity === activityKey)) return false;
+    const activity = this.findActivity(activityKey);
+    const quantity = activityKey === 'diesChange' ? (Math.random() < 0.5 ? 7 : 26) : undefined;
+    const timeMinutes = activity.timeMinutes * (quantity ?? 1);
+    const label = quantity ? `${activity.label} (${quantity} dies)` : activity.label;
     target.pendingTasks.push({
-      activity: 'fractureRepairing',
-      label: activity.label,
-      timeMinutes: activity.timeMinutes,
+      activity: activityKey,
+      label,
+      timeMinutes,
+      quantity,
     });
-    if (this.isStopActivity('fractureRepairing')) {
+    if (this.isStopActivity(activityKey)) {
       target.runtimeRemainingMin = Math.max(0, target.nextCompletionAt - atMin);
       target.runtimePaused = true;
       target.status = 'needs-service';
       target.queuedSince = atMin;
       target.nextCompletionAt = Number.POSITIVE_INFINITY;
-      this.addLog(atMin, `Fracture occurred on the line — scheduled on Machine ${target.label} after the current runtime`);
+      this.addLog(atMin, `${label} scheduled on Machine ${target.label} after the current runtime`);
     } else {
-      this.addLog(atMin, `Fracture occurred on the line — Machine ${target.label} will be serviced while running`);
+      this.addLog(atMin, `${label} scheduled on Machine ${target.label} while running`);
     }
     return true;
   }
@@ -409,18 +417,20 @@ export class SimulationEngine {
     }
   }
 
-  private triggerMidRuntimeFracture(atMin: number) {
-    const cycle = this.cycleLengths.fractureRepairing;
+  private triggerMidRuntimeGlobalActivity(activityKey: ActivityKey, atMin: number) {
+    const cycle = this.cycleLengths[activityKey];
     if (!Number.isFinite(cycle) || cycle <= 0) return;
     const fractionalSpools = this.machines.reduce((total, machine) => {
       if (machine.status !== 'running') return total;
       const elapsed = this.runtimePerSpool - (machine.nextCompletionAt - atMin);
       return total + Math.max(0, Math.min(1, elapsed / this.runtimePerSpool));
     }, this.globalSpoolsCompleted);
-    while (fractionalSpools >= (this.fractureEventsTriggered + 1) * cycle) {
-      if (!this.injectFractureTask(atMin)) break;
-      this.fractureEventsTriggered += 1;
+    let eventsTriggered = this.globalEventCounts.get(activityKey) ?? 0;
+    while (fractionalSpools >= (eventsTriggered + 1) * cycle) {
+      if (!this.injectGlobalActivityTask(activityKey, atMin)) break;
+      eventsTriggered += 1;
     }
+    this.globalEventCounts.set(activityKey, eventsTriggered);
 
   }
 
@@ -918,7 +928,7 @@ export class SimulationEngine {
       const startMin = this.metrics.clockMin;
       this.advanceMachines(startMin, startMin + step);
       this.machines.forEach((machine) => this.triggerMidRuntimeLoading(machine, startMin + step));
-      this.triggerMidRuntimeFracture(startMin + step);
+      GLOBAL_EVENT_ACTIVITIES.forEach((activityKey) => this.triggerMidRuntimeGlobalActivity(activityKey, startMin + step));
       this.advanceOperator(startMin, step);
       this.accumulateDowntime(step);
       this.metrics.clockMin += step;

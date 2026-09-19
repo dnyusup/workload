@@ -13,6 +13,8 @@ const defaultSpec = {
   spoolLength: 8000,
   linearDensity: 1.17,
   fracturePerTon: 2,
+  diesPerTon: 0,
+  defectsPerTon: 0,
 };
 
 function defaultLayout() {
