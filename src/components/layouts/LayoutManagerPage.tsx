@@ -242,6 +242,7 @@ export function LayoutManagerPage() {
               )}
             </Card>
             <LayoutBuilder
+              key={selected.id}
               layout={selected.machines}
               readOnly={!owns(selected)}
               onChange={(machines) => updateMachines(selected.id, machines)}
