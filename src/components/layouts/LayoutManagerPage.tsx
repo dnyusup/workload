@@ -68,11 +68,13 @@ export function LayoutManagerPage() {
   }, []);
 
   const selected = layouts.find((l) => l.id === selectedId) ?? null;
-  const filteredLayouts = layouts.filter((l) => {
-    const q = searchTerm.trim().toLowerCase();
-    if (!q) return true;
-    return l.name.toLowerCase().includes(q) || creatorNameFor(l).toLowerCase().includes(q);
-  });
+  const filteredLayouts = layouts
+    .filter((l) => {
+      const q = searchTerm.trim().toLowerCase();
+      if (!q) return true;
+      return l.name.toLowerCase().includes(q) || creatorNameFor(l).toLowerCase().includes(q);
+    })
+    .sort((a, b) => b.updatedAt - a.updatedAt);
 
   const addLayout = async () => {
     setBusy(true);
@@ -131,7 +133,7 @@ export function LayoutManagerPage() {
   const renameLayout = (id: string, name: string) => {
     const layout = layouts.find((l) => l.id === id);
     if (!layout || !owns(layout)) return;
-    setLayouts((prev) => prev.map((l) => (l.id === id ? { ...l, name } : l)));
+    setLayouts((prev) => prev.map((l) => (l.id === id ? { ...l, name, updatedAt: Date.now() } : l)));
     persistName(id, name);
   };
 
@@ -144,7 +146,7 @@ export function LayoutManagerPage() {
   const updateMachines = (id: string, machines: LayoutMachine[]) => {
     const layout = layouts.find((l) => l.id === id);
     if (!layout || !owns(layout)) return;
-    setLayouts((prev) => prev.map((l) => (l.id === id ? { ...l, machines } : l)));
+    setLayouts((prev) => prev.map((l) => (l.id === id ? { ...l, machines, updatedAt: Date.now() } : l)));
     persistMachines(id, machines, layout.operatorStart);
   };
 
@@ -152,7 +154,7 @@ export function LayoutManagerPage() {
     const layout = layouts.find((l) => l.id === id);
     if (!layout || !owns(layout)) return;
     const next = operatorStart ?? undefined;
-    setLayouts((prev) => prev.map((l) => (l.id === id ? { ...l, operatorStart: next } : l)));
+    setLayouts((prev) => prev.map((l) => (l.id === id ? { ...l, operatorStart: next, updatedAt: Date.now() } : l)));
     persistMachines(id, layout.machines, next);
   };
 
@@ -191,7 +193,12 @@ export function LayoutManagerPage() {
                 <ul className="layout-list">
                   {filteredLayouts.map((l) => (
                     <li key={l.id} className={`layout-list-item ${selectedId === l.id ? 'active' : ''}`}>
-                      <button type="button" className="layout-list-select" onClick={() => setSelectedId(l.id)}>
+                      <button
+                        type="button"
+                        className="layout-list-select"
+                        title={`Last modified: ${new Date(l.updatedAt).toLocaleString()}`}
+                        onClick={() => setSelectedId(l.id)}
+                      >
                         <span className="layout-list-name">{l.name}</span>
                         <span className="layout-list-count">{l.machines.length} machines</span>
                         <span className="layout-list-count">

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Office365UsersService } from '../../generated/services/Office365UsersService';
 import type { User } from '../../generated/models/Office365UsersModel';
 import { Mpp_wl_usersesService } from '../../generated/services/Mpp_wl_usersesService';
@@ -42,6 +42,16 @@ export function UsersManagerPage() {
   const [picked, setPicked] = useState<{ email: string; name: string } | null>(null);
   const [roleToAdd, setRoleToAdd] = useState<'Admin' | 'Contribute'>('Contribute');
   const searchSeq = useRef(0);
+  const sortedRows = useMemo(
+    () =>
+      [...rows].sort((a, b) => {
+        const roleOrder = { Admin: 0, Contribute: 1 };
+        const roleComparison = roleOrder[a.role] - roleOrder[b.role];
+        if (roleComparison !== 0) return roleComparison;
+        return (a.name || a.email).localeCompare(b.name || b.email, undefined, { sensitivity: 'base' });
+      }),
+    [rows],
+  );
 
   const loadRows = () => {
     setLoading(true);
@@ -191,7 +201,7 @@ export function UsersManagerPage() {
           <p className="data-manager-hint">No one has been granted Admin/Contribute access yet.</p>
         ) : (
           <ul className="user-access-list">
-            {rows.map((row) => (
+            {sortedRows.map((row) => (
               <li key={row.id} className="user-access-item">
                 <div className="user-access-identity">
                   <span className="layout-list-name">{row.name || row.email}</span>

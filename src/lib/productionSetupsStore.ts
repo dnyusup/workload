@@ -51,7 +51,7 @@ function machineRowToAssignment(row: Mpp_wl_productionsetupmachineses, construct
  * querying per-setup counts (which would be N+1 requests). */
 export async function listProductionSetupSummaries(): Promise<ProductionSetupSummary[]> {
   const [headers, operatorRows, machineRows] = await Promise.all([
-    fetchAllPages(Mpp_wl_productionsetupsesService.getAll, { orderBy: ['mpp_name asc'] }),
+    fetchAllPages(Mpp_wl_productionsetupsesService.getAll, { orderBy: ['modifiedon desc'] }),
     fetchAllPages(Mpp_wl_productionsetupoperatorsesService.getAll, {
       select: ['mpp_wl_productionsetupoperatorsid', 'mpp_productionsetupid'],
     }),

@@ -47,7 +47,7 @@ export function serializeLayoutBlob(machines: LayoutMachine[], operatorStart?: O
 }
 
 export async function loadSavedLayouts(): Promise<SavedLayout[]> {
-  const rows = await fetchAllPages(Mpp_wl_layoutsesService.getAll, { orderBy: ['mpp_name asc'] });
+  const rows = await fetchAllPages(Mpp_wl_layoutsesService.getAll, { orderBy: ['modifiedon desc'] });
   return rows.map((row) => {
     const { machines, operatorStart } = parseLayoutBlob(row.mpp_machinesjson);
     return {

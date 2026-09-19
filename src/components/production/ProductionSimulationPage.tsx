@@ -256,11 +256,13 @@ export function ProductionSimulationPage() {
 
   const canDelete = (s: ProductionSetupSummary) => isAdmin || isOwnedByCurrentUser(s, user);
 
-  const filteredSummaries = summaries.filter((s) => {
-    const q = setupSearchTerm.trim().toLowerCase();
-    if (!q) return true;
-    return s.name.toLowerCase().includes(q) || creatorNameFor(s).toLowerCase().includes(q);
-  });
+  const filteredSummaries = summaries
+    .filter((s) => {
+      const q = setupSearchTerm.trim().toLowerCase();
+      if (!q) return true;
+      return s.name.toLowerCase().includes(q) || creatorNameFor(s).toLowerCase().includes(q);
+    })
+    .sort((a, b) => b.updatedAt - a.updatedAt);
 
   const deleteSetup = async (id: string) => {
     const summary = summaries.find((s) => s.id === id);
@@ -285,7 +287,11 @@ export function ProductionSimulationPage() {
    * their own change to Dataverse (add/remove operator, bulk assign, CSV import, header edits)
    * use this just to keep the in-memory copy in sync, not to trigger any persistence itself. */
   const patchLocalSetup = (patch: Partial<ProductionSetup>) => {
-    setSelectedSetup((prev) => (prev ? { ...prev, ...patch, updatedAt: Date.now() } : prev));
+    const updatedAt = Date.now();
+    setSelectedSetup((prev) => (prev ? { ...prev, ...patch, updatedAt } : prev));
+    if (selectedId) {
+      setSummaries((prev) => prev.map((summary) => (summary.id === selectedId ? { ...summary, updatedAt } : summary)));
+    }
   };
 
   const [runState, setRunState] = useState<{ setup: ProductionSetup; resolved: Map<string, ResolvedConstruction>; errors: string[] } | null>(null);
@@ -401,7 +407,12 @@ export function ProductionSimulationPage() {
                 <ul className="layout-list">
                   {filteredSummaries.map((s) => (
                     <li key={s.id} className={`layout-list-item ${selectedId === s.id ? 'active' : ''}`}>
-                      <button type="button" className="layout-list-select" onClick={() => setSelectedId(s.id)}>
+                      <button
+                        type="button"
+                        className="layout-list-select"
+                        title={`Last modified: ${new Date(s.updatedAt).toLocaleString()}`}
+                        onClick={() => setSelectedId(s.id)}
+                      >
                         <span className="layout-list-name">{s.name}</span>
                         <span className="layout-list-count">
                           {s.machineCount} machines · {s.operatorCount} operators
