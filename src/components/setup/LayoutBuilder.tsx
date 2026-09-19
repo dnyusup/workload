@@ -484,12 +484,7 @@ export function LayoutBuilder({
           selectMachineGroups && clickedMachine?.groupId
             ? layout.filter((machine) => machine.groupId === clickedMachine.groupId).map((machine) => machine.id)
             : [rightClickId];
-        setSelectedIds((prev) => {
-          const next = new Set(prev);
-          const shouldRemove = selectedGroupIds.every((id) => next.has(id));
-          selectedGroupIds.forEach((id) => (shouldRemove ? next.delete(id) : next.add(id)));
-          return next;
-        });
+        setSelectedIds(new Set(selectedGroupIds));
         setDrag(null);
         return;
       }
