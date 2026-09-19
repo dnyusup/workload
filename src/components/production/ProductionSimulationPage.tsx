@@ -1371,7 +1371,7 @@ function PlannedUtilizationCard({
   const statusFor = (percent: number) =>
     percent > 100 ? 'overload' : percent > targetPercent ? 'above-target' : 'under-target';
   const labelFor = (percent: number) =>
-    percent > 100 ? 'Overload' : percent > targetPercent ? `Above ${targetPercent}% target` : `Below ${targetPercent}% target`;
+    percent > 100 ? 'Overload' : percent > targetPercent ? 'Above target' : 'Within target';
   const contributionSummary = (
     contributions: PlannedUtilization['operators'][number]['contributions'],
     availableMinutes: number,
@@ -1543,7 +1543,6 @@ function PlannedUtilizationCard({
         <>
           <div className="planned-utilization-summary">
             <span>Net operator availability: <strong>{formatMinutes(utilization.availableMinutes)}</strong> per shift</span>
-            <span className="planned-utilization-target">Target: <strong>{targetPercent}%</strong></span>
             <span title="The ideal figure is the capacity requirement. The forecast accounts for stop-work downtime and estimated walking; exact random phase and dispatch queues remain visible in the actual run.">
               Ideal demand / forecast: <strong>capacity requirement / expected completed work</strong>
             </span>
