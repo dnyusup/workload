@@ -901,14 +901,28 @@
 }
 
 .activity-table .activity-column {
-  width: 180px;
-  min-width: 180px;
+  width: 322px;
+  min-width: 280px;
 }
 
 .activity-table th:nth-child(2),
 .activity-table td:nth-child(2) {
   width: 96px;
   min-width: 96px;
+}
+
+.activity-table th:nth-child(3),
+.activity-table td:nth-child(3),
+.activity-table th:nth-child(4),
+.activity-table td:nth-child(4) {
+  width: 78px;
+  min-width: 72px;
+}
+
+.activity-table th:nth-child(5),
+.activity-table td:nth-child(5) {
+  width: 112px;
+  min-width: 104px;
 }
 
 .table th {
