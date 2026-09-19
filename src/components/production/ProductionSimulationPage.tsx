@@ -565,6 +565,9 @@ function ProductionSetupEditor({
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [plannedUtilizationOpen, setPlannedUtilizationOpen] = useState(false);
+  const [plannedUtilizationFullscreen, setPlannedUtilizationFullscreen] = useState(false);
+  const plannedUtilizationPanelRef = useRef<HTMLDivElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
 
   const assignmentByMachine = new Map(setup.assignments.map((a) => [a.machineId, a]));
@@ -620,6 +623,34 @@ function ProductionSetupEditor({
     // update applied*/bulk* state themselves for the field(s) they actually touch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMachineIds]);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const active = document.fullscreenElement === plannedUtilizationPanelRef.current;
+      setPlannedUtilizationFullscreen(active);
+      if (!active) setPlannedUtilizationOpen(false);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  useEffect(() => {
+    if (!plannedUtilizationOpen || plannedUtilizationFullscreen) return;
+    const panel = plannedUtilizationPanelRef.current;
+    if (!panel) return;
+    const enterFullscreen = async () => {
+      try {
+        if (document.fullscreenElement && document.fullscreenElement !== panel) {
+          await document.exitFullscreen();
+        }
+        await panel.requestFullscreen();
+      } catch (err) {
+        setPlannedUtilizationOpen(false);
+        setActionError(err instanceof Error ? err.message : 'Unable to open planned utilization fullscreen view.');
+      }
+    };
+    void enterFullscreen();
+  }, [plannedUtilizationOpen, plannedUtilizationFullscreen]);
 
   const constructionColorMap = useMemo(
     () => buildConstructionColorMap(products.map((p) => p.mpp_wl_productsid)),
@@ -1127,7 +1158,19 @@ function ProductionSetupEditor({
         {!canRun && <p className="data-manager-hint">Add at least 1 operator and assign a Construction Detail to at least 1 machine before running the simulation.</p>}
       </Card>
 
-      <Card title="Operators">
+      <Card
+        title="Operators"
+        actions={
+          <Button
+            variant="secondary"
+            onClick={() => setPlannedUtilizationOpen(true)}
+            title="Show planned operator utilization in fullscreen"
+            aria-label="Show planned operator utilization in fullscreen"
+          >
+            📊
+          </Button>
+        }
+      >
         <div className="production-operator-add">
           <input
             className="input"
@@ -1196,11 +1239,27 @@ function ProductionSetupEditor({
         onChange={() => {}}
         operatorStart={setup.operatorStart ?? null}
       />
-      <PlannedUtilizationCard
-        utilization={plannedUtilization}
-        errors={plannedUtilizationErrors}
-        loading={plannedUtilizationLoading}
-      />
+      {plannedUtilizationOpen && (
+        <div
+          ref={plannedUtilizationPanelRef}
+          className={`production-planned-utilization-fullscreen${
+            plannedUtilizationFullscreen ? ' is-fullscreen' : ''
+          }`}
+        >
+          <PlannedUtilizationCard
+            utilization={plannedUtilization}
+            errors={plannedUtilizationErrors}
+            loading={plannedUtilizationLoading}
+            onClose={() => {
+              if (document.fullscreenElement === plannedUtilizationPanelRef.current) {
+                void document.exitFullscreen();
+              } else {
+                setPlannedUtilizationOpen(false);
+              }
+            }}
+          />
+        </div>
+      )}
       <div className="legend">
         <span className="legend-item"><span className="legend-swatch machine-plan-unplanned" /> Not planned</span>
         <span className="legend-item"><span className="legend-swatch machine-plan-planned" /> Construction assigned</span>
@@ -1280,10 +1339,12 @@ function PlannedUtilizationCard({
   utilization,
   errors,
   loading,
+  onClose,
 }: {
   utilization: PlannedUtilization | null;
   errors: string[];
   loading: boolean;
+  onClose: () => void;
 }) {
   const formatMinutes = (minutes: number) => `${minutes.toFixed(1)} min`;
   const targetPercent = utilization?.targetPercent ?? 85;
@@ -1332,6 +1393,11 @@ function PlannedUtilizationCard({
     <Card
       title="Planned Operator Utilization"
       subtitle="Ideal due-work plus a deterministic constrained forecast using machine stop time and estimated inter-machine walking"
+      actions={
+        <Button variant="ghost" onClick={onClose} title="Close planned operator utilization" aria-label="Close planned operator utilization">
+          ✕
+        </Button>
+      }
     >
       {loading && <p className="data-manager-hint">Resolving Construction Details and activities…</p>}
       {errors.length > 0 && (

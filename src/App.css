@@ -2233,6 +2233,18 @@
   font-size: 0.76rem;
 }
 
+.production-planned-utilization-fullscreen,
+.production-planned-utilization-fullscreen:fullscreen {
+  min-height: 100vh;
+  padding: 20px;
+  overflow: auto;
+  background: #0b1220;
+}
+
+.production-planned-utilization-fullscreen > .card {
+  max-width: none;
+}
+
 .production-operator-util-block:last-of-type {
   border-bottom: none;
   margin-bottom: 0;
