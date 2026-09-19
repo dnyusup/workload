@@ -577,11 +577,14 @@ function ProductionSetupEditor({
       .map((product) => [product.mpp_wl_productsid, product.mpp_area!.trim().toUpperCase()]),
   );
   const operatorLabel = (id?: string) => (id ? setup.operators.find((o) => o.id === id)?.label ?? '—' : '—');
+  const operatorForecastLabel = (id: string, label: string) => {
+    const forecast = plannedUtilization?.operators.find((item) => item.operatorId === id)?.forecastUtilizationPercent;
+    return `${label}${forecast === undefined ? '' : ` (${forecast.toFixed(1)}%)`}`;
+  };
   const operatorOptions = setup.operators.map((operator) => {
-    const forecast = plannedUtilization?.operators.find((item) => item.operatorId === operator.id)?.forecastUtilizationPercent;
     return {
       value: operator.id,
-      label: `${operator.label}${forecast === undefined ? '' : ` (${forecast.toFixed(1)}%)`}`,
+      label: operatorForecastLabel(operator.id, operator.label),
     };
   });
 
@@ -1219,7 +1222,7 @@ function ProductionSetupEditor({
           {setup.operators.length === 0 && <p className="data-manager-hint">No operators yet.</p>}
           {setup.operators.map((o) => (
             <span key={o.id} className="production-operator-chip">
-              {o.label}
+              {operatorForecastLabel(o.id, o.label)}
               <button type="button" onClick={() => removeOperator(o.id)} title="Remove operator">
                 ×
               </button>
