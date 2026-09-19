@@ -26,7 +26,23 @@ export function SetupWizard({ onStart }: { onStart: () => void }) {
   return (
     <div className="setup-wizard">
       <ConstructionDetailSelector onApplyingChange={setApplyingConstruction} />
-      <Stepper steps={STEPS} current={step} onSelect={setStep} disabled={applyingConstruction} />
+      <div className="setup-stepper-row">
+        <Stepper steps={STEPS} current={step} onSelect={setStep} disabled={applyingConstruction} />
+        <div className="setup-nav">
+          <Button variant="ghost" disabled={step === 0 || applyingConstruction} onClick={() => setStep((s) => Math.max(0, s - 1))}>
+            &larr; Previous
+          </Button>
+          {step < STEPS.length - 1 ? (
+            <Button variant="primary" disabled={applyingConstruction} onClick={() => setStep((s) => Math.min(STEPS.length - 1, s + 1))}>
+              Next &rarr;
+            </Button>
+          ) : (
+            <Button variant="primary" onClick={onStart} disabled={applyingConstruction || !canStart}>
+              Validate &amp; Start Simulation
+            </Button>
+          )}
+        </div>
+      </div>
 
       <fieldset className={`setup-step-body setup-form-disabled${applyingConstruction ? ' is-applying' : ''}`} disabled={applyingConstruction}>
         {step === 0 && (
@@ -76,20 +92,6 @@ export function SetupWizard({ onStart }: { onStart: () => void }) {
         )}
       </fieldset>
 
-      <div className="setup-nav">
-        <Button variant="ghost" disabled={step === 0} onClick={() => setStep((s) => Math.max(0, s - 1))}>
-          &larr; Previous
-        </Button>
-        {step < STEPS.length - 1 ? (
-          <Button variant="primary" onClick={() => setStep((s) => Math.min(STEPS.length - 1, s + 1))}>
-            Next &rarr;
-          </Button>
-        ) : (
-          <Button variant="primary" onClick={onStart} disabled={!canStart}>
-            Validate & Start Simulation
-          </Button>
-        )}
-      </div>
     </div>
   );
 }
