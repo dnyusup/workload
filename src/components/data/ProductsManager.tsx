@@ -324,7 +324,7 @@ export function ProductsManager({
             </select>
           </div>
           <div className="data-table-wrap">
-            <table className="table">
+            <table className="table products-table">
               <thead>
                 <tr>
                   {COLUMNS.map((col) => (

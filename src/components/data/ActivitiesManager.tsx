@@ -323,7 +323,7 @@ export function ActivitiesManager({
             />
           </div>
           <div className="data-table-wrap">
-          <table className="table">
+          <table className="table activities-table">
             <thead>
               <tr>
                 <th className="table-sortable-header" onClick={() => toggleSort('mpp_constructiontype')}>

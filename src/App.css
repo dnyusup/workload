@@ -793,6 +793,68 @@
   min-width: 96px;
 }
 
+.products-table th:nth-child(1),
+.products-table td:nth-child(1) {
+  width: 280px;
+  min-width: 250px;
+}
+
+.products-table th:nth-child(2),
+.products-table td:nth-child(2) {
+  width: 220px;
+  min-width: 200px;
+}
+
+.products-table th:nth-child(7),
+.products-table td:nth-child(7) {
+  width: 92px;
+  min-width: 92px;
+}
+
+.products-table th:nth-child(8),
+.products-table td:nth-child(8) {
+  width: 82px;
+  min-width: 82px;
+}
+
+.activities-table th:nth-child(1),
+.activities-table td:nth-child(1) {
+  width: 280px;
+  min-width: 250px;
+}
+
+.activities-table th:nth-child(2),
+.activities-table td:nth-child(2) {
+  width: 125px;
+  min-width: 115px;
+}
+
+.activities-table th:nth-child(3),
+.activities-table td:nth-child(3) {
+  width: 190px;
+  min-width: 170px;
+}
+
+.activities-table th:nth-child(5),
+.activities-table td:nth-child(5),
+.activities-table th:nth-child(6),
+.activities-table td:nth-child(6) {
+  width: 92px;
+  min-width: 92px;
+}
+
+.activities-table th:nth-child(11),
+.activities-table td:nth-child(11) {
+  width: 88px;
+  min-width: 88px;
+}
+
+.activities-table th:nth-child(12),
+.activities-table td:nth-child(12) {
+  width: 82px;
+  min-width: 82px;
+}
+
 .table-sortable-header {
   cursor: pointer;
   user-select: none;
