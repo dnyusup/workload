@@ -88,7 +88,6 @@ export function ActivityTable({
               <th>Time (min)</th>
               <th>Numerator</th>
               <th>Denominator</th>
-              <th>Remark</th>
               <th>Mach Condition</th>
               <th />
             </tr>
@@ -116,7 +115,7 @@ export function ActivityTable({
             const canHaveSubs = !a.parentKey;
             const canRemove = !CORE_ACTIVITY_KEYS.includes(a.key);
               return (
-                <tr key={a.key}>
+                <tr key={a.key} title={remarks.length > 0 ? remarks.join(' · ') : undefined}>
                   <td className={`activity-column ${a.parentKey ? 'activity-sub-row' : ''}`}>
                     {a.parentKey && <span className="activity-sub-marker">↳ </span>}
                     <input
@@ -152,7 +151,6 @@ export function ActivityTable({
                     onChange={(e) => update(a.key, { denominator: parseFloat(e.target.value) })}
                   />
                 </td>
-                <td className="table-remark">{remarks.join(' · ')}</td>
                 <td>
                   <select
                     className="input"
