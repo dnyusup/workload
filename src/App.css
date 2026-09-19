@@ -2192,6 +2192,11 @@
   font-size: 0.75rem;
 }
 
+.planned-utilization-table th:nth-child(5),
+.planned-utilization-table td:nth-child(5) {
+  min-width: 200px;
+}
+
 .planned-utilization-machine-table {
   margin-top: 12px;
 }
