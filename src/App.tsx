@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AppConfigProvider, useAppConfig } from './context/AppConfigContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { deriveMachineSpec, fractureRepairingDenominator } from './lib/calculations';
+import { syncAutoActivityValues } from './lib/calculations';
 import { SetupWizard } from './components/setup/SetupWizard';
 import { SimulationView } from './SimulationView';
 import { Sidebar, pagesForRole, iconForPage, labelForPage, type AppPage } from './components/layout/Sidebar';
@@ -37,21 +37,9 @@ function AppShell() {
   }, [authLoading, user.role, page]);
 
   const handleStart = () => {
-    const derived = deriveMachineSpec(config.spec);
     setConfig((prev) => ({
       ...prev,
-      activities: prev.activities.map((a) => ({
-        ...a,
-        numerator:
-          a.key === 'diesChange'
-            ? prev.spec.diesPerTon
-            : a.key === 'defectRepairing'
-              ? prev.spec.defectsPerTon
-              : a.numeratorAuto
-                ? prev.spec.fracturePerTon
-                : a.numerator,
-        denominator: a.denominatorAuto ? fractureRepairingDenominator(derived.spoolWeight) : a.denominator,
-      })),
+      activities: syncAutoActivityValues(prev.activities, prev.spec),
     }));
     setStage('simulation');
   };

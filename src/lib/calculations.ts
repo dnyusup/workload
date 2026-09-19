@@ -79,6 +79,27 @@ export function ensureCoreActivities(
   return [...activities, ...missingCore];
 }
 
+export function syncAutoActivityValues(
+  activities: ActivityConfig[],
+  spec: MachineSpecInput,
+): ActivityConfig[] {
+  const derived = deriveMachineSpec(spec);
+  return activities.map((activity) => ({
+    ...activity,
+    numerator:
+      activity.key === 'diesChange'
+        ? spec.diesPerTon
+        : activity.key === 'defectRepairing'
+          ? spec.defectsPerTon
+          : activity.numeratorAuto
+            ? spec.fracturePerTon
+            : activity.numerator,
+    denominator: activity.denominatorAuto
+      ? fractureRepairingDenominator(derived.spoolWeight)
+      : activity.denominator,
+  }));
+}
+
 /** Cycle length in "spools completed" between occurrences of this activity. */
 export function activityCycleLength(activity: ActivityConfig): number {
   if (activity.numerator <= 0 || activity.denominator <= 0) return Infinity;

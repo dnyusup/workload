@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAppConfig } from '../../context/AppConfigContext';
-import { deriveMachineSpec } from '../../lib/calculations';
+import { deriveMachineSpec, syncAutoActivityValues } from '../../lib/calculations';
 import {
   calculateSingleOperatorForecast,
   previewAssignedMachineIds,
@@ -64,7 +64,16 @@ export function SetupWizard({ onStart }: { onStart: () => void }) {
         {step === 0 && (
           <div className="setup-columns">
             <div className="setup-column">
-              <SpecForm spec={config.spec} onChange={(spec) => setConfig((prev) => ({ ...prev, spec }))} />
+              <SpecForm
+                spec={config.spec}
+                onChange={(spec) =>
+                  setConfig((prev) => ({
+                    ...prev,
+                    spec,
+                    activities: syncAutoActivityValues(prev.activities, spec),
+                  }))
+                }
+              />
               <OperatorForm
                 operator={config.operator}
                 forecast={forecast}
