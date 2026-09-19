@@ -577,9 +577,17 @@ function ProductionSetupEditor({
       .map((product) => [product.mpp_wl_productsid, product.mpp_area!.trim().toUpperCase()]),
   );
   const operatorLabel = (id?: string) => (id ? setup.operators.find((o) => o.id === id)?.label ?? '—' : '—');
+  const operatorUtilizationFor = (id: string) =>
+    plannedUtilization?.operators.find((item) => item.operatorId === id);
   const operatorForecastLabel = (id: string, label: string) => {
-    const forecast = plannedUtilization?.operators.find((item) => item.operatorId === id)?.forecastUtilizationPercent;
+    const forecast = operatorUtilizationFor(id)?.forecastUtilizationPercent;
     return `${label}${forecast === undefined ? '' : ` (${forecast.toFixed(1)}%)`}`;
+  };
+  const operatorIdealDemandTooltip = (id: string) => {
+    const operator = operatorUtilizationFor(id);
+    return operator && operator.forecastUtilizationPercent >= 100
+      ? `Ideal demand: ${operator.utilizationPercent.toFixed(1)}%`
+      : undefined;
   };
   const operatorOptions = setup.operators.map((operator) => {
     return {
@@ -1221,7 +1229,7 @@ function ProductionSetupEditor({
         <div className="production-operator-chips">
           {setup.operators.length === 0 && <p className="data-manager-hint">No operators yet.</p>}
           {setup.operators.map((o) => (
-            <span key={o.id} className="production-operator-chip">
+            <span key={o.id} className="production-operator-chip" title={operatorIdealDemandTooltip(o.id)}>
               {operatorForecastLabel(o.id, o.label)}
               <button type="button" onClick={() => removeOperator(o.id)} title="Remove operator">
                 ×
