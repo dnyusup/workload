@@ -4,7 +4,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { deriveMachineSpec, fractureRepairingDenominator } from './lib/calculations';
 import { SetupWizard } from './components/setup/SetupWizard';
 import { SimulationView } from './SimulationView';
-import { Sidebar, pagesForRole, iconForPage, type AppPage } from './components/layout/Sidebar';
+import { Sidebar, pagesForRole, iconForPage, labelForPage, type AppPage } from './components/layout/Sidebar';
 import { ProductsManager } from './components/data/ProductsManager';
 import { ActivitiesManager } from './components/data/ActivitiesManager';
 import { LayoutManagerPage } from './components/layouts/LayoutManagerPage';
@@ -13,6 +13,14 @@ import { UsersManagerPage } from './components/users/UsersManagerPage';
 import './App.css';
 
 const ROLE_LABEL: Record<string, string> = { admin: 'Admin', contribute: 'Contribute', guest: 'Guest' };
+const PAGE_DESCRIPTION: Record<AppPage, string> = {
+  simulator: 'Configure and run operator task simulations across the machine layout',
+  layouts: 'Create and manage reusable machine layouts',
+  production: 'Configure multi-operator production setups and run production simulations',
+  products: 'Manage WL product and machine specifications',
+  activities: 'Configure machine activity times and rules',
+  users: 'Manage user access and roles',
+};
 
 function AppShell() {
   const { config, setConfig } = useAppConfig();
@@ -56,14 +64,8 @@ function AppShell() {
           <div className="app-title">
             <span className="app-logo">{iconForPage(page)}</span>
             <div>
-              <h1>{page === 'production' ? 'Production Simulator' : page === 'users' ? 'Manage Users' : 'WorkLoad Simulator'}</h1>
-              <p>
-                {page === 'production'
-                  ? 'Multi-operator, multi-Construction production simulation across the machine layout'
-                  : page === 'users'
-                    ? 'Grant Admin/Contribute access by email — everyone else is a Guest'
-                    : 'Simulator of operator Task accross the machine layout'}
-              </p>
+              <h1>{labelForPage(page)}</h1>
+              <p>{PAGE_DESCRIPTION[page]}</p>
             </div>
           </div>
           {page === 'simulator' && (

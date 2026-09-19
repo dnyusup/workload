@@ -24,6 +24,10 @@ export function iconForPage(page: AppPage): string {
   return MENU.find((item) => item.page === page)?.icon ?? '▶️';
 }
 
+export function labelForPage(page: AppPage): string {
+  return MENU.find((item) => item.page === page)?.label ?? 'Simulator';
+}
+
 export function Sidebar({ page, role, onNavigate }: { page: AppPage; role: UserRole; onNavigate: (page: AppPage) => void }) {
   const [collapsed, setCollapsed] = useState(true);
   const items = MENU.filter((item) => item.roles.includes(role));
