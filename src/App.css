@@ -511,15 +511,21 @@
 
 .construction-selector-row {
   display: flex;
-  align-items: flex-end;
-  gap: 20px;
+  align-items: center;
+  gap: 8px 16px;
   flex-wrap: wrap;
 }
 
+.construction-selector {
+  padding: 10px 14px;
+  margin-bottom: 12px;
+}
+
 .construction-selector-field {
-  min-width: 260px;
-  max-width: 360px;
-  flex: 1 1 260px;
+  min-width: min(360px, 100%);
+  max-width: 520px;
+  flex: 1 1 440px;
+  gap: 0;
 }
 
 .construction-selector-meta {

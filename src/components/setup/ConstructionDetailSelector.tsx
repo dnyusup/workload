@@ -94,7 +94,6 @@ export function ConstructionDetailSelector() {
     <Card className="construction-selector">
       <div className="construction-selector-row">
         <div className="field construction-selector-field">
-          <span className="field-label">Construction Detail</span>
           <SearchableSelect
             value={config.selectedProductId ?? ''}
             onChange={handleSelect}
