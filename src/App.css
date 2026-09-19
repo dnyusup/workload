@@ -118,7 +118,11 @@
 /* Data managers (WL_Products / WL_Activities) */
 .data-manager-actions {
   display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 8px;
+  margin-left: auto;
 }
 
 .data-manager-hint {
@@ -143,25 +147,21 @@
   font-size: 0.72rem;
 }
 
-.data-actions-header {
-  position: relative;
-  min-width: 154px;
-  text-align: center;
-}
-
 .custom-sort-control {
   position: relative;
   display: inline-flex;
+  align-items: center;
 }
 
 .custom-sort-button {
-  width: 30px;
-  height: 30px;
+  width: 37px;
+  height: 37px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid #334155;
-  border-radius: 7px;
+  padding: 0;
+  border: 1px solid #1e293b;
+  border-radius: 9px;
   background: #111827;
   color: #94a3b8;
   cursor: pointer;

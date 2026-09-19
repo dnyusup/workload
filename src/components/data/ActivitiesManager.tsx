@@ -313,6 +313,24 @@ export function ActivitiesManager({
           <Button variant="ghost" onClick={() => setReloadToken((t) => t + 1)} disabled={loading}>
             Refresh
           </Button>
+          <CustomSortControl
+            columns={[
+              { key: 'mpp_constructiontype', label: 'Construction' },
+              { key: 'mpp_taskname', label: 'Task' },
+              { key: 'mpp_subtaskname', label: 'SubTask' },
+              { key: 'mpp_tasktime', label: 'Time' },
+              { key: 'mpp_numerator', label: 'Numerator' },
+              { key: 'mpp_denominator', label: 'Denominator' },
+              { key: 'mpp_machcondition', label: 'MachCondition' },
+              { key: 'mpp_productcode', label: 'Product' },
+              { key: 'mpp_machinecode', label: 'Mach' },
+              { key: 'mpp_spooltype', label: 'SpoolType' },
+              { key: 'mpp_tensilegroup', label: 'TensileGroup' },
+              { key: 'mpp_laylength', label: 'LayLength' },
+            ]}
+            levels={sortLevels}
+            onChange={setSortLevels}
+          />
           <Button variant="secondary" onClick={addRow}>
             + Add Activity
           </Button>
@@ -374,26 +392,7 @@ export function ActivitiesManager({
                 <th className="table-sortable-header" onClick={() => toggleSort('mpp_laylength')}>
                   LayLength{sortIndicator('mpp_laylength')}
                 </th>
-                <th className="data-actions-header">
-                  <CustomSortControl
-                    columns={[
-                      { key: 'mpp_constructiontype', label: 'Construction' },
-                      { key: 'mpp_taskname', label: 'Task' },
-                      { key: 'mpp_subtaskname', label: 'SubTask' },
-                      { key: 'mpp_tasktime', label: 'Time' },
-                      { key: 'mpp_numerator', label: 'Numerator' },
-                      { key: 'mpp_denominator', label: 'Denominator' },
-                      { key: 'mpp_machcondition', label: 'MachCondition' },
-                      { key: 'mpp_productcode', label: 'Product' },
-                      { key: 'mpp_machinecode', label: 'Mach' },
-                      { key: 'mpp_spooltype', label: 'SpoolType' },
-                      { key: 'mpp_tensilegroup', label: 'TensileGroup' },
-                      { key: 'mpp_laylength', label: 'LayLength' },
-                    ]}
-                    levels={sortLevels}
-                    onChange={setSortLevels}
-                  />
-                </th>
+                <th />
               </tr>
             </thead>
             <tbody>

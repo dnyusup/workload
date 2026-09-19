@@ -302,6 +302,11 @@ export function ProductsManager({
           <Button variant="ghost" onClick={() => setReloadToken((t) => t + 1)} disabled={loading}>
             Refresh
           </Button>
+          <CustomSortControl
+            columns={COLUMNS.map(({ key, label }) => ({ key, label }))}
+            levels={sortLevels}
+            onChange={setSortLevels}
+          />
           <Button variant="secondary" onClick={addRow}>
             + Add Product
           </Button>
@@ -351,13 +356,7 @@ export function ProductsManager({
                       <span className="table-sort-indicator">{sortIndicator(col.key)}</span>
                     </th>
                   ))}
-                  <th className="data-actions-header">
-                    <CustomSortControl
-                      columns={COLUMNS.map(({ key, label }) => ({ key, label }))}
-                      levels={sortLevels}
-                      onChange={setSortLevels}
-                    />
-                  </th>
+                  <th />
                 </tr>
               </thead>
               <tbody>
