@@ -2160,6 +2160,11 @@
   font-size: 0.78rem;
 }
 
+.planned-utilization-search {
+  width: min(100%, 420px);
+  margin-bottom: 10px;
+}
+
 .planned-utilization-target {
   color: #facc15;
 }

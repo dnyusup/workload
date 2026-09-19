@@ -1346,8 +1346,25 @@ function PlannedUtilizationCard({
   loading: boolean;
   onClose: () => void;
 }) {
+  type OperatorSortColumn = 'operator' | 'ideal' | 'forecast' | 'available' | 'utilization' | 'queue';
+  type MachineSortColumn = 'machine' | 'construction' | 'activity' | 'operator' | 'utilization';
+  type SortDirection = 'asc' | 'desc';
+  type MachineRow = {
+    machine: PlannedUtilization['machines'][number];
+    contribution: PlannedUtilization['machines'][number]['contributions'][number] | null;
+    index: number;
+  };
   const formatMinutes = (minutes: number) => `${minutes.toFixed(1)} min`;
   const targetPercent = utilization?.targetPercent ?? 85;
+  const [searchQuery, setSearchQuery] = useState('');
+  const [operatorSort, setOperatorSort] = useState<{ column: OperatorSortColumn; direction: SortDirection }>({
+    column: 'operator',
+    direction: 'asc',
+  });
+  const [machineSort, setMachineSort] = useState<{ column: MachineSortColumn; direction: SortDirection }>({
+    column: 'machine',
+    direction: 'asc',
+  });
   const statusFor = (percent: number) =>
     percent > 100 ? 'overload' : percent > targetPercent ? 'above-target' : 'under-target';
   const labelFor = (percent: number) =>
@@ -1388,6 +1405,108 @@ function PlannedUtilizationCard({
       .join(' · ');
   };
   const operatorById = new Map(utilization?.operators.map((operator) => [operator.operatorId, operator]) ?? []);
+  const normalizedSearch = searchQuery.trim().toLowerCase();
+  const matchesSearch = (values: (string | number | undefined)[]) =>
+    !normalizedSearch || values.some((value) => String(value ?? '').toLowerCase().includes(normalizedSearch));
+  const toggleOperatorSort = (column: OperatorSortColumn) => {
+    setOperatorSort((current) =>
+      current.column === column
+        ? { column, direction: current.direction === 'asc' ? 'desc' : 'asc' }
+        : { column, direction: 'asc' },
+    );
+  };
+  const toggleMachineSort = (column: MachineSortColumn) => {
+    setMachineSort((current) =>
+      current.column === column
+        ? { column, direction: current.direction === 'asc' ? 'desc' : 'asc' }
+        : { column, direction: 'asc' },
+    );
+  };
+  const compareValues = (left: string | number, right: string | number, direction: SortDirection) => {
+    const comparison =
+      typeof left === 'number' && typeof right === 'number'
+        ? left - right
+        : String(left).localeCompare(String(right), undefined, { numeric: true, sensitivity: 'base' });
+    return direction === 'asc' ? comparison : -comparison;
+  };
+  const sortIndicator = (column: OperatorSortColumn) =>
+    operatorSort.column === column ? (operatorSort.direction === 'asc' ? ' ▲' : ' ▼') : '';
+  const visibleOperators = [...(utilization?.operators ?? [])]
+    .filter((operator) =>
+      matchesSearch([
+        operator.operatorLabel,
+        ...operator.contributions.flatMap((contribution) => [
+          contribution.machineLabel,
+          contribution.constructionLabel,
+          contribution.activityLabel,
+        ]),
+      ]),
+    )
+    .sort((left, right) => {
+      const leftValue: string | number = {
+        operator: left.operatorLabel,
+        ideal: left.plannedMinutes,
+        forecast: left.forecastServiceMinutes + left.forecastWalkingMinutes,
+        available: left.availableMinutes,
+        utilization: left.forecastUtilizationPercent,
+        queue: left.forecastWaitingMinutes,
+      }[operatorSort.column];
+      const rightValue: string | number = {
+        operator: right.operatorLabel,
+        ideal: right.plannedMinutes,
+        forecast: right.forecastServiceMinutes + right.forecastWalkingMinutes,
+        available: right.availableMinutes,
+        utilization: right.forecastUtilizationPercent,
+        queue: right.forecastWaitingMinutes,
+      }[operatorSort.column];
+      return compareValues(leftValue, rightValue, operatorSort.direction);
+    });
+  const machineRows: MachineRow[] = (utilization?.machines ?? []).flatMap((machine) =>
+    machine.contributions.length > 0
+      ? machine.contributions.map((contribution, index) => ({ machine, contribution, index }))
+      : [{ machine, contribution: null, index: 0 } as MachineRow],
+  );
+  const machineContributionUtilization = (contribution: MachineRow['contribution']) => {
+    if (!contribution?.operatorId) return 0;
+    const operator = operatorById.get(contribution.operatorId);
+    return operator && operator.availableMinutes > 0
+      ? (contribution.plannedMinutes / operator.availableMinutes) * 100
+      : 0;
+  };
+  const visibleMachineRows = machineRows
+    .filter(({ machine, contribution }) =>
+      matchesSearch([
+        machine.machineLabel,
+        machine.constructionLabel,
+        contribution?.activityLabel,
+        contribution?.operatorId ? operatorById.get(contribution.operatorId)?.operatorLabel : 'Unassigned',
+      ]),
+    )
+    .sort((left, right) => {
+      const leftOperator = left.contribution?.operatorId
+        ? operatorById.get(left.contribution.operatorId)?.operatorLabel ?? 'Unassigned'
+        : 'Unassigned';
+      const rightOperator = right.contribution?.operatorId
+        ? operatorById.get(right.contribution.operatorId)?.operatorLabel ?? 'Unassigned'
+        : 'Unassigned';
+      const leftValue: string | number = {
+        machine: left.machine.machineLabel,
+        construction: left.machine.constructionLabel,
+        activity: left.contribution?.activityLabel ?? 'No resolved activity demand',
+        operator: leftOperator,
+        utilization: machineContributionUtilization(left.contribution),
+      }[machineSort.column];
+      const rightValue: string | number = {
+        machine: right.machine.machineLabel,
+        construction: right.machine.constructionLabel,
+        activity: right.contribution?.activityLabel ?? 'No resolved activity demand',
+        operator: rightOperator,
+        utilization: machineContributionUtilization(right.contribution),
+      }[machineSort.column];
+      return compareValues(leftValue, rightValue, machineSort.direction);
+    });
+  const machineSortIndicator = (column: MachineSortColumn) =>
+    machineSort.column === column ? (machineSort.direction === 'asc' ? ' ▲' : ' ▼') : '';
 
   return (
     <Card
@@ -1400,6 +1519,14 @@ function PlannedUtilizationCard({
       }
     >
       {loading && <p className="data-manager-hint">Resolving Construction Details and activities…</p>}
+      <input
+        className="input planned-utilization-search"
+        type="search"
+        value={searchQuery}
+        onChange={(event) => setSearchQuery(event.target.value)}
+        placeholder="Search operator, machine, Construction, or activity…"
+        aria-label="Search planned operator utilization"
+      />
       {errors.length > 0 && (
         <div className="planned-utilization-warning">
           <strong>Some planned demand could not be resolved.</strong>
@@ -1427,17 +1554,30 @@ function PlannedUtilizationCard({
             <table className="table planned-utilization-table">
               <thead>
                 <tr>
-                  <th>Operator</th>
-                  <th>Ideal demand</th>
-                  <th>Forecast work</th>
-                  <th>Net available</th>
-                  <th>Utilization</th>
-                  <th>Forecast queue</th>
+                  {(
+                    [
+                      ['operator', 'Operator'],
+                      ['ideal', 'Ideal demand'],
+                      ['forecast', 'Forecast work'],
+                      ['available', 'Net available'],
+                      ['utilization', 'Utilization'],
+                      ['queue', 'Forecast queue'],
+                    ] as [OperatorSortColumn, string][]
+                  ).map(([column, label]) => (
+                    <th
+                      key={column}
+                      className="production-sortable-th"
+                      onClick={() => toggleOperatorSort(column)}
+                      title="Click to sort ascending/descending"
+                    >
+                      {label}{sortIndicator(column)}
+                    </th>
+                  ))}
                   <th>Ideal activity contribution</th>
                 </tr>
               </thead>
               <tbody>
-                {utilization.operators.map((operator) => (
+                {visibleOperators.map((operator) => (
                   <tr key={operator.operatorId}>
                     <td>{operator.operatorLabel}</td>
                     <td>{formatMinutes(operator.plannedMinutes)}</td>
@@ -1470,17 +1610,30 @@ function PlannedUtilizationCard({
               <table className="table">
                 <thead>
                   <tr>
-                    <th>Machine</th>
-                    <th>Construction</th>
-                    <th>Activity</th>
-                    <th>Operator</th>
-                    <th>Ideal utilization contribution</th>
+                    {(
+                      [
+                        ['machine', 'Machine'],
+                        ['construction', 'Construction'],
+                        ['activity', 'Activity'],
+                        ['operator', 'Operator'],
+                        ['utilization', 'Ideal utilization contribution'],
+                      ] as [MachineSortColumn, string][]
+                    ).map(([column, label]) => (
+                      <th
+                        key={column}
+                        className="production-sortable-th"
+                        onClick={() => toggleMachineSort(column)}
+                        title="Click to sort ascending/descending"
+                      >
+                        {label}{machineSortIndicator(column)}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {utilization.machines.map((machine) => (
-                    machine.contributions.length > 0
-                      ? machine.contributions.map((contribution, index) => {
+                  {visibleMachineRows.map(({ machine, contribution, index }) =>
+                    contribution
+                      ? (() => {
                           const operator = contribution.operatorId ? operatorById.get(contribution.operatorId) : undefined;
                           const contributionPercent =
                             operator && operator.availableMinutes > 0
@@ -1503,7 +1656,7 @@ function PlannedUtilizationCard({
                               </td>
                             </tr>
                           );
-                        })
+                        })()
                       : (
                         <tr key={machine.machineId}>
                           <td>{machine.machineLabel}</td>
@@ -1511,7 +1664,7 @@ function PlannedUtilizationCard({
                           <td colSpan={3}>No resolved activity demand</td>
                         </tr>
                       )
-                  ))}
+                  )}
                 </tbody>
               </table>
             </div>
