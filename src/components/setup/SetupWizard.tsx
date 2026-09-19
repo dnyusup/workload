@@ -12,6 +12,7 @@ import { SpecForm } from './SpecForm';
 import { OperatorForm } from './OperatorForm';
 import { ActivityTable } from './ActivityTable';
 import { MovementParamsForm } from './MovementParams';
+import { OutputEstimate } from './OutputEstimate';
 import { LayoutBuilder } from './LayoutBuilder';
 import { ConstructionDetailSelector } from './ConstructionDetailSelector';
 import { LayoutSelector } from './LayoutSelector';
@@ -120,6 +121,7 @@ export function SetupWizard({ onStart }: { onStart: () => void }) {
                 movement={config.movement}
                 onChange={(movement) => setConfig((prev) => ({ ...prev, movement }))}
               />
+              <OutputEstimate config={config} forecast={forecast} />
             </div>
           </div>
         )}

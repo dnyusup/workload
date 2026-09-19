@@ -4,6 +4,13 @@ import { activityCycleLength, availableTimeMinutes, deriveMachineSpec, distanceM
 const AVERAGE_DIES_PER_CHANGE_EVENT = (7 + 26) / 2;
 const GLOBAL_EVENT_ACTIVITIES = new Set(['fractureRepairing', 'diesChange', 'defectRepairing']);
 
+export interface ForecastActivityContribution {
+  key: string;
+  label: string;
+  handlingMinutes: number;
+  downtimeMinutes: number;
+}
+
 export interface SingleOperatorForecast {
   availableMinutes: number;
   plannedMinutes: number;
@@ -12,6 +19,9 @@ export interface SingleOperatorForecast {
   forecastWaitingMinutes: number;
   utilizationPercent: number;
   forecastUtilizationPercent: number;
+  assignedMachineCount: number;
+  expectedFinishedSpools: number;
+  activityContributions: ForecastActivityContribution[];
 }
 
 function positiveFinite(value: number): number {
@@ -77,6 +87,18 @@ export function calculateSingleOperatorForecast(config: AppConfig): SingleOperat
   let plannedMinutes = 0;
   let forecastServiceMinutes = 0;
   const visitsByMachine = new Map<string, number>();
+  const activityContributions = new Map<string, ForecastActivityContribution>();
+  const addActivityContribution = (activity: ActivityConfig, handlingMinutes: number) => {
+    const existing = activityContributions.get(activity.key) ?? {
+      key: activity.key,
+      label: activity.label,
+      handlingMinutes: 0,
+      downtimeMinutes: 0,
+    };
+    existing.handlingMinutes += handlingMinutes;
+    if (activity.machCondition !== 'run') existing.downtimeMinutes += handlingMinutes;
+    activityContributions.set(activity.key, existing);
+  };
 
   assignedMachines.forEach((machine) => {
     let machinePlannedMinutes = 0;
@@ -94,6 +116,7 @@ export function calculateSingleOperatorForecast(config: AppConfig): SingleOperat
         : eventCount * Math.max(0, activity.timeMinutes);
       machinePlannedMinutes += minutes;
       machineVisits = Math.max(machineVisits, eventCount);
+      addActivityContribution(activity, minutes * scale);
     });
     plannedMinutes += machinePlannedMinutes;
     forecastServiceMinutes += machinePlannedMinutes * scale;
@@ -116,6 +139,7 @@ export function calculateSingleOperatorForecast(config: AppConfig): SingleOperat
         : totalEvents * Math.max(0, activity.timeMinutes);
       plannedMinutes += minutes;
       forecastServiceMinutes += minutes * scale;
+      addActivityContribution(activity, minutes * scale);
       assignedMachines.forEach((machine) => {
         const machineEvents = totalEvents / availableMachines;
         visitsByMachine.set(machine.id, Math.max(visitsByMachine.get(machine.id) ?? 0, machineEvents * scale));
@@ -175,6 +199,9 @@ export function calculateSingleOperatorForecast(config: AppConfig): SingleOperat
     forecastUtilizationPercent: availableMinutes > 0
       ? Math.min(100, (forecastBusyMinutes / availableMinutes) * 100)
       : 0,
+    assignedMachineCount: availableMachines,
+    expectedFinishedSpools: expectedSpools * availableMachines * scale,
+    activityContributions: [...activityContributions.values()],
   };
 }
 

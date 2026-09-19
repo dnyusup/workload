@@ -976,8 +976,61 @@
   min-width: 0;
 }
 
+.output-estimate {
+  min-width: 0;
+}
+
+.output-estimate-heading {
+  margin: 0 0 12px;
+}
+
+.output-estimate-heading h3 {
+  margin: 0;
+  color: #f1f5f9;
+  font-size: 1rem;
+}
+
+.output-estimate-heading p {
+  margin: 4px 0 0;
+  color: #94a3b8;
+  font-size: 0.78rem;
+}
+
+.output-estimate-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+
+.output-estimate-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.output-estimate-card .card-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.output-estimate-card .metric-row {
+  gap: 12px;
+}
+
+.output-estimate-card .metric-row > span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 900px) {
   .setup-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .output-estimate-grid {
     grid-template-columns: 1fr;
   }
 }
