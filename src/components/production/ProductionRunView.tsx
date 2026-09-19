@@ -896,12 +896,12 @@ export function ProductionRunView({
                 <strong>{fmt(tonage)} ton</strong>
               </div>
               <div className="metric-row">
-                <span>Manhour/ton</span>
-                <strong>{fmt(manHourPerTon)}</strong>
-              </div>
-              <div className="metric-row">
                 <span>OEE (finished spool)</span>
                 <strong>{fmt(outputOee)}%</strong>
+              </div>
+              <div className="metric-row">
+                <span>Manhour/ton</span>
+                <strong>{fmt(manHourPerTon)}</strong>
               </div>
               <div className="metric-row">
                 <span>Machhours/ton</span>
