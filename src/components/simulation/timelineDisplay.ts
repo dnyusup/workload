@@ -4,6 +4,8 @@ export const ZONE_COLORS = {
   blue: '#2563eb',
   red: '#dc2626',
   orange: '#f97316',
+  diesChange: '#e879f9',
+  defectRepairing: '#facc15',
 } as const;
 
 /** Colors a machine's Pay Off / Take Up zone rectangles based on which activities are pending on
@@ -18,6 +20,8 @@ export function machineZoneColors(
   const tasks = machine.id === activeMachineId ? [...machine.pendingTasks, ...activeTasks] : machine.pendingTasks;
   const pending = new Set(tasks.map((task) => task.activity));
   const hasFracture = pending.has('fractureRepairing');
+  const hasDiesChange = pending.has('diesChange');
+  const hasDefectRepairing = pending.has('defectRepairing');
   const hasDoffing = pending.has('doffing');
   const hasLoading = pending.has('loading');
   const hasSubLoading = [...pending].some((key) => key.startsWith('loading-'));
@@ -25,6 +29,10 @@ export function machineZoneColors(
 
   if (hasFracture) {
     colors.takeup = ZONE_COLORS.orange;
+  } else if (hasDiesChange) {
+    colors.takeup = ZONE_COLORS.diesChange;
+  } else if (hasDefectRepairing) {
+    colors.takeup = ZONE_COLORS.defectRepairing;
   } else if (hasDoffing) {
     colors.takeup = ZONE_COLORS.blue;
   }
@@ -67,6 +75,8 @@ export const timelineKinds: { kind: OperatorTimelineKind; label: string; color: 
   { kind: 'doffing', label: 'Doffing', color: '#38bdf8' },
   { kind: 'loading', label: 'Loading', color: '#a78bfa' },
   { kind: 'fractureRepairing', label: 'Fracture Repairing', color: '#f87171' },
+  { kind: 'diesChange', label: 'Dies Change', color: ZONE_COLORS.diesChange },
+  { kind: 'defectRepairing', label: 'Defect Repairing', color: ZONE_COLORS.defectRepairing },
   { kind: 'walking', label: 'Walking', color: '#fbbf24' },
   { kind: 'lunch', label: 'Lunch', color: '#64748b' },
   { kind: 'meeting', label: 'Meeting', color: '#94a3b8' },
@@ -78,6 +88,8 @@ export const machineTimelineKinds: { kind: MachineTimelineKind; label: string; c
   { kind: 'doffing', label: 'Doffing', color: '#38bdf8' },
   { kind: 'loading', label: 'Loading', color: '#a78bfa' },
   { kind: 'fractureRepairing', label: 'Fracture Repairing', color: '#f87171' },
+  { kind: 'diesChange', label: 'Dies Change', color: ZONE_COLORS.diesChange },
+  { kind: 'defectRepairing', label: 'Defect Repairing', color: ZONE_COLORS.defectRepairing },
   { kind: 'waiting', label: 'Waiting to be handled', color: '#64748b' },
 ];
 

@@ -268,6 +268,7 @@ export function buildActivitiesFromRows(
         denominator: isTonRegulatedParent ? fractureRepairingDenominator(spoolWeight) : parseNumber(parentRow.mpp_denominator, 1),
         denominatorAuto: isTonRegulatedParent,
         machCondition: parseMachCondition(parentRow.mpp_machcondition),
+        defectTakeupOnly: isDefectRepairingParent,
       });
     }
 

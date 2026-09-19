@@ -354,19 +354,23 @@ export function LayoutBuilder({
     if (measureMode || placingStart) return;
     e.stopPropagation();
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    const clickedMachine = layout.find((m) => m.id === id);
+    const groupIds = clickedMachine?.groupId
+      ? new Set(layout.filter((m) => m.groupId === clickedMachine.groupId).map((m) => m.id))
+      : new Set([id]);
     if (e.shiftKey) {
       setSelectedIds((prev) => {
         const next = new Set(prev);
-        if (next.has(id)) next.delete(id);
-        else next.add(id);
+        const shouldRemove = next.has(id);
+        groupIds.forEach((groupId) => (shouldRemove ? next.delete(groupId) : next.add(groupId)));
         return next;
       });
       return;
     }
     const wasAlreadyMultiSelected = selectedIds.has(id) && selectedIds.size > 1;
-    if (!selectedIds.has(id)) setSelectedIds(new Set([id]));
+    if (!selectedIds.has(id)) setSelectedIds(groupIds);
     if (readOnly) return;
-    const movingIds = wasAlreadyMultiSelected ? selectedIds : new Set([id]);
+    const movingIds = wasAlreadyMultiSelected ? new Set([...selectedIds, ...groupIds]) : groupIds;
     const positions = new Map<string, Point>();
     layout.forEach((m) => {
       if (movingIds.has(m.id)) positions.set(m.id, { x: m.x, y: m.y });
@@ -456,9 +460,18 @@ export function LayoutBuilder({
       const hits = layout
         .filter((m) => m.x < maxWorld.x && m.x + machineWidthPx(m, pixelsPerMeter) > minWorld.x && m.y < maxWorld.y && m.y + machineHeightPx(m, pixelsPerMeter) > minWorld.y)
         .map((m) => m.id);
-      if (hits.length > 0) setSelectedIds((prev) => new Set([...prev, ...hits]));
+      if (hits.length > 0) {
+        const hitSet = new Set(hits);
+        layout.forEach((machine) => {
+          if (machine.groupId && hits.some((id) => layout.find((candidate) => candidate.id === id)?.groupId === machine.groupId)) {
+            hitSet.add(machine.id);
+          }
+        });
+        setSelectedIds((prev) => new Set([...prev, ...hitSet]));
+      }
     }
-    if (drag?.mode === 'machine' && !drag.historyPushed && drag.wasAlreadyMultiSelected) {
+    const clickedMachine = drag?.mode === 'machine' ? layout.find((m) => m.id === drag.clickedId) : undefined;
+    if (drag?.mode === 'machine' && !drag.historyPushed && drag.wasAlreadyMultiSelected && !clickedMachine?.groupId) {
       // Plain click on a machine that was already part of a larger selection, with no actual
       // drag — collapse the selection down to just this one. A real drag instead moves (and
       // keeps selected) the whole group; only a no-op click means "select only this machine".
@@ -475,6 +488,38 @@ export function LayoutBuilder({
       { id, label: String(nextMachineNumber(layout)), x: 40, y: 40, type: 'normal', orientation: 'normal', pairSide: 'single' },
     ]);
     setSelectedIds(new Set([id]));
+  };
+
+  const [groupOpen, setGroupOpen] = useState(false);
+  const [groupWidthM, setGroupWidthM] = useState(String(DEFAULT_MACHINE_WIDTH_M));
+  const [groupLengthM, setGroupLengthM] = useState(String(DEFAULT_MACHINE_LENGTH_M));
+  const [groupCount, setGroupCount] = useState('2');
+
+  const addMachineGroup = () => {
+    const widthM = parseFloat(groupWidthM);
+    const lengthM = parseFloat(groupLengthM);
+    const count = parseInt(groupCount, 10);
+    if (!Number.isFinite(widthM) || widthM <= 0 || !Number.isFinite(lengthM) || lengthM <= 0 || !Number.isInteger(count) || count < 2) return;
+    pushHistory(layout);
+    const timestamp = Date.now();
+    const groupId = `machine-group-${timestamp}`;
+    const firstNumber = nextMachineNumber(layout);
+    const widthPx = widthM * pixelsPerMeter;
+    const created = Array.from({ length: count }, (_, index): LayoutMachine => ({
+      id: `m-${timestamp}-${index}`,
+      groupId,
+      label: String(firstNumber + index),
+      x: 40 + index * widthPx,
+      y: 40,
+      type: 'normal',
+      orientation: 'normal',
+      pairSide: 'single',
+      widthM,
+      lengthM,
+    }));
+    onChange([...layout, ...created]);
+    setSelectedIds(new Set(created.map((machine) => machine.id)));
+    setGroupOpen(false);
   };
 
   const removeSelected = () => {
@@ -735,6 +780,9 @@ export function LayoutBuilder({
               </Button>
               <Button variant="primary" onClick={addMachine}>
                 + Add Machine
+              </Button>
+              <Button variant="secondary" onClick={() => setGroupOpen(true)}>
+                + Add Group Machine
               </Button>
               <Button variant="ghost" onClick={toggleType} disabled={selectedIds.size === 0}>
                 Toggle BF X
@@ -1077,6 +1125,30 @@ export function LayoutBuilder({
               <Button variant="primary" onClick={applyResize}>
                 Terapkan
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      {groupOpen && (
+        <div className="modal-overlay" onClick={() => setGroupOpen(false)}>
+          <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
+            <h3>Add Group Machine</h3>
+            <div className="modal-field">
+              <label htmlFor="group-length">Panjang mesin (m)</label>
+              <input id="group-length" className="input" type="number" min={0.1} step={0.1} value={groupLengthM} onChange={(e) => setGroupLengthM(e.target.value)} autoFocus />
+            </div>
+            <div className="modal-field">
+              <label htmlFor="group-width">Lebar mesin (m)</label>
+              <input id="group-width" className="input" type="number" min={0.1} step={0.1} value={groupWidthM} onChange={(e) => setGroupWidthM(e.target.value)} />
+            </div>
+            <div className="modal-field">
+              <label htmlFor="group-count">Jumlah mesin</label>
+              <input id="group-count" className="input" type="number" min={2} step={1} value={groupCount} onChange={(e) => setGroupCount(e.target.value)} />
+            </div>
+            <p className="hint-row">Mesin dalam group akan selalu dipilih dan dipindahkan bersama.</p>
+            <div className="modal-actions">
+              <Button variant="ghost" onClick={() => setGroupOpen(false)}>Batal</Button>
+              <Button variant="primary" onClick={addMachineGroup}>Buat Group</Button>
             </div>
           </div>
         </div>

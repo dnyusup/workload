@@ -68,6 +68,11 @@ export function Dashboard({ state, config }: { state: SimulationState; config: A
     .filter(([key]) => key === 'fractureRepairing' || key.startsWith('fractureRepairing-'))
     .reduce((sum, [, count]) => sum + count, 0);
   const actualFracturePerTon = tonage > 0 ? totalFractureCount / tonage : 0;
+  const actualDiesPerTon = tonage > 0 ? metrics.diesChanged / tonage : 0;
+  const totalDefectRepairingCount = Object.entries(metrics.completedByActivity)
+    .filter(([key]) => key === 'defectRepairing' || key.startsWith('defectRepairing-'))
+    .reduce((sum, [, count]) => sum + count, 0);
+  const actualDefectPerTon = tonage > 0 ? totalDefectRepairingCount / tonage : 0;
 
   let verdict = 'Operator capacity is sufficient.';
   let verdictClass = 'verdict-ok';
@@ -152,6 +157,14 @@ export function Dashboard({ state, config }: { state: SimulationState; config: A
         <div className="metric-row" title="Total Fracture Repairing ÷ Tonage">
           <span>Fracture/Ton (actual)</span>
           <strong>{fmt(actualFracturePerTon)}</strong>
+        </div>
+        <div className="metric-row" title="Total Dies Change events ÷ Tonage">
+          <span>Dies/Ton (actual)</span>
+          <strong>{fmt(actualDiesPerTon)}</strong>
+        </div>
+        <div className="metric-row" title="Total Defect Repairing events ÷ Tonage">
+          <span>Defect/Ton (actual)</span>
+          <strong>{fmt(actualDefectPerTon)}</strong>
         </div>
       </Card>
 

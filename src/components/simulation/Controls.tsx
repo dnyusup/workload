@@ -48,7 +48,7 @@ export function Controls({
         // changes the fracture cycle instead of just the displayed spec value.
         activities: prev.activities.map((a) => ({
           ...a,
-          numerator: a.numeratorAuto ? value : a.numerator,
+          numerator: a.key === 'fractureRepairing' && a.numeratorAuto ? value : a.numerator,
           denominator: a.denominatorAuto ? fractureRepairingDenominator(derived.spoolWeight) : a.denominator,
         })),
       };

@@ -34,7 +34,14 @@ function AppShell() {
       ...prev,
       activities: prev.activities.map((a) => ({
         ...a,
-        numerator: a.numeratorAuto ? prev.spec.fracturePerTon : a.numerator,
+        numerator:
+          a.key === 'diesChange'
+            ? prev.spec.diesPerTon
+            : a.key === 'defectRepairing'
+              ? prev.spec.defectsPerTon
+              : a.numeratorAuto
+                ? prev.spec.fracturePerTon
+                : a.numerator,
         denominator: a.denominatorAuto ? fractureRepairingDenominator(derived.spoolWeight) : a.denominator,
       })),
     }));

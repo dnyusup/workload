@@ -66,6 +66,8 @@ export interface ActivityConfig {
   loadingPartialSlot?: 1 | 2 | 3;
   /** Loading is triggered from fractional production progress (weight) and may interrupt a spool. */
   loadingInterrupt?: boolean;
+  /** Defect Repairing for the applicable areas is performed entirely at the Take Up zone. */
+  defectTakeupOnly?: boolean;
 }
 
 export interface MovementParams {
@@ -81,6 +83,8 @@ export type MachinePairSide = 'single' | 'left' | 'right';
 
 export interface LayoutMachine {
   id: string;
+  /** Machines created as one group move and are selected together in the Layout Builder. */
+  groupId?: string;
   label: string;
   x: number;
   y: number;
@@ -137,6 +141,7 @@ export interface PendingTask {
   assignedOperatorId?: string;
   /** Weight-based Loading is performed entirely at the Pay Off zone. */
   loadingPayoffOnly?: boolean;
+  defectTakeupOnly?: boolean;
 }
 
 export type DowntimeReason = string;
@@ -252,6 +257,10 @@ export interface SimMetrics {
   servicingByActivity: Record<ActivityKey, number>;
   idleMin: number;
   completedByActivity: Record<ActivityKey, number>;
+  /** Total physical dies changed; one event can contribute 7 or 26 dies. */
+  diesChanged: number;
+  /** Planned total dies for the shift, derived from planned tonage and Dies/Ton. */
+  plannedDies: number;
   totalWaitMin: number;
   totalWaitCount: number;
   queueLength: number;
@@ -288,6 +297,8 @@ export interface ProductionMachineAssignment {
   doffingOperatorId?: string;
   loadingOperatorId?: string;
   fractureRepairingOperatorId?: string;
+  diesChangeOperatorId?: string;
+  defectRepairingOperatorId?: string;
 }
 
 export interface ProductionSetup {
@@ -325,6 +336,10 @@ export interface ProductionSimMetrics {
   shiftTimeMin: number;
   assignedMachineCount: number;
   completedByActivity: Record<ActivityKey, number>;
+  /** Total physical dies changed; one event can contribute 7 or 26 dies. */
+  diesChanged: number;
+  /** Planned total dies for the shift, derived from planned tonage and Dies/Ton. */
+  plannedDies: number;
   downtimeByReason: Record<DowntimeReason, number>;
   /** Accumulated across every completed Doffing event, using each machine's OWN spool weight and
    * runtime-per-spool (which can differ per Construction) — unlike the single-operator Simulator's

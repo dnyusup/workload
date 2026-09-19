@@ -476,6 +476,8 @@ function ProductionSetupEditor({
   onOperatorCountChange: (delta: number) => void;
   resolving: boolean;
 }) {
+  const diesChangeAreas = new Set(['WW', 'BA', 'CA']);
+  const defectRepairingAreas = new Set(['CB', 'BU', 'SP', 'CH', 'CR']);
   const [selectedMachineIds, setSelectedMachineIds] = useState<string[]>([]);
   const [newOperatorName, setNewOperatorName] = useState('');
   const [addingOperator, setAddingOperator] = useState(false);
@@ -486,6 +488,8 @@ function ProductionSetupEditor({
   const [bulkDoffingOperatorId, setBulkDoffingOperatorId] = useState('');
   const [bulkLoadingOperatorId, setBulkLoadingOperatorId] = useState('');
   const [bulkFractureOperatorId, setBulkFractureOperatorId] = useState('');
+  const [bulkDiesChangeOperatorId, setBulkDiesChangeOperatorId] = useState('');
+  const [bulkDefectRepairingOperatorId, setBulkDefectRepairingOperatorId] = useState('');
   // Tracks what's actually applied on the selected machines right now (as of the last selection
   // change or Apply click) — compared against the bulk* form values above to flag an Apply button
   // yellow whenever the dropdown has moved away from what's currently on the machines.
@@ -493,11 +497,18 @@ function ProductionSetupEditor({
   const [appliedDoffingOperatorId, setAppliedDoffingOperatorId] = useState('');
   const [appliedLoadingOperatorId, setAppliedLoadingOperatorId] = useState('');
   const [appliedFractureOperatorId, setAppliedFractureOperatorId] = useState('');
+  const [appliedDiesChangeOperatorId, setAppliedDiesChangeOperatorId] = useState('');
+  const [appliedDefectRepairingOperatorId, setAppliedDefectRepairingOperatorId] = useState('');
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
 
   const assignmentByMachine = new Map(setup.assignments.map((a) => [a.machineId, a]));
+  const areaByConstructionId = new Map(
+    products
+      .filter((product) => product.mpp_wl_productsid && product.mpp_area)
+      .map((product) => [product.mpp_wl_productsid, product.mpp_area!.trim().toUpperCase()]),
+  );
   const operatorLabel = (id?: string) => (id ? setup.operators.find((o) => o.id === id)?.label ?? '—' : '—');
 
   /** Prefills the bulk-assign fields with whatever the selected machines already have applied —
@@ -516,17 +527,23 @@ function ProductionSetupEditor({
     const doffing = commonValue((a) => a.doffingOperatorId);
     const loading = commonValue((a) => a.loadingOperatorId);
     const fracture = commonValue((a) => a.fractureRepairingOperatorId);
+    const diesChange = commonValue((a) => a.diesChangeOperatorId);
+    const defectRepairing = commonValue((a) => a.defectRepairingOperatorId);
     setBulkConstructionId(construction);
     setBulkDoffingOperatorId(doffing);
     setBulkLoadingOperatorId(loading);
     setBulkFractureOperatorId(fracture);
+    setBulkDiesChangeOperatorId(diesChange);
+    setBulkDefectRepairingOperatorId(defectRepairing);
     setAppliedConstructionId(construction);
     setAppliedDoffingOperatorId(doffing);
     setAppliedLoadingOperatorId(loading);
     setAppliedFractureOperatorId(fracture);
+    setAppliedDiesChangeOperatorId(diesChange);
+    setAppliedDefectRepairingOperatorId(defectRepairing);
     // Deliberately NOT depending on setup.assignments: this should only resync when the SELECTION
     // itself changes, not every time any field gets applied — otherwise applying just one of the
-    // four pending fields (e.g. Doffing) would also silently wipe out the user's still-unapplied
+    // pending fields (e.g. Doffing) would also silently wipe out the user's still-unapplied
     // picks in the other three, since this would re-read their "actual" (unchanged) values from
     // setup.assignments and stomp over the pending dropdown state. Explicit apply/unplan handlers
     // update applied*/bulk* state themselves for the field(s) they actually touch.
@@ -543,13 +560,25 @@ function ProductionSetupEditor({
     if (!a?.constructionDetailId) {
       return { status: 'unplanned' as const, tooltip: `Machine ${m.label}\nNot planned yet (no Construction assigned).` };
     }
-    const fullyAssigned = !!(a.doffingOperatorId && a.loadingOperatorId && a.fractureRepairingOperatorId);
+    const area = areaByConstructionId.get(a.constructionDetailId);
+    const requiresDiesChange = area ? diesChangeAreas.has(area) : false;
+    const requiresDefectRepairing = area ? defectRepairingAreas.has(area) : false;
+    const fullyAssigned = !!(
+      a.doffingOperatorId &&
+      a.loadingOperatorId &&
+      a.fractureRepairingOperatorId &&
+      (!requiresDiesChange || a.diesChangeOperatorId) &&
+      (!requiresDefectRepairing || a.defectRepairingOperatorId)
+    );
     const tooltip = [
       `Machine ${m.label}`,
       `Construction: ${a.constructionDetailLabel ?? '—'}`,
+      `Area: ${area ?? '—'}`,
       `Doffing: ${operatorLabel(a.doffingOperatorId)}`,
       `Loading: ${operatorLabel(a.loadingOperatorId)}`,
       `Fracture Repairing: ${operatorLabel(a.fractureRepairingOperatorId)}`,
+      ...(requiresDiesChange ? [`Dies Change: ${operatorLabel(a.diesChangeOperatorId)}`] : []),
+      ...(requiresDefectRepairing ? [`Defect Repairing: ${operatorLabel(a.defectRepairingOperatorId)}`] : []),
     ].join('\n');
     return {
       status: fullyAssigned ? ('assigned' as const) : ('planned' as const),
@@ -585,15 +614,21 @@ function ProductionSetupEditor({
       doffingOperatorId: undefined,
       loadingOperatorId: undefined,
       fractureRepairingOperatorId: undefined,
+      diesChangeOperatorId: undefined,
+      defectRepairingOperatorId: undefined,
     });
     setBulkConstructionId('');
     setBulkDoffingOperatorId('');
     setBulkLoadingOperatorId('');
     setBulkFractureOperatorId('');
+    setBulkDiesChangeOperatorId('');
+    setBulkDefectRepairingOperatorId('');
     setAppliedConstructionId('');
     setAppliedDoffingOperatorId('');
     setAppliedLoadingOperatorId('');
     setAppliedFractureOperatorId('');
+    setAppliedDiesChangeOperatorId('');
+    setAppliedDefectRepairingOperatorId('');
   };
 
   const buildBulkOperatorLabels = (prefix: string, count: number): string[] => {
@@ -687,7 +722,7 @@ function ProductionSetupEditor({
   const operatorLabelOrBlank = (id?: string) => (id ? setup.operators.find((o) => o.id === id)?.label ?? '' : '');
 
   const exportCsv = () => {
-    const headers = ['Machine', 'Construction Detail', 'Doffing', 'Loading', 'FractureRepairing'];
+    const headers = ['Machine', 'Construction Detail', 'Doffing', 'Loading', 'FractureRepairing', 'DiesChange', 'DefectRepairing'];
     const rows = setup.layout.map((m) => {
       const a = assignmentByMachine.get(m.id);
       return [
@@ -696,6 +731,8 @@ function ProductionSetupEditor({
         operatorLabelOrBlank(a?.doffingOperatorId),
         operatorLabelOrBlank(a?.loadingOperatorId),
         operatorLabelOrBlank(a?.fractureRepairingOperatorId),
+        operatorLabelOrBlank(a?.diesChangeOperatorId),
+        operatorLabelOrBlank(a?.defectRepairingOperatorId),
       ];
     });
     downloadCsv(`${setup.name.replace(/[^a-z0-9]+/gi, '_') || 'production-setup'}.csv`, headers, rows);
@@ -720,6 +757,8 @@ function ProductionSetupEditor({
       doffing: header.indexOf('doffing'),
       loading: header.indexOf('loading'),
       fracture: header.indexOf('fracturerepairing'),
+      diesChange: header.indexOf('dieschange'),
+      defectRepairing: header.indexOf('defectrepairing'),
     };
     if (colIndex.machine === -1) {
       setImportMessage('CSV must have a "Machine" column.');
@@ -760,6 +799,8 @@ function ProductionSetupEditor({
         ['doffingOperatorId', colIndex.doffing, 'Doffing'],
         ['loadingOperatorId', colIndex.loading, 'Loading'],
         ['fractureRepairingOperatorId', colIndex.fracture, 'FractureRepairing'],
+        ['diesChangeOperatorId', colIndex.diesChange, 'DiesChange'],
+        ['defectRepairingOperatorId', colIndex.defectRepairing, 'DefectRepairing'],
       ];
       operatorColumns.forEach(([field, idx, colName]) => {
         if (idx === -1) return;
@@ -812,6 +853,8 @@ function ProductionSetupEditor({
   const doffingDirty = bulkDoffingOperatorId !== appliedDoffingOperatorId;
   const loadingDirty = bulkLoadingOperatorId !== appliedLoadingOperatorId;
   const fractureDirty = bulkFractureOperatorId !== appliedFractureOperatorId;
+  const diesChangeDirty = bulkDiesChangeOperatorId !== appliedDiesChangeOperatorId;
+  const defectRepairingDirty = bulkDefectRepairingOperatorId !== appliedDefectRepairingOperatorId;
 
   const assignSelectionCard = (
     <Card
@@ -902,6 +945,48 @@ function ProductionSetupEditor({
           title="Apply Fracture Repairing operator to selection"
         >
           Fract
+        </Button>
+      </div>
+      <div className="production-assign-row">
+        <SearchableSelect
+          value={bulkDiesChangeOperatorId}
+          onChange={setBulkDiesChangeOperatorId}
+          placeholder="Select Dies Change Operator"
+          searchPlaceholder="Search operator…"
+          options={setup.operators.map((o) => ({ value: o.id, label: o.label }))}
+        />
+        <Button
+          variant="secondary"
+          className={diesChangeDirty ? 'btn-pending' : ''}
+          onClick={() => {
+            applyBulk({ diesChangeOperatorId: bulkDiesChangeOperatorId || undefined });
+            setAppliedDiesChangeOperatorId(bulkDiesChangeOperatorId);
+          }}
+          disabled={selectedMachineIds.length === 0}
+          title="Apply Dies Change operator to selection"
+        >
+          Dies
+        </Button>
+      </div>
+      <div className="production-assign-row">
+        <SearchableSelect
+          value={bulkDefectRepairingOperatorId}
+          onChange={setBulkDefectRepairingOperatorId}
+          placeholder="Select Defect Repairing Operator"
+          searchPlaceholder="Search operator…"
+          options={setup.operators.map((o) => ({ value: o.id, label: o.label }))}
+        />
+        <Button
+          variant="secondary"
+          className={defectRepairingDirty ? 'btn-pending' : ''}
+          onClick={() => {
+            applyBulk({ defectRepairingOperatorId: bulkDefectRepairingOperatorId || undefined });
+            setAppliedDefectRepairingOperatorId(bulkDefectRepairingOperatorId);
+          }}
+          disabled={selectedMachineIds.length === 0}
+          title="Apply Defect Repairing operator to selection"
+        >
+          Defect
         </Button>
       </div>
     </Card>
@@ -1058,6 +1143,8 @@ function ProductionSetupEditor({
                 <th>Doffing</th>
                 <th>Loading</th>
                 <th>Fracture Repairing</th>
+                <th>Dies Change</th>
+                <th>Defect Repairing</th>
               </tr>
             </thead>
             <tbody>
@@ -1070,6 +1157,8 @@ function ProductionSetupEditor({
                     <td>{operatorLabel(a?.doffingOperatorId)}</td>
                     <td>{operatorLabel(a?.loadingOperatorId)}</td>
                     <td>{operatorLabel(a?.fractureRepairingOperatorId)}</td>
+                    <td>{operatorLabel(a?.diesChangeOperatorId)}</td>
+                    <td>{operatorLabel(a?.defectRepairingOperatorId)}</td>
                   </tr>
                 );
               })}

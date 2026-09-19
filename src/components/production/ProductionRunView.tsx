@@ -395,6 +395,8 @@ export function ProductionRunView({
       if (a.doffingOperatorId) ids.add(a.doffingOperatorId);
       if (a.loadingOperatorId) ids.add(a.loadingOperatorId);
       if (a.fractureRepairingOperatorId) ids.add(a.fractureRepairingOperatorId);
+      if (a.diesChangeOperatorId) ids.add(a.diesChangeOperatorId);
+      if (a.defectRepairingOperatorId) ids.add(a.defectRepairingOperatorId);
     });
     return ids;
   }, [setup.assignments]);
@@ -416,6 +418,11 @@ export function ProductionRunView({
     .filter(([key]) => key === 'fractureRepairing' || key.startsWith('fractureRepairing-'))
     .reduce((sum, [, count]) => sum + count, 0);
   const actualFracturePerTon = tonage > 0 ? totalFractureCount / tonage : 0;
+  const actualDiesPerTon = tonage > 0 ? metrics.diesChanged / tonage : 0;
+  const totalDefectRepairingCount = Object.entries(metrics.completedByActivity)
+    .filter(([key]) => key === 'defectRepairing' || key.startsWith('defectRepairing-'))
+    .reduce((sum, [, count]) => sum + count, 0);
+  const actualDefectPerTon = tonage > 0 ? totalDefectRepairingCount / tonage : 0;
 
   const plannedProductionMin = metrics.assignedMachineCount * metrics.clockMin;
   const totalDowntimeMin = Object.values(metrics.downtimeByReason).reduce((a, b) => a + b, 0);
@@ -907,6 +914,14 @@ export function ProductionRunView({
               <div className="metric-row" title="Total Fracture Repairing ÷ Tonage">
                 <span>Fracture/Ton (actual)</span>
                 <strong>{fmt(actualFracturePerTon)}</strong>
+              </div>
+              <div className="metric-row" title="Total Dies Change events ÷ Tonage">
+                <span>Dies/Ton (actual)</span>
+                <strong>{fmt(actualDiesPerTon)}</strong>
+              </div>
+              <div className="metric-row" title="Total Defect Repairing events ÷ Tonage">
+                <span>Defect/Ton (actual)</span>
+                <strong>{fmt(actualDefectPerTon)}</strong>
               </div>
             </Card>
 

@@ -149,6 +149,14 @@
           "x-ms-schema-name": "mpp_constructiondetailid",
           "maxLength": 100
         },
+        "mpp_defectrepairingoperatorid": {
+          "type": "string",
+          "title": "defectrepairingoperatorid",
+          "x-ms-dataverse-attribute": "mpp_defectrepairingoperatorid",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "mpp_defectrepairingoperatorid",
+          "maxLength": 100
+        },
         "mpp_dieschangeoperatorid": {
           "type": "string",
           "title": "dieschangeoperatorid",

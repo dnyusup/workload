@@ -28,6 +28,7 @@ function emptyDowntime(activities: ActivityConfig[] = []): Record<DowntimeReason
 }
 
 const GLOBAL_EVENT_ACTIVITIES = new Set(['fractureRepairing', 'diesChange', 'defectRepairing']);
+const AVERAGE_DIES_PER_CHANGE_EVENT = (7 + 26) / 2;
 
 function dueBreakKind(label: string | null): 'lunch' | 'meeting' {
   return label?.toLowerCase().includes('meeting') ? 'meeting' : 'lunch';
@@ -77,6 +78,8 @@ export class SimulationEngine {
    * machine (applied once that machine's current spool finishes, never interrupting it mid-run). */
   private globalSpoolsCompleted = 0;
   private globalEventCounts = new Map<ActivityKey, number>();
+  private plannedDies = 0;
+  private scheduledDies = 0;
 
   constructor(config: AppConfig) {
     this.config = config;
@@ -97,6 +100,11 @@ export class SimulationEngine {
     // Theoretical spools one machine would complete across a full shift, used to randomize
     // each machine's starting phase so the shift doesn't begin with every machine freshly at 0.
     const theoreticalSpoolsPerShift = Math.max(1, Math.floor(config.operator.shiftTime / this.runtimePerSpool));
+    const diesActivity = config.activities.find((activity) => activity.key === 'diesChange');
+    this.plannedDies =
+      diesActivity && diesActivity.numerator > 0
+        ? (theoreticalSpoolsPerShift * this.assignedIds.size * derived.spoolWeight * diesActivity.numerator) / 1000
+        : 0;
 
     this.machines = config.layout.map((m) => {
       const assigned = this.assignedIds.has(m.id);
@@ -159,9 +167,18 @@ export class SimulationEngine {
     this.globalSpoolsCompleted = this.machines.reduce((sum, m) => sum + m.spoolsCompleted, 0);
     config.activities.filter((activity) => GLOBAL_EVENT_ACTIVITIES.has(activity.key)).forEach((activity) => {
       const cycle = this.cycleLengths[activity.key];
+      const expectedDiesEvents =
+        activity.key === 'diesChange' && this.plannedDies > 0
+          ? Math.ceil(this.plannedDies / AVERAGE_DIES_PER_CHANGE_EVENT)
+          : 0;
+      const totalTheoreticalSpools = theoreticalSpoolsPerShift * this.assignedIds.size;
+      const eventCycle =
+        activity.key === 'diesChange' && expectedDiesEvents > 0
+          ? totalTheoreticalSpools / expectedDiesEvents
+          : cycle;
       this.globalEventCounts.set(
         activity.key,
-        Number.isFinite(cycle) && cycle > 0 ? Math.floor(this.globalSpoolsCompleted / cycle) : 0,
+        Number.isFinite(eventCycle) && eventCycle > 0 ? Math.floor(this.globalSpoolsCompleted / eventCycle) : 0,
       );
     });
 
@@ -228,6 +245,8 @@ export class SimulationEngine {
       servicingByActivity: emptyCounts(config.activities),
       idleMin: 0,
       completedByActivity: emptyCounts(config.activities),
+      diesChanged: 0,
+      plannedDies: this.plannedDies,
       totalWaitMin: 0,
       totalWaitCount: 0,
       queueLength: 0,
@@ -244,6 +263,9 @@ export class SimulationEngine {
     const cycle = this.cycleLengths[key];
     if (!Number.isFinite(cycle) || cycle <= 0) return 0;
     const totalTheoreticalSpools = theoreticalSpoolsPerShift * this.assignedIds.size;
+    if (key === 'diesChange') {
+      return this.plannedDies > 0 ? Math.ceil(this.plannedDies / AVERAGE_DIES_PER_CHANGE_EVENT) : 0;
+    }
     let expectedEvents = Math.floor(totalTheoreticalSpools / cycle);
     const activity = this.config.activities.find((item) => item.key === key);
     if (activity?.parentKey) {
@@ -341,6 +363,7 @@ export class SimulationEngine {
             label: activity.label,
             timeMinutes: activity.timeMinutes,
             loadingPayoffOnly: activity.loadingInterrupt,
+            defectTakeupOnly: activity.defectTakeupOnly,
           });
         }
         machine.completedByActivity[key] = dueCount;
@@ -374,7 +397,17 @@ export class SimulationEngine {
     const target = candidates[Math.floor(Math.random() * candidates.length)];
     if (target.pendingTasks.some((t) => t.activity === activityKey)) return false;
     const activity = this.findActivity(activityKey);
-    const quantity = activityKey === 'diesChange' ? (Math.random() < 0.5 ? 7 : 26) : undefined;
+    const remainingDies = Math.max(0, Math.ceil(this.plannedDies - this.scheduledDies));
+    const requestedQuantity = Math.random() < 0.5 ? 7 : 26;
+    const quantity =
+      activityKey === 'diesChange'
+        ? requestedQuantity <= remainingDies
+          ? requestedQuantity
+          : remainingDies >= 7
+            ? 7
+            : 0
+        : undefined;
+    if (activityKey === 'diesChange' && (!quantity || quantity <= 0)) return false;
     const timeMinutes = activity.timeMinutes * (quantity ?? 1);
     const label = quantity ? `${activity.label} (${quantity} dies)` : activity.label;
     target.pendingTasks.push({
@@ -382,7 +415,9 @@ export class SimulationEngine {
       label,
       timeMinutes,
       quantity,
+      defectTakeupOnly: activity.defectTakeupOnly,
     });
+    if (activityKey === 'diesChange') this.scheduledDies += quantity ?? 0;
     if (this.isStopActivity(activityKey)) {
       target.runtimeRemainingMin = Math.max(0, target.nextCompletionAt - atMin);
       target.runtimePaused = true;
@@ -420,13 +455,21 @@ export class SimulationEngine {
   private triggerMidRuntimeGlobalActivity(activityKey: ActivityKey, atMin: number) {
     const cycle = this.cycleLengths[activityKey];
     if (!Number.isFinite(cycle) || cycle <= 0) return;
+    const totalTheoreticalSpools =
+      Math.max(1, Math.floor(this.config.operator.shiftTime / this.runtimePerSpool)) * this.assignedIds.size;
+    const expectedDiesEvents =
+      this.plannedDies > 0 ? Math.ceil(this.plannedDies / AVERAGE_DIES_PER_CHANGE_EVENT) : 0;
+    const eventCycle =
+      activityKey === 'diesChange' && expectedDiesEvents > 0
+        ? totalTheoreticalSpools / expectedDiesEvents
+        : cycle;
     const fractionalSpools = this.machines.reduce((total, machine) => {
       if (machine.status !== 'running') return total;
       const elapsed = this.runtimePerSpool - (machine.nextCompletionAt - atMin);
       return total + Math.max(0, Math.min(1, elapsed / this.runtimePerSpool));
     }, this.globalSpoolsCompleted);
     let eventsTriggered = this.globalEventCounts.get(activityKey) ?? 0;
-    while (fractionalSpools >= (eventsTriggered + 1) * cycle) {
+    while (fractionalSpools >= (eventsTriggered + 1) * eventCycle) {
       if (!this.injectGlobalActivityTask(activityKey, atMin)) break;
       eventsTriggered += 1;
     }
@@ -627,7 +670,11 @@ export class SimulationEngine {
     const includesMovement = currentServiceTask?.activity === 'loading' ||
       currentServiceTask?.activity.startsWith('loading-') ||
       currentServiceTask?.activity === 'fractureRepairing' ||
-      currentServiceTask?.activity.startsWith('fractureRepairing-');
+      currentServiceTask?.activity.startsWith('fractureRepairing-') ||
+      currentServiceTask?.activity === 'diesChange' ||
+      currentServiceTask?.activity.startsWith('diesChange-') ||
+      currentServiceTask?.activity === 'defectRepairing' ||
+      currentServiceTask?.activity.startsWith('defectRepairing-');
     const isOperatorWorking =
       isOperatorAtMachine &&
       (this.operator.serviceSubPhase === 'dwelling' || (this.operator.serviceSubPhase === 'moving' && includesMovement));
@@ -742,7 +789,9 @@ export class SimulationEngine {
           this.operator.zoneMoveFromY + (this.operator.zoneMoveToY - this.operator.zoneMoveFromY) * this.operator.zoneMoveProgress;
         const movingTask = this.serviceTaskForCurrentZone();
         const includesMovement = movingTask?.activity === 'loading' || movingTask?.activity.startsWith('loading-') ||
-          movingTask?.activity === 'fractureRepairing' || movingTask?.activity.startsWith('fractureRepairing-');
+          movingTask?.activity === 'fractureRepairing' || movingTask?.activity.startsWith('fractureRepairing-') ||
+          movingTask?.activity === 'diesChange' || movingTask?.activity.startsWith('diesChange-') ||
+          movingTask?.activity === 'defectRepairing' || movingTask?.activity.startsWith('defectRepairing-');
         if (includesMovement && movingTask) {
           this.metrics.servicingMin += step;
           this.metrics.servicingByActivity[movingTask.activity] =
@@ -893,6 +942,7 @@ export class SimulationEngine {
       }
       this.operator.serviceTasks.forEach((t, index, tasks) => {
         this.metrics.completedByActivity[t.activity] += 1;
+        if (t.activity === 'diesChange') this.metrics.diesChanged += t.quantity ?? 0;
         if (this.isEffectiveStopTask(index, tasks)) {
           this.metrics.downtimeByReason[t.activity] += t.timeMinutes;
           machine.downtimeByReason[t.activity] += t.timeMinutes;

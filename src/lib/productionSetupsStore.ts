@@ -41,6 +41,8 @@ function machineRowToAssignment(row: Mpp_wl_productionsetupmachineses, construct
     doffingOperatorId: row.mpp_doffingoperatorid ?? undefined,
     loadingOperatorId: row.mpp_loadingoperatorid ?? undefined,
     fractureRepairingOperatorId: row.mpp_fracturerepairingoperatorid ?? undefined,
+    diesChangeOperatorId: row.mpp_dieschangeoperatorid ?? undefined,
+    defectRepairingOperatorId: row.mpp_defectrepairingoperatorid ?? undefined,
   };
 }
 
@@ -305,6 +307,8 @@ export async function updateMachineAssignments(
       if ('doffingOperatorId' in patch) fields.mpp_doffingoperatorid = patch.doffingOperatorId ?? null;
       if ('loadingOperatorId' in patch) fields.mpp_loadingoperatorid = patch.loadingOperatorId ?? null;
       if ('fractureRepairingOperatorId' in patch) fields.mpp_fracturerepairingoperatorid = patch.fractureRepairingOperatorId ?? null;
+      if ('diesChangeOperatorId' in patch) fields.mpp_dieschangeoperatorid = patch.diesChangeOperatorId ?? null;
+      if ('defectRepairingOperatorId' in patch) fields.mpp_defectrepairingoperatorid = patch.defectRepairingOperatorId ?? null;
       if (Object.keys(fields).length === 0) return;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await Mpp_wl_productionsetupmachinesesService.update(rowId, fields as any);
