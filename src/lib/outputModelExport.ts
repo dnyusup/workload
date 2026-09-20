@@ -129,14 +129,12 @@ function formattedDate(value: string) {
 export function formatOutputModelExportValue(
   record: OutputModelExportRecord,
   key: OutputModelExportKey | 'mpp_version' | 'mpp_versionremark',
-  excelSafe = false,
 ) {
   const value = record[key];
   if (value === null || value === undefined) return '';
   if (key === 'mpp_version') return `="${String(value)}"`;
   if ((OUTPUT_MODEL_PERCENT_KEYS as readonly string[]).includes(key)) {
-    const formatted = `${String(percentageForDisplay(Number(value)))}%`;
-    return excelSafe ? `="${formatted}"` : formatted;
+    return `${String(percentageForDisplay(Number(value)))}%`;
   }
   if (key === 'mpp_updatedon') return formattedDate(String(value));
   return String(value);
@@ -145,11 +143,10 @@ export function formatOutputModelExportValue(
 function outputModelRowsAsMatrix(
   rows: readonly OutputModelExportRecord[],
   columns: readonly OutputModelExportColumn[],
-  excelSafe = false,
 ) {
   return [
     columns.map((column) => column.label),
-    ...rows.map((row) => columns.map((column) => formatOutputModelExportValue(row, column.key, excelSafe))),
+    ...rows.map((row) => columns.map((column) => formatOutputModelExportValue(row, column.key))),
   ];
 }
 
@@ -168,7 +165,7 @@ export function outputModelRowsAsCsv(
   columns: readonly OutputModelExportColumn[] = OUTPUT_MODEL_EXPORT_COLUMNS_WITH_VERSION,
 ) {
   const escapeCsv = (value: string) => `"${value.replace(/"/g, '""')}"`;
-  return `\ufeff${outputModelRowsAsMatrix(rows, columns, true)
+  return `\ufeff${outputModelRowsAsMatrix(rows, columns)
     .map((row) => row.map(escapeCsv).join(','))
     .join('\r\n')}`;
 }
