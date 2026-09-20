@@ -7,6 +7,7 @@ import { SimulationView } from './SimulationView';
 import { Sidebar, pagesForRole, iconForPage, labelForPage, type AppPage } from './components/layout/Sidebar';
 import { ProductsManager } from './components/data/ProductsManager';
 import { ActivitiesManager } from './components/data/ActivitiesManager';
+import { OutputModelsManager } from './components/data/OutputModelsManager';
 import { LayoutManagerPage } from './components/layouts/LayoutManagerPage';
 import { ProductionSimulationPage } from './components/production/ProductionSimulationPage';
 import { UsersManagerPage } from './components/users/UsersManagerPage';
@@ -19,6 +20,7 @@ const PAGE_DESCRIPTION: Record<AppPage, string> = {
   production: 'Configure multi-operator production setups and run production simulations',
   products: 'Manage WL product and machine specifications',
   activities: 'Configure machine activity times and rules',
+  outputModels: 'Review saved workload simulation outputs',
   users: 'Manage user access and roles',
 };
 
@@ -86,6 +88,7 @@ function AppShell() {
             />
           )}
           {page === 'activities' && <ActivitiesManager initialConstructionFilter={activitiesConstructionFilter} />}
+          {page === 'outputModels' && <OutputModelsManager />}
           {page === 'users' && <UsersManagerPage />}
         </main>
       </div>

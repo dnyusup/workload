@@ -135,6 +135,19 @@
   overflow-x: auto;
 }
 
+.output-models-table {
+  min-width: 3000px;
+}
+
+.output-models-table th,
+.output-models-table td {
+  white-space: nowrap;
+}
+
+.output-models-search {
+  min-width: 190px;
+}
+
 .data-row-actions {
   display: flex;
   align-items: center;
@@ -1575,6 +1588,12 @@
   color: #86efac;
   padding: 6px 12px;
   border-radius: 999px;
+  font-size: 0.78rem;
+}
+
+.simulation-save-error {
+  margin: -8px 0 0;
+  color: #f87171;
   font-size: 0.78rem;
 }
 

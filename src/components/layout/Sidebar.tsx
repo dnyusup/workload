@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { UserRole } from '../../context/AuthContext';
 
-export type AppPage = 'simulator' | 'layouts' | 'production' | 'products' | 'activities' | 'users';
+export type AppPage = 'simulator' | 'layouts' | 'production' | 'products' | 'activities' | 'outputModels' | 'users';
 
 const MENU: { page: AppPage; label: string; icon: string; roles: UserRole[] }[] = [
   { page: 'simulator', label: 'Work Load Simulator', icon: '▶️', roles: ['admin', 'contribute', 'guest'] },
@@ -9,6 +9,7 @@ const MENU: { page: AppPage; label: string; icon: string; roles: UserRole[] }[] 
   { page: 'production', label: 'Production Simulation', icon: '🏭', roles: ['admin', 'contribute'] },
   { page: 'products', label: 'WL_Products', icon: '📦', roles: ['admin'] },
   { page: 'activities', label: 'WL_Activities', icon: '⏱️', roles: ['admin'] },
+  { page: 'outputModels', label: 'WL_Outputmodels', icon: '📊', roles: ['admin'] },
   { page: 'users', label: 'Manage Users', icon: '👥', roles: ['admin'] },
 ];
 

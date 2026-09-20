@@ -20,6 +20,10 @@ export function Controls({
   totalMinutes,
   availableMinutes,
   breakMessage,
+  canSaveWlm,
+  onSaveWlm,
+  savingWlm,
+  savedWlm,
 }: {
   playing: boolean;
   speed: number;
@@ -39,6 +43,10 @@ export function Controls({
   totalMinutes: number;
   availableMinutes: number;
   breakMessage?: ReactNode;
+  canSaveWlm: boolean;
+  onSaveWlm: () => void;
+  savingWlm: boolean;
+  savedWlm: boolean;
 }) {
   const handleMachHandledChange = (value: number) => {
     if (!Number.isFinite(value)) return;
@@ -107,6 +115,11 @@ export function Controls({
         breakMessage={breakMessage}
       />
       {finished && <span className="finished-badge">Shift complete</span>}
+      {finished && canSaveWlm && (
+        <Button variant="secondary" onClick={onSaveWlm} disabled={savingWlm || savedWlm}>
+          {savingWlm ? 'Saving…' : savedWlm ? 'WLM Saved' : 'Save WLM'}
+        </Button>
+      )}
       {!playing ? (
         <Button variant="primary" onClick={onPlay} disabled={finished}>
           ▶ Play

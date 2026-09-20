@@ -57,6 +57,11 @@
           "entitySetName": "mpp_wl_userses",
           "logicalName": "mpp_wl_users",
           "isHidden": false
+        },
+        "wl_outputmodels": {
+          "entitySetName": "mpp_wl_outputmodelses",
+          "logicalName": "mpp_wl_outputmodels",
+          "isHidden": false
         }
       },
       "environmentVariableName": ""

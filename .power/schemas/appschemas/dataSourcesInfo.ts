@@ -19,6 +19,13 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "mpp_wl_outputmodelses": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "mpp_wl_outputmodelsid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "mpp_wl_productionsetupmachineses": {
     "tableId": "",
     "version": "",
