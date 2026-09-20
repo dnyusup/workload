@@ -985,6 +985,9 @@ export class SimulationEngine {
       this.machines.forEach((machine) => this.recordMachineTime(machine, startMin, step));
       remaining -= step;
     }
+    if (this.metrics.clockMin >= this.metrics.shiftTimeMin - 1e-9) {
+      this.metrics.clockMin = this.metrics.shiftTimeMin;
+    }
     this.metrics.queueLength = this.machines.filter((m) => m.status === 'needs-service').length;
   }
 
@@ -1003,7 +1006,7 @@ export class SimulationEngine {
         downtimeByReason: { ...this.metrics.downtimeByReason },
       },
       log: [...this.log],
-      finished: this.metrics.clockMin >= this.metrics.shiftTimeMin,
+      finished: this.metrics.clockMin >= this.metrics.shiftTimeMin - 1e-9,
     };
   }
 }
