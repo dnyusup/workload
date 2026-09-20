@@ -126,12 +126,17 @@ function formattedDate(value: string) {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('en-GB');
 }
 
-export function formatOutputModelExportValue(record: OutputModelExportRecord, key: OutputModelExportKey | 'mpp_version' | 'mpp_versionremark') {
+export function formatOutputModelExportValue(
+  record: OutputModelExportRecord,
+  key: OutputModelExportKey | 'mpp_version' | 'mpp_versionremark',
+  excelSafe = false,
+) {
   const value = record[key];
   if (value === null || value === undefined) return '';
   if (key === 'mpp_version') return `="${String(value)}"`;
   if ((OUTPUT_MODEL_PERCENT_KEYS as readonly string[]).includes(key)) {
-    return `${percentageForDisplay(Number(value)).toFixed(2)}%`;
+    const formatted = `${String(percentageForDisplay(Number(value)))}%`;
+    return excelSafe ? `="${formatted}"` : formatted;
   }
   if (key === 'mpp_updatedon') return formattedDate(String(value));
   return String(value);
@@ -140,10 +145,11 @@ export function formatOutputModelExportValue(record: OutputModelExportRecord, ke
 function outputModelRowsAsMatrix(
   rows: readonly OutputModelExportRecord[],
   columns: readonly OutputModelExportColumn[],
+  excelSafe = false,
 ) {
   return [
     columns.map((column) => column.label),
-    ...rows.map((row) => columns.map((column) => formatOutputModelExportValue(row, column.key))),
+    ...rows.map((row) => columns.map((column) => formatOutputModelExportValue(row, column.key, excelSafe))),
   ];
 }
 
@@ -151,7 +157,8 @@ export function outputModelRowsAsTsv(
   rows: readonly OutputModelExportRecord[],
   columns: readonly OutputModelExportColumn[] = OUTPUT_MODEL_EXPORT_COLUMNS,
 ) {
-  return outputModelRowsAsMatrix(rows, columns)
+  const matrix = outputModelRowsAsMatrix(rows, columns);
+  return matrix
     .map((row) => row.join('\t'))
     .join('\r\n');
 }
@@ -161,7 +168,7 @@ export function outputModelRowsAsCsv(
   columns: readonly OutputModelExportColumn[] = OUTPUT_MODEL_EXPORT_COLUMNS_WITH_VERSION,
 ) {
   const escapeCsv = (value: string) => `"${value.replace(/"/g, '""')}"`;
-  return `\ufeff${outputModelRowsAsMatrix(rows, columns)
+  return `\ufeff${outputModelRowsAsMatrix(rows, columns, true)
     .map((row) => row.map(escapeCsv).join(','))
     .join('\r\n')}`;
 }
