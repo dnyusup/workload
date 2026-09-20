@@ -152,43 +152,54 @@
   width: min(920px, calc(100vw - 32px));
   max-height: calc(100vh - 32px);
   overflow: auto;
-  color: #0f172a;
+  background: #111827;
+  border: 1px solid #334155;
+  color: #e2e8f0;
+  box-shadow: 0 16px 40px rgba(2, 6, 23, 0.55);
 }
 
 .output-model-save-dialog .data-manager-hint {
-  color: #475569;
+  color: #94a3b8;
+}
+
+.output-model-save-dialog h3 {
+  color: #f8fafc;
+}
+
+.output-model-save-dialog .modal-field label {
+  color: #cbd5e1;
 }
 
 .output-model-save-dialog .table th {
-  color: #64748b;
-  border-bottom-color: #cbd5e1;
+  color: #94a3b8;
+  border-bottom-color: #334155;
 }
 
 .output-model-save-dialog .table td {
-  color: #334155;
-  border-bottom-color: #cbd5e1;
+  color: #cbd5e1;
+  border-bottom-color: #334155;
 }
 
 .output-model-save-dialog .input {
-  color: #0f172a;
-  background: #f8fafc;
-  border-color: #94a3b8;
+  color: #e2e8f0;
+  background: #0b1220;
+  border-color: #475569;
 }
 
 .output-model-save-dialog .input::placeholder {
-  color: #64748b;
+  color: #94a3b8;
   opacity: 1;
 }
 
 .output-model-save-dialog .construction-selector-error {
-  color: #b91c1c;
+  color: #fca5a5;
 }
 
 .output-model-comparison-wrap {
   max-height: 360px;
   overflow: auto;
   margin: 12px 0 16px;
-  border: 1px solid #cbd5e1;
+  border: 1px solid #334155;
   border-radius: 6px;
 }
 
