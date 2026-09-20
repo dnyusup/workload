@@ -20,6 +20,7 @@ type OutputModelKey =
   | 'mpp_laylength'
   | 'mpp_spooltype'
   | 'mpp_spoollength'
+  | 'mpp_nofwires'
   | 'mpp_speed'
   | 'mpp_fractureperton'
   | 'mpp_defectperton'
@@ -89,6 +90,7 @@ const OUTPUT_MODEL_COLUMNS: OutputModelColumn[] = [
   { key: 'mpp_laylength', label: 'LayLength' },
   { key: 'mpp_spooltype', label: 'SpoolType' },
   { key: 'mpp_spoollength', label: 'SpoolLength' },
+  { key: 'mpp_nofwires', label: 'NoFWires' },
   { key: 'mpp_speed', label: 'Speed' },
   { key: 'mpp_fractureperton', label: 'Fracture/ton' },
   { key: 'mpp_defectperton', label: 'Defect/ton' },

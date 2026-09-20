@@ -41,6 +41,7 @@ export interface Mpp_wl_outputmodelsesBase {
   mpp_manhoursperton?: number;
   mpp_meetingstarttime?: number;
   mpp_meetingtime?: number;
+  mpp_nofwires?: number;
   mpp_numberofmachinesassigned?: number;
   mpp_othertime?: number;
   mpp_plannedmachineefficiency?: number;

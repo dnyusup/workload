@@ -161,6 +161,7 @@ export function buildOutputModelPayload(
     mpp_laylength: config.spec.layLength,
     mpp_spooltype: product.mpp_spooltype,
     mpp_spoollength: config.spec.spoolLength,
+    mpp_nofwires: config.spec.noOfWires,
     mpp_speed: config.spec.speed,
     mpp_fractureperton: config.spec.fracturePerTon,
     mpp_defectperton: config.spec.defectsPerTon,

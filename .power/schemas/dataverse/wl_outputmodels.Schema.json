@@ -328,6 +328,13 @@
           "x-ms-dataverse-type": "IntegerType",
           "x-ms-schema-name": "mpp_meetingtime"
         },
+        "mpp_nofwires": {
+          "type": "string",
+          "title": "NofWires",
+          "x-ms-dataverse-attribute": "mpp_nofwires",
+          "x-ms-dataverse-type": "IntegerType",
+          "x-ms-schema-name": "mpp_NofWires"
+        },
         "mpp_numberofmachinesassigned": {
           "type": "string",
           "title": "#MachinesAssigned",
