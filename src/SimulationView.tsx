@@ -213,7 +213,11 @@ export function SimulationView({
     setInheritedSelectionNotice(null);
     setPendingSave(null);
     setDialogError(null);
-    controls.reset();
+    if (config.initialMachineConditions && config.initialMachineConditions.length > 0) {
+      setConfig((prev) => ({ ...prev, initialMachineConditions: undefined }));
+    } else {
+      controls.reset();
+    }
   };
 
   return (
