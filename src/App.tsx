@@ -100,20 +100,16 @@ function AppShell() {
           {page === 'outputModels' && (
             <OutputModelsManager
               onUseStartCondition={(row, conditions) => {
-                if (config.selectedConstructionDetail !== row.mpp_constructiondetailcode) {
-                  setOutputModelNotice(
-                    `Select Construction Detail "${row.mpp_constructiondetailcode}" in the simulator first, then use this saved start condition.`,
-                  );
-                  setPage('simulator');
-                  setStage('setup');
-                  return;
-                }
-                setConfig((prev) => ({ ...prev, initialMachineConditions: conditions }));
+                setConfig((prev) => ({
+                  ...prev,
+                  selectedConstructionDetail: row.mpp_constructiondetailcode?.trim() || prev.selectedConstructionDetail,
+                  initialMachineConditions: conditions,
+                }));
                 setOutputModelNotice(
-                  `Inherited machine condition from version ${row.mpp_version ?? '0001'} loaded for the next simulation.`,
+                  `Inherited machine condition from version ${row.mpp_version ?? '0001'} loaded. The simulator is ready to play.`,
                 );
                 setPage('simulator');
-                setStage('setup');
+                setStage('simulation');
               }}
             />
           )}
