@@ -31,7 +31,7 @@ type OutputModelKey =
   | 'mpp_lineardensity'
   | 'mpp_twistperminute'
   | 'mpp_spoolweight'
-  | 'mpp_linearspeed'
+  | 'mpp_linearspeeds'
   | 'mpp_runtimeperspool'
   | 'mpp_taskpriority'
   | 'mpp_shifttime'
@@ -102,7 +102,7 @@ const OUTPUT_MODEL_COLUMNS: OutputModelColumn[] = [
   { key: 'mpp_lineardensity', label: 'LinearDensity' },
   { key: 'mpp_twistperminute', label: 'Twist/min' },
   { key: 'mpp_spoolweight', label: 'SpoolWeight' },
-  { key: 'mpp_linearspeed', label: 'LinearSpeed' },
+  { key: 'mpp_linearspeeds', label: 'LinearSpeed' },
   { key: 'mpp_runtimeperspool', label: 'Runtime/spool' },
   { key: 'mpp_taskpriority', label: 'TaskPriority' },
   { key: 'mpp_shifttime', label: 'ShiftTime' },

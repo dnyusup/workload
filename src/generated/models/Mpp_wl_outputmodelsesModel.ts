@@ -34,6 +34,7 @@ export interface Mpp_wl_outputmodelsesBase {
   mpp_laylength?: number;
   mpp_lineardensity?: number;
   mpp_linearspeed?: number;
+  mpp_linearspeeds?: number;
   mpp_loadingtime?: number;
   mpp_lunchstarttime?: number;
   mpp_lunchtime?: number;

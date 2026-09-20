@@ -176,7 +176,7 @@ export function buildOutputModelPayload(
     mpp_lineardensity: config.spec.linearDensity,
     mpp_twistperminute: derived.twistPerMin,
     mpp_spoolweight: derived.spoolWeight,
-    mpp_linearspeed: derived.linearSpeed,
+    mpp_linearspeeds: derived.linearSpeed,
     mpp_runtimeperspool: derived.runtimePerSpool,
     mpp_taskpriority: config.operator.taskPriority,
     mpp_shifttime: config.operator.shiftTime,
