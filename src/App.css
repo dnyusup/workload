@@ -152,6 +152,36 @@
   width: min(920px, calc(100vw - 32px));
   max-height: calc(100vh - 32px);
   overflow: auto;
+  color: #0f172a;
+}
+
+.output-model-save-dialog .data-manager-hint {
+  color: #475569;
+}
+
+.output-model-save-dialog .table th {
+  color: #64748b;
+  border-bottom-color: #cbd5e1;
+}
+
+.output-model-save-dialog .table td {
+  color: #334155;
+  border-bottom-color: #cbd5e1;
+}
+
+.output-model-save-dialog .input {
+  color: #0f172a;
+  background: #f8fafc;
+  border-color: #94a3b8;
+}
+
+.output-model-save-dialog .input::placeholder {
+  color: #64748b;
+  opacity: 1;
+}
+
+.output-model-save-dialog .construction-selector-error {
+  color: #b91c1c;
 }
 
 .output-model-comparison-wrap {
