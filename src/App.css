@@ -148,6 +148,33 @@
   min-width: 190px;
 }
 
+.output-model-save-dialog {
+  width: min(920px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+}
+
+.output-model-comparison-wrap {
+  max-height: 360px;
+  overflow: auto;
+  margin: 12px 0 16px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+}
+
+.output-model-comparison {
+  min-width: 620px;
+}
+
+.output-model-comparison th,
+.output-model-comparison td {
+  white-space: nowrap;
+}
+
+.output-model-save-actions {
+  flex-wrap: wrap;
+}
+
 .data-row-actions {
   display: flex;
   align-items: center;

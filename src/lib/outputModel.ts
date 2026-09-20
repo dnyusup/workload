@@ -6,8 +6,51 @@ import { calculateSingleOperatorForecast } from './singleOperatorUtilization';
 import { deriveMachineSpec } from './calculations';
 import type { AppConfig, SimulationState } from '../types';
 import type { Mpp_wl_outputmodelsesBase } from '../generated/models/Mpp_wl_outputmodelsesModel';
+import { escapeODataString, fetchAllPages } from './dataversePaging';
 
 export type OutputModelPayload = Omit<Mpp_wl_outputmodelsesBase, 'mpp_wl_outputmodelsid'>;
+
+export interface OutputModelSaveMetadata {
+  version: string;
+  versionRemark?: string;
+}
+
+export const OUTPUT_MODEL_PERCENT_KEYS = [
+  'mpp_plannedmanoccupation',
+  'mpp_actualmanoccupation',
+  'mpp_plannedmachineefficiency',
+  'mpp_actualmachineefficiency',
+  'mpp_doffingtime',
+  'mpp_loadingtime',
+  'mpp_fracturerepairingtime',
+  'mpp_defectrepairingtime',
+  'mpp_dieschangetime',
+  'mpp_walkingtime',
+  'mpp_othertime',
+] as const;
+
+export type OutputModelPercentKey = (typeof OUTPUT_MODEL_PERCENT_KEYS)[number];
+
+export function storedPercentage(value: number) {
+  return value / 100;
+}
+
+export function percentageForDisplay(value: number | undefined) {
+  if (value === undefined || value === null) return 0;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 0;
+  // Older rows stored 30 for 30%; newer rows store 0.3.
+  return Math.abs(numeric) > 1 ? numeric : numeric * 100;
+}
+
+export function outputModelVersionNumber(version: string | undefined) {
+  const parsed = Number.parseInt(version ?? '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+export function formatOutputModelVersion(version: number) {
+  return String(Math.max(1, Math.floor(version))).padStart(4, '0');
+}
 
 function sumActivityMinutes(record: Record<string, number>, prefix: string) {
   return Object.entries(record)
@@ -76,6 +119,7 @@ export function buildOutputModelPayload(
   state: SimulationState,
   product: Mpp_wl_productses,
   updatedBy: string,
+  metadata: OutputModelSaveMetadata,
   updatedOn = new Date().toISOString(),
 ): OutputModelPayload {
   const derived = deriveMachineSpec(config.spec);
@@ -136,42 +180,72 @@ export function buildOutputModelPayload(
     mpp_meetingtime: config.operator.meetingTime,
     mpp_meetingstarttime: config.operator.meetingStartAt,
     mpp_numberofmachinesassigned: state.metrics.assignedMachineCount,
-    mpp_plannedmanoccupation: forecast.forecastUtilizationPercent,
-    mpp_actualmanoccupation: actualManOccupation,
+    mpp_plannedmanoccupation: storedPercentage(forecast.forecastUtilizationPercent),
+    mpp_actualmanoccupation: storedPercentage(actualManOccupation),
     mpp_tonspershift: tonage,
-    mpp_plannedmachineefficiency: plannedMachineEfficiency,
-    mpp_actualmachineefficiency: actualMachineEfficiency,
+    mpp_plannedmachineefficiency: storedPercentage(plannedMachineEfficiency),
+    mpp_actualmachineefficiency: storedPercentage(actualMachineEfficiency),
     mpp_manhoursperton: tonage > 0 ? shiftHours / tonage : 0,
     mpp_machinehoursperton: tonage > 0 ? (state.metrics.assignedMachineCount * shiftHours) / tonage : 0,
     mpp_totalspoolcount: totalSpool,
     mpp_actualfractureperton: actualFracturePerTon,
     mpp_actualdefectperton: actualDefectPerTon,
     mpp_actualdiesperton: actualDiesPerTon,
-    mpp_doffingtime: activityPercent.doffing,
-    mpp_loadingtime: activityPercent.loading,
-    mpp_fracturerepairingtime: activityPercent.fractureRepairing,
-    mpp_defectrepairingtime: activityPercent.defectRepairing,
-    mpp_dieschangetime: activityPercent.diesChange,
-    mpp_walkingtime: activityPercent.walking,
-    mpp_othertime: activityPercent.others,
+    mpp_doffingtime: storedPercentage(activityPercent.doffing),
+    mpp_loadingtime: storedPercentage(activityPercent.loading),
+    mpp_fracturerepairingtime: storedPercentage(activityPercent.fractureRepairing),
+    mpp_defectrepairingtime: storedPercentage(activityPercent.defectRepairing),
+    mpp_dieschangetime: storedPercentage(activityPercent.diesChange),
+    mpp_walkingtime: storedPercentage(activityPercent.walking),
+    mpp_othertime: storedPercentage(activityPercent.others),
     mpp_updatedby: updatedBy,
     mpp_updatedon: updatedOn,
+    mpp_version: metadata.version,
+    mpp_versionremark: metadata.versionRemark?.trim() || undefined,
+    mpp_startmachcondition: JSON.stringify(state.initialMachineConditions),
     statecode: 0,
   };
 }
 
-export async function saveSimulationOutputModel(
+export async function prepareSimulationOutputModel(
   config: AppConfig,
   state: SimulationState,
   updatedBy: string,
-): Promise<Mpp_wl_outputmodelses> {
+  metadata: OutputModelSaveMetadata,
+): Promise<OutputModelPayload> {
   if (!updatedBy.trim()) {
     throw new Error('The signed-in email is unavailable, so the WLM output cannot be saved.');
   }
   const product = await selectedProduct(config);
-  const result = await Mpp_wl_outputmodelsesService.create(buildOutputModelPayload(config, state, product, updatedBy));
+  if (!(product.mpp_constructiondetailcode ?? config.selectedConstructionDetail)?.trim()) {
+    throw new Error('The selected Construction Detail is unavailable, so the WLM output cannot be saved.');
+  }
+  return buildOutputModelPayload(config, state, product, updatedBy, metadata);
+}
+
+export async function findOutputModelsForConstruction(constructionDetail: string) {
+  const escapedDetail = escapeODataString(constructionDetail);
+  return fetchAllPages(Mpp_wl_outputmodelsesService.getAll, {
+    filter: `mpp_constructiondetailcode eq '${escapedDetail}'`,
+    orderBy: ['mpp_version asc', 'mpp_updatedon asc'],
+  });
+}
+
+export async function createOutputModel(payload: OutputModelPayload): Promise<Mpp_wl_outputmodelses> {
+  const result = await Mpp_wl_outputmodelsesService.create(payload);
   if (!result.success || !result.data) {
     throw new Error(result.error?.message ?? 'Failed to save WLM output model.');
+  }
+  return result.data;
+}
+
+export async function replaceOutputModel(
+  id: string,
+  payload: OutputModelPayload,
+): Promise<Mpp_wl_outputmodelses> {
+  const result = await Mpp_wl_outputmodelsesService.update(id, payload);
+  if (!result.success || !result.data) {
+    throw new Error(result.error?.message ?? 'Failed to replace the existing WLM output model.');
   }
   return result.data;
 }

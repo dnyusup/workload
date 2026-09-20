@@ -30,6 +30,7 @@ function AppShell() {
   const [stage, setStage] = useState<'setup' | 'simulation'>('setup');
   const [page, setPage] = useState<AppPage>('simulator');
   const [activitiesConstructionFilter, setActivitiesConstructionFilter] = useState('');
+  const [outputModelNotice, setOutputModelNotice] = useState<string | null>(null);
 
   // If the current role can't see whatever page is selected (e.g. a Guest's role only resolves
   // once the WL_Users lookup finishes, or an admin demotes themselves while on Manage Users),
@@ -48,7 +49,14 @@ function AppShell() {
 
   return (
     <div className="app-shell-with-sidebar">
-      <Sidebar page={page} role={user.role} onNavigate={setPage} />
+      <Sidebar
+        page={page}
+        role={user.role}
+        onNavigate={(nextPage) => {
+          setOutputModelNotice(null);
+          setPage(nextPage);
+        }}
+      />
       <div className="app-shell">
         <header className="app-header">
           <div className="app-title">
@@ -71,6 +79,7 @@ function AppShell() {
         </header>
 
         <main className="app-main">
+          {outputModelNotice && <p className="construction-selector-error">{outputModelNotice}</p>}
           {page === 'simulator' &&
             (stage === 'setup' ? (
               <SetupWizard onStart={handleStart} />
@@ -88,7 +97,26 @@ function AppShell() {
             />
           )}
           {page === 'activities' && <ActivitiesManager initialConstructionFilter={activitiesConstructionFilter} />}
-          {page === 'outputModels' && <OutputModelsManager />}
+          {page === 'outputModels' && (
+            <OutputModelsManager
+              onUseStartCondition={(row, conditions) => {
+                if (config.selectedConstructionDetail !== row.mpp_constructiondetailcode) {
+                  setOutputModelNotice(
+                    `Select Construction Detail "${row.mpp_constructiondetailcode}" in the simulator first, then use this saved start condition.`,
+                  );
+                  setPage('simulator');
+                  setStage('setup');
+                  return;
+                }
+                setConfig((prev) => ({ ...prev, initialMachineConditions: conditions }));
+                setOutputModelNotice(
+                  `Inherited machine condition from version ${row.mpp_version ?? '0001'} loaded for the next simulation.`,
+                );
+                setPage('simulator');
+                setStage('setup');
+              }}
+            />
+          )}
           {page === 'users' && <UsersManagerPage />}
         </main>
       </div>

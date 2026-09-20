@@ -123,6 +123,8 @@ export interface AppConfig {
   /** Display text (mpp_constructiondetailcode) for `selectedProductId`, cached alongside it so the
    * UI (e.g. the Simulation controls bar) can show it without re-fetching WL_Products. */
   selectedConstructionDetail?: string;
+  /** Optional inherited machine state loaded from a saved WL_Outputmodels record. */
+  initialMachineConditions?: MachineStartCondition[];
 }
 
 export type MachineStatus = 'running' | 'needs-service' | 'being-serviced' | 'unassigned';
@@ -171,6 +173,19 @@ export interface MachineRuntimeState {
   timeline: MachineTimelineSegment[];
   runtimePaused: boolean;
   runtimeRemainingMin: number | null;
+}
+
+/** Machine state at the beginning of a shift, including inherited backlog from the previous shift. */
+export interface MachineStartCondition {
+  machineId: string;
+  machineLabel: string;
+  status: MachineStatus;
+  spoolsCompleted: number;
+  spoolsSinceLoading: number;
+  nextCompletionAt: number;
+  queuedSince: number | null;
+  pendingTasks: PendingTask[];
+  completedByActivity: Record<ActivityKey, number>;
 }
 
 export type MachineTimelineKind = 'running' | 'waiting' | ActivityKey;
@@ -270,6 +285,7 @@ export interface SimMetrics {
 
 export interface SimulationState {
   machines: MachineRuntimeState[];
+  initialMachineConditions: MachineStartCondition[];
   operator: OperatorRuntimeState;
   metrics: SimMetrics;
   log: EventLogEntry[];

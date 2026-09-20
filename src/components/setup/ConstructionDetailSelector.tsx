@@ -94,6 +94,7 @@ export function ConstructionDetailSelector({
         activities,
         selectedProductId: product.mpp_wl_productsid,
         selectedConstructionDetail: product.mpp_constructiondetailcode,
+        initialMachineConditions: undefined,
       };
       const recommendedMachineCount = recommendedMachineCountForForecast(nextConfig);
       const appliedConfig: AppConfig = {

@@ -55,6 +55,7 @@ export interface Mpp_wl_outputmodelsesBase {
   mpp_spoollength?: number;
   mpp_spooltype?: string;
   mpp_spoolweight?: number;
+  mpp_startmachcondition?: string;
   mpp_taskpriority?: string;
   mpp_tensilegroup?: string;
   mpp_tonspershift?: number;
@@ -63,6 +64,7 @@ export interface Mpp_wl_outputmodelsesBase {
   mpp_updatedby?: string;
   mpp_updatedon?: string;
   mpp_version?: string;
+  mpp_versionremark?: string;
   mpp_walkingtime?: number;
   mpp_wl_outputmodelsid: string;
   overriddencreatedon?: string;

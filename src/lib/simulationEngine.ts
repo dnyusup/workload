@@ -5,6 +5,7 @@ import type {
   DowntimeReason,
   EventLogEntry,
   MachineRuntimeState,
+  MachineStartCondition,
   MachineTimelineKind,
   MachineTimelineSegment,
   OperatorRuntimeState,
@@ -72,6 +73,7 @@ export class SimulationEngine {
   private cycleLengths: Record<ActivityKey, number>;
   private logIdCounter = 0;
   private assignedIds: Set<string>;
+  private initialMachineConditions: MachineStartCondition[];
   private breaks: BreakDef[];
   /** Fracture Repairing isn't tracked per machine — it fires once the SUM of spools completed
    * across the whole line reaches its cycle length, then lands on a random currently-running
@@ -96,6 +98,9 @@ export class SimulationEngine {
     this.assignedIds = new Set(
       explicitAssigned.length > 0 ? explicitAssigned.slice(0, handled) : config.layout.slice(0, handled).map((m) => m.id),
     );
+    const savedStartConditions = new Map(
+      (config.initialMachineConditions ?? []).map((condition) => [condition.machineId, condition]),
+    );
 
     // Theoretical spools one machine would complete across a full shift, used to randomize
     // each machine's starting phase so the shift doesn't begin with every machine freshly at 0.
@@ -108,10 +113,18 @@ export class SimulationEngine {
 
     this.machines = config.layout.map((m) => {
       const assigned = this.assignedIds.has(m.id);
-      const startSpools = assigned ? Math.floor(Math.random() * theoreticalSpoolsPerShift) : 0;
+      const savedCondition = savedStartConditions.get(m.id);
+      const startSpools = assigned
+        ? savedCondition
+          ? Math.max(0, Math.floor(savedCondition.spoolsCompleted))
+          : Math.floor(Math.random() * theoreticalSpoolsPerShift)
+        : 0;
       // Per-machine cycle catch-up only applies to Doffing/Loading — Fracture Repairing is global.
-      const completedByActivity = emptyCounts(config.activities);
+      const completedByActivity = savedCondition
+        ? { ...emptyCounts(config.activities), ...savedCondition.completedByActivity }
+        : emptyCounts(config.activities);
       config.activities.filter((activity) => !GLOBAL_EVENT_ACTIVITIES.has(activity.key)).forEach(({ key }) => {
+        if (savedCondition) return;
         const cycle = this.cycleLengths[key];
         completedByActivity[key] = Number.isFinite(cycle) && cycle > 0 ? Math.floor(startSpools / cycle) : 0;
       });
@@ -127,10 +140,14 @@ export class SimulationEngine {
         pairSide: m.pairSide,
         widthPx,
         heightPx,
-        status: assigned ? 'running' : 'unassigned',
+        status: assigned
+          ? savedCondition?.status === 'needs-service'
+            ? 'needs-service'
+            : 'running'
+          : 'unassigned',
         spoolsCompleted: startSpools,
         shiftSpoolsCompleted: 0,
-        spoolsSinceLoading: (() => {
+        spoolsSinceLoading: savedCondition?.spoolsSinceLoading ?? (() => {
           const loading = config.activities.find((activity) => activity.key === 'loading');
           const loadingCycle = this.cycleLengths.loading;
           if (loading?.loadingInterrupt && Number.isFinite(loadingCycle) && loadingCycle > 0) {
@@ -140,9 +157,9 @@ export class SimulationEngine {
           }
           return Number.isFinite(loadingCycle) && loadingCycle > 0 ? startSpools % loadingCycle : startSpools;
         })(),
-        nextCompletionAt: assigned ? Math.random() * this.runtimePerSpool : this.runtimePerSpool,
-        pendingTasks: [],
-        queuedSince: null,
+        nextCompletionAt: savedCondition?.nextCompletionAt ?? (assigned ? Math.random() * this.runtimePerSpool : this.runtimePerSpool),
+        pendingTasks: savedCondition?.pendingTasks.map((task) => ({ ...task })) ?? [],
+        queuedSince: savedCondition?.queuedSince ?? null,
         totalServiced: 0,
         completedByActivity,
         downtimeMin: 0,
@@ -155,7 +172,7 @@ export class SimulationEngine {
       // Simulate a realistic shift start: some machines are already stopped waiting on
       // unfinished work (e.g. left over from the previous operator), so the new operator
       // has something to do immediately instead of everyone idling for the first completion.
-      if (assigned && Math.random() < INITIAL_BACKLOG_CHANCE) {
+      if (assigned && !savedCondition && Math.random() < INITIAL_BACKLOG_CHANCE) {
         machine.spoolsCompleted += 1;
         this.queueTasksForMachine(machine, 0);
         machine.nextCompletionAt = this.runtimePerSpool;
@@ -163,6 +180,18 @@ export class SimulationEngine {
 
       return machine;
     });
+
+    this.initialMachineConditions = this.machines.map((machine) => ({
+      machineId: machine.id,
+      machineLabel: machine.label,
+      status: machine.status,
+      spoolsCompleted: machine.spoolsCompleted,
+      spoolsSinceLoading: machine.spoolsSinceLoading,
+      nextCompletionAt: machine.nextCompletionAt,
+      queuedSince: machine.queuedSince,
+      pendingTasks: machine.pendingTasks.map((task) => ({ ...task })),
+      completedByActivity: { ...machine.completedByActivity },
+    }));
 
     this.globalSpoolsCompleted = this.machines.reduce((sum, m) => sum + m.spoolsCompleted, 0);
     config.activities.filter((activity) => GLOBAL_EVENT_ACTIVITIES.has(activity.key)).forEach((activity) => {
@@ -998,6 +1027,11 @@ export class SimulationEngine {
         completedByActivity: { ...m.completedByActivity },
         downtimeByReason: { ...m.downtimeByReason },
         timeline: m.timeline.map((segment) => ({ ...segment })),
+      })),
+      initialMachineConditions: this.initialMachineConditions.map((condition) => ({
+        ...condition,
+        pendingTasks: condition.pendingTasks.map((task) => ({ ...task })),
+        completedByActivity: { ...condition.completedByActivity },
       })),
       operator: { ...this.operator, timeline: this.operator.timeline.map((segment) => ({ ...segment })) },
       metrics: {

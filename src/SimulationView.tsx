@@ -4,8 +4,24 @@ import { useSimulation } from './hooks/useSimulation';
 import { LayoutCanvas } from './components/simulation/LayoutCanvas';
 import { Dashboard } from './components/simulation/Dashboard';
 import { Controls } from './components/simulation/Controls';
+import { OutputModelSaveDialog } from './components/simulation/OutputModelSaveDialog';
 import { useAuth } from './context/AuthContext';
-import { saveSimulationOutputModel } from './lib/outputModel';
+import type { Mpp_wl_outputmodelses } from './generated/models/Mpp_wl_outputmodelsesModel';
+import {
+  createOutputModel,
+  findOutputModelsForConstruction,
+  formatOutputModelVersion,
+  outputModelVersionNumber,
+  prepareSimulationOutputModel,
+  replaceOutputModel,
+  type OutputModelPayload,
+} from './lib/outputModel';
+
+interface PendingOutputModelSave {
+  payload: OutputModelPayload;
+  existing: Mpp_wl_outputmodelses;
+  nextVersion: string;
+}
 
 export function SimulationView({
   config,
@@ -21,16 +37,85 @@ export function SimulationView({
   const [savingWlm, setSavingWlm] = useState(false);
   const [savedWlm, setSavedWlm] = useState(false);
   const [saveWlmError, setSaveWlmError] = useState<string | null>(null);
+  const [pendingSave, setPendingSave] = useState<PendingOutputModelSave | null>(null);
+  const [versionRemark, setVersionRemark] = useState('');
+  const [dialogError, setDialogError] = useState<string | null>(null);
 
   const handleSaveWlm = async () => {
-    if (savingWlm || savedWlm) return;
+    if (savingWlm || savedWlm || pendingSave) return;
     setSavingWlm(true);
     setSaveWlmError(null);
     try {
-      await saveSimulationOutputModel(config, state, user.email);
-      setSavedWlm(true);
+      const initialPayload = await prepareSimulationOutputModel(config, state, user.email, { version: '0001' });
+      const constructionDetail = initialPayload.mpp_constructiondetailcode?.trim();
+      if (!constructionDetail) {
+        throw new Error('The selected Construction Detail is unavailable, so the WLM output cannot be saved.');
+      }
+      const existingRows = await findOutputModelsForConstruction(constructionDetail);
+      if (existingRows.length === 0) {
+        await createOutputModel(initialPayload);
+        setSavedWlm(true);
+        return;
+      }
+      const latest = [...existingRows].sort(
+        (left, right) => outputModelVersionNumber(right.mpp_version) - outputModelVersionNumber(left.mpp_version),
+      )[0];
+      const nextVersionNumber =
+        Math.max(...existingRows.map((row) => outputModelVersionNumber(row.mpp_version)), 0) + 1;
+      setPendingSave({
+        payload: initialPayload,
+        existing: latest,
+        nextVersion: formatOutputModelVersion(nextVersionNumber),
+      });
+      setVersionRemark('');
+      setDialogError(null);
     } catch (err) {
       setSaveWlmError(err instanceof Error ? err.message : 'Failed to save WLM output model.');
+    } finally {
+      setSavingWlm(false);
+    }
+  };
+
+  const closeSaveDialog = () => {
+    if (savingWlm) return;
+    setPendingSave(null);
+    setVersionRemark('');
+    setDialogError(null);
+  };
+
+  const handleReplaceExisting = async () => {
+    if (!pendingSave || savingWlm) return;
+    setSavingWlm(true);
+    setDialogError(null);
+    try {
+      await replaceOutputModel(pendingSave.existing.mpp_wl_outputmodelsid, {
+        ...pendingSave.payload,
+        mpp_version: pendingSave.existing.mpp_version ?? '0001',
+        mpp_versionremark: pendingSave.existing.mpp_versionremark,
+      });
+      setPendingSave(null);
+      setSavedWlm(true);
+    } catch (err) {
+      setDialogError(err instanceof Error ? err.message : 'Failed to replace the existing WLM output model.');
+    } finally {
+      setSavingWlm(false);
+    }
+  };
+
+  const handleSaveNewVersion = async () => {
+    if (!pendingSave || savingWlm || !versionRemark.trim()) return;
+    setSavingWlm(true);
+    setDialogError(null);
+    try {
+      await createOutputModel({
+        ...pendingSave.payload,
+        mpp_version: pendingSave.nextVersion,
+        mpp_versionremark: versionRemark.trim(),
+      });
+      setPendingSave(null);
+      setSavedWlm(true);
+    } catch (err) {
+      setDialogError(err instanceof Error ? err.message : 'Failed to save the new WLM version.');
     } finally {
       setSavingWlm(false);
     }
@@ -39,12 +124,16 @@ export function SimulationView({
   const handleConfigChange = (updater: (prev: AppConfig) => AppConfig) => {
     setSavedWlm(false);
     setSaveWlmError(null);
+    setPendingSave(null);
+    setDialogError(null);
     setConfig(updater);
   };
 
   const handleReset = () => {
     setSavedWlm(false);
     setSaveWlmError(null);
+    setPendingSave(null);
+    setDialogError(null);
     controls.reset();
   };
 
@@ -67,7 +156,7 @@ export function SimulationView({
         availableMinutes={state.metrics.availableTimeMin}
         canSaveWlm={user.role === 'admin'}
         onSaveWlm={() => void handleSaveWlm()}
-        savingWlm={savingWlm}
+        savingWlm={savingWlm || Boolean(pendingSave)}
         savedWlm={savedWlm}
         breakMessage={
           state.operator.phase === 'break'
@@ -98,7 +187,7 @@ export function SimulationView({
               availableMinutes={state.metrics.availableTimeMin}
               canSaveWlm={user.role === 'admin'}
               onSaveWlm={() => void handleSaveWlm()}
-              savingWlm={savingWlm}
+              savingWlm={savingWlm || Boolean(pendingSave)}
               savedWlm={savedWlm}
               breakMessage={
                 state.operator.phase === 'break'
@@ -110,6 +199,20 @@ export function SimulationView({
         />
         <Dashboard state={state} config={config} />
       </div>
+      {pendingSave && (
+        <OutputModelSaveDialog
+          existing={pendingSave.existing}
+          draft={pendingSave.payload}
+          nextVersion={pendingSave.nextVersion}
+          versionRemark={versionRemark}
+          onVersionRemarkChange={setVersionRemark}
+          onCancel={closeSaveDialog}
+          onReplace={() => void handleReplaceExisting()}
+          onSaveNewVersion={() => void handleSaveNewVersion()}
+          saving={savingWlm}
+          error={dialogError}
+        />
+      )}
     </div>
   );
 }

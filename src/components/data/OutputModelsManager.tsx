@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { Mpp_wl_outputmodelsesService } from '../../generated/services/Mpp_wl_outputmodelsesService';
 import type { Mpp_wl_outputmodelses } from '../../generated/models/Mpp_wl_outputmodelsesModel';
 import { fetchAllPages } from '../../lib/dataversePaging';
+import { OUTPUT_MODEL_PERCENT_KEYS, percentageForDisplay } from '../../lib/outputModel';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { CustomSortControl, type CustomSortLevel } from './CustomSortControl';
+import type { MachineStartCondition } from '../../types';
 
 type OutputModelKey =
   | 'mpp_constructiondetailcode'
@@ -54,7 +56,10 @@ type OutputModelKey =
   | 'mpp_walkingtime'
   | 'mpp_othertime'
   | 'mpp_updatedby'
-  | 'mpp_updatedon';
+  | 'mpp_updatedon'
+  | 'mpp_version'
+  | 'mpp_versionremark'
+  | 'mpp_startmachcondition';
 
 interface OutputModelColumn {
   key: OutputModelKey;
@@ -63,6 +68,8 @@ interface OutputModelColumn {
 
 const OUTPUT_MODEL_COLUMNS: OutputModelColumn[] = [
   { key: 'mpp_constructiondetailcode', label: 'ConstructionDetail' },
+  { key: 'mpp_version', label: 'Version' },
+  { key: 'mpp_versionremark', label: 'VersionRemark' },
   { key: 'mpp_construction', label: 'Construction' },
   { key: 'mpp_areacode', label: 'Area' },
   { key: 'mpp_machinecode', label: 'Mach' },
@@ -110,15 +117,29 @@ const OUTPUT_MODEL_COLUMNS: OutputModelColumn[] = [
   { key: 'mpp_othertime', label: 'Others' },
   { key: 'mpp_updatedby', label: 'UpdatedBy' },
   { key: 'mpp_updatedon', label: 'UpdatedOn' },
+  { key: 'mpp_startmachcondition', label: 'StartMachCondition' },
 ];
 
 function formatValue(value: unknown, key: OutputModelKey) {
   if (value === null || value === undefined || value === '') return '—';
+  if (key === 'mpp_startmachcondition') {
+    try {
+      const conditions = JSON.parse(String(value)) as unknown[];
+      return `${conditions.length} machine condition${conditions.length === 1 ? '' : 's'} captured`;
+    } catch {
+      return 'Invalid condition data';
+    }
+  }
   if (key === 'mpp_updatedon') {
     const date = new Date(String(value));
     return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
   }
-  if (typeof value === 'number') return String(Math.round(value * 10) / 10);
+  if (typeof value === 'number') {
+    if ((OUTPUT_MODEL_PERCENT_KEYS as readonly string[]).includes(key)) {
+      return `${percentageForDisplay(value).toFixed(2)}%`;
+    }
+    return String(Math.round(value * 10) / 10);
+  }
   return String(value);
 }
 
@@ -127,7 +148,11 @@ function comparableValue(record: Mpp_wl_outputmodelses, key: OutputModelKey): st
   return typeof value === 'number' ? value : String(value ?? '');
 }
 
-export function OutputModelsManager() {
+export function OutputModelsManager({
+  onUseStartCondition,
+}: {
+  onUseStartCondition?: (row: Mpp_wl_outputmodelses, conditions: MachineStartCondition[]) => void;
+}) {
   const [rows, setRows] = useState<Mpp_wl_outputmodelses[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -156,6 +181,18 @@ export function OutputModelsManager() {
     setLoading(true);
     setLoadError(null);
     setReloadToken((token) => token + 1);
+  };
+
+  const loadStartCondition = (row: Mpp_wl_outputmodelses) => {
+    try {
+      const parsed = JSON.parse(row.mpp_startmachcondition ?? '') as MachineStartCondition[];
+      if (!Array.isArray(parsed) || parsed.some((condition) => !condition.machineId)) {
+        throw new Error('The saved start condition is invalid.');
+      }
+      onUseStartCondition?.(row, parsed);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : 'The saved start condition is invalid.');
+    }
   };
 
   const visibleRows = useMemo(() => {
@@ -217,6 +254,7 @@ export function OutputModelsManager() {
                 {OUTPUT_MODEL_COLUMNS.map((column) => (
                   <th key={column.key}>{column.label}</th>
                 ))}
+                {onUseStartCondition && <th>Action</th>}
               </tr>
             </thead>
             <tbody>
@@ -225,11 +263,23 @@ export function OutputModelsManager() {
                   {OUTPUT_MODEL_COLUMNS.map((column) => (
                     <td key={column.key}>{formatValue(row[column.key], column.key)}</td>
                   ))}
+                  {onUseStartCondition && (
+                    <td className="data-row-actions">
+                      <Button
+                        variant="ghost"
+                        onClick={() => loadStartCondition(row)}
+                        disabled={!row.mpp_startmachcondition}
+                        title="Use the inherited machine condition for the next simulation"
+                      >
+                        Use Start Condition
+                      </Button>
+                    </td>
+                  )}
                 </tr>
               ))}
               {visibleRows.length === 0 && (
                 <tr>
-                  <td colSpan={OUTPUT_MODEL_COLUMNS.length} className="data-manager-hint">
+                  <td colSpan={OUTPUT_MODEL_COLUMNS.length + (onUseStartCondition ? 1 : 0)} className="data-manager-hint">
                     {rows.length === 0 ? 'No saved output models yet.' : 'No output models match the search.'}
                   </td>
                 </tr>

@@ -428,6 +428,14 @@
           "x-ms-dataverse-type": "DecimalType",
           "x-ms-schema-name": "mpp_spoolweight"
         },
+        "mpp_startmachcondition": {
+          "type": "string",
+          "title": "StartMachCondition",
+          "x-ms-dataverse-attribute": "mpp_startmachcondition",
+          "x-ms-dataverse-type": "MemoType",
+          "x-ms-schema-name": "mpp_StartMachCondition",
+          "maxLength": 1048576
+        },
         "mpp_taskpriority": {
           "type": "string",
           "title": "TaskPriority",
@@ -486,6 +494,14 @@
           "x-ms-dataverse-attribute": "mpp_version",
           "x-ms-dataverse-type": "StringType",
           "x-ms-schema-name": "mpp_version",
+          "maxLength": 100
+        },
+        "mpp_versionremark": {
+          "type": "string",
+          "title": "VersionRemark",
+          "x-ms-dataverse-attribute": "mpp_versionremark",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "mpp_VersionRemark",
           "maxLength": 100
         },
         "mpp_walkingtime": {
