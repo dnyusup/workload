@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Mpp_wl_outputmodelsesService } from '../../generated/services/Mpp_wl_outputmodelsesService';
 import type { Mpp_wl_outputmodelses } from '../../generated/models/Mpp_wl_outputmodelsesModel';
 import { fetchAllPages } from '../../lib/dataversePaging';
-import { OUTPUT_MODEL_PERCENT_KEYS, percentageForDisplay } from '../../lib/outputModel';
+import { OUTPUT_MODEL_PERCENT_KEYS, outputModelVersionNumber, percentageForDisplay } from '../../lib/outputModel';
 import { downloadOutputModelRows } from '../../lib/outputModelExport';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
@@ -160,6 +160,11 @@ export function OutputModelsManager({
   const [reloadToken, setReloadToken] = useState(0);
   const [search, setSearch] = useState('');
   const [sortLevels, setSortLevels] = useState<CustomSortLevel[]>([]);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [areaFilter, setAreaFilter] = useState('');
+  const [machineFilter, setMachineFilter] = useState('');
+  const [constructionFilter, setConstructionFilter] = useState('');
+  const [spoolTypeFilter, setSpoolTypeFilter] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -196,6 +201,28 @@ export function OutputModelsManager({
     }
   };
 
+  const deleteOutputModel = async (row: Mpp_wl_outputmodelses) => {
+    const version = row.mpp_version ?? '0001';
+    if (outputModelVersionNumber(row.mpp_version) <= 1 || deletingId) return;
+    if (
+      !window.confirm(
+        `Delete output model version ${version} for "${row.mpp_constructiondetailcode ?? 'this Construction Detail'}"?`,
+      )
+    ) {
+      return;
+    }
+    setDeletingId(row.mpp_wl_outputmodelsid);
+    setLoadError(null);
+    try {
+      await Mpp_wl_outputmodelsesService.delete(row.mpp_wl_outputmodelsid);
+      setRows((current) => current.filter((item) => item.mpp_wl_outputmodelsid !== row.mpp_wl_outputmodelsid));
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : `Failed to delete output model version ${version}.`);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const visibleRows = useMemo(() => {
     const query = search.trim().toLowerCase();
     const filtered = query
@@ -204,8 +231,15 @@ export function OutputModelsManager({
             .some((value) => String(value ?? '').toLowerCase().includes(query)),
         )
       : rows;
-    if (!sortLevels.length) return filtered;
-    return [...filtered].sort((left, right) => {
+    const fieldFiltered = filtered.filter((row) => {
+      if (areaFilter && String(row.mpp_areacode ?? '') !== areaFilter) return false;
+      if (machineFilter && String(row.mpp_machinecode ?? '') !== machineFilter) return false;
+      if (constructionFilter && String(row.mpp_construction ?? '') !== constructionFilter) return false;
+      if (spoolTypeFilter && String(row.mpp_spooltype ?? '') !== spoolTypeFilter) return false;
+      return true;
+    });
+    if (!sortLevels.length) return fieldFiltered;
+    return [...fieldFiltered].sort((left, right) => {
       for (const level of sortLevels) {
         const leftValue = comparableValue(left, level.key as OutputModelKey);
         const rightValue = comparableValue(right, level.key as OutputModelKey);
@@ -217,7 +251,17 @@ export function OutputModelsManager({
       }
       return 0;
     });
-  }, [rows, search, sortLevels]);
+  }, [rows, search, areaFilter, machineFilter, constructionFilter, spoolTypeFilter, sortLevels]);
+
+  const filterOptions = useMemo(
+    () => ({
+      areas: [...new Set(rows.map((row) => String(row.mpp_areacode ?? '').trim()).filter(Boolean))].sort(),
+      machines: [...new Set(rows.map((row) => String(row.mpp_machinecode ?? '').trim()).filter(Boolean))].sort(),
+      constructions: [...new Set(rows.map((row) => String(row.mpp_construction ?? '').trim()).filter(Boolean))].sort(),
+      spoolTypes: [...new Set(rows.map((row) => String(row.mpp_spooltype ?? '').trim()).filter(Boolean))].sort(),
+    }),
+    [rows],
+  );
 
   const exportExcel = () => {
     const date = new Date().toISOString().slice(0, 10);
@@ -230,14 +274,6 @@ export function OutputModelsManager({
       subtitle="Saved workload simulation output models"
       actions={
         <div className="data-manager-actions">
-          <input
-            className="input output-models-search"
-            type="search"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search output model…"
-            aria-label="Search output model"
-          />
           <Button variant="ghost" onClick={refresh} disabled={loading}>
             Refresh
           </Button>
@@ -256,46 +292,105 @@ export function OutputModelsManager({
       {loading ? (
         <p className="data-manager-hint">Loading…</p>
       ) : (
-        <div className="data-table-wrap">
-          <table className="table output-models-table">
-            <thead>
-              <tr>
-                {OUTPUT_MODEL_COLUMNS.map((column) => (
-                  <th key={column.key}>{column.label}</th>
-                ))}
-                {onUseStartCondition && <th>Action</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {visibleRows.map((row) => (
-                <tr key={row.mpp_wl_outputmodelsid}>
-                  {OUTPUT_MODEL_COLUMNS.map((column) => (
-                    <td key={column.key}>{formatValue(row[column.key], column.key)}</td>
-                  ))}
-                  {onUseStartCondition && (
-                    <td className="data-row-actions">
-                      <Button
-                        variant="ghost"
-                        onClick={() => loadStartCondition(row)}
-                        disabled={!row.mpp_startmachcondition}
-                        title="Use the inherited machine condition for the next simulation"
-                      >
-                        Use Start Condition
-                      </Button>
-                    </td>
-                  )}
-                </tr>
+        <>
+          <div className="output-models-filters">
+            <input
+              className="input output-models-search"
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search all columns…"
+              aria-label="Search output model"
+            />
+            <select className="input" value={areaFilter} onChange={(event) => setAreaFilter(event.target.value)}>
+              <option value="">All areas</option>
+              {filterOptions.areas.map((value) => (
+                <option key={value} value={value}>
+                  Area: {value}
+                </option>
               ))}
-              {visibleRows.length === 0 && (
+            </select>
+            <select className="input" value={machineFilter} onChange={(event) => setMachineFilter(event.target.value)}>
+              <option value="">All machines</option>
+              {filterOptions.machines.map((value) => (
+                <option key={value} value={value}>
+                  Mach: {value}
+                </option>
+              ))}
+            </select>
+            <select
+              className="input"
+              value={constructionFilter}
+              onChange={(event) => setConstructionFilter(event.target.value)}
+            >
+              <option value="">All constructions</option>
+              {filterOptions.constructions.map((value) => (
+                <option key={value} value={value}>
+                  Construction: {value}
+                </option>
+              ))}
+            </select>
+            <select className="input" value={spoolTypeFilter} onChange={(event) => setSpoolTypeFilter(event.target.value)}>
+              <option value="">All spool types</option>
+              {filterOptions.spoolTypes.map((value) => (
+                <option key={value} value={value}>
+                  Spool Type: {value}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="data-table-wrap">
+            <table className="table output-models-table">
+              <thead>
                 <tr>
-                  <td colSpan={OUTPUT_MODEL_COLUMNS.length + (onUseStartCondition ? 1 : 0)} className="data-manager-hint">
-                    {rows.length === 0 ? 'No saved output models yet.' : 'No output models match the search.'}
-                  </td>
+                  {OUTPUT_MODEL_COLUMNS.map((column) => (
+                    <th key={column.key}>{column.label}</th>
+                  ))}
+                  {onUseStartCondition && <th>Action</th>}
                 </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {visibleRows.map((row) => (
+                  <tr key={row.mpp_wl_outputmodelsid}>
+                    {OUTPUT_MODEL_COLUMNS.map((column) => (
+                      <td key={column.key}>{formatValue(row[column.key], column.key)}</td>
+                    ))}
+                    {onUseStartCondition && (
+                      <td className="data-row-actions">
+                        <Button
+                          variant="ghost"
+                          onClick={() => loadStartCondition(row)}
+                          disabled={!row.mpp_startmachcondition}
+                          title="Use the inherited machine condition for the next simulation"
+                        >
+                          Use Start Condition
+                        </Button>
+                        {outputModelVersionNumber(row.mpp_version) > 1 && (
+                          <Button
+                            variant="danger"
+                            onClick={() => void deleteOutputModel(row)}
+                            disabled={deletingId !== null}
+                            title={`Delete version ${row.mpp_version ?? '0001'}`}
+                            aria-label={`Delete output model version ${row.mpp_version ?? '0001'}`}
+                          >
+                            <span aria-hidden="true">🗑</span> Delete
+                          </Button>
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                ))}
+                {visibleRows.length === 0 && (
+                  <tr>
+                    <td colSpan={OUTPUT_MODEL_COLUMNS.length + (onUseStartCondition ? 1 : 0)} className="data-manager-hint">
+                      {rows.length === 0 ? 'No saved output models yet.' : 'No output models match the search.'}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </Card>
   );

@@ -137,6 +137,8 @@
 
 .output-models-table {
   min-width: 3000px;
+  --output-construction-width: 280px;
+  --output-version-width: 82px;
 }
 
 .output-models-table th,
@@ -144,8 +146,60 @@
   white-space: nowrap;
 }
 
+.output-models-table th:nth-child(1),
+.output-models-table td:nth-child(1) {
+  width: var(--output-construction-width);
+  min-width: var(--output-construction-width);
+  max-width: var(--output-construction-width);
+  position: sticky;
+  left: 0;
+  background: #0f172a;
+  z-index: 2;
+}
+
+.output-models-table th:nth-child(2),
+.output-models-table td:nth-child(2) {
+  width: var(--output-version-width);
+  min-width: var(--output-version-width);
+  max-width: var(--output-version-width);
+  position: sticky;
+  left: var(--output-construction-width);
+  background: #0f172a;
+  box-shadow: 5px 0 8px -6px rgba(2, 6, 23, 0.9);
+  z-index: 2;
+}
+
+.output-models-table th:nth-child(1),
+.output-models-table th:nth-child(2) {
+  background: #111827;
+  z-index: 3;
+}
+
 .output-models-search {
   min-width: 190px;
+}
+
+.output-models-filters {
+  display: grid;
+  grid-template-columns: minmax(190px, 1.4fr) repeat(4, minmax(150px, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.output-models-filters .input {
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .output-models-filters {
+    grid-template-columns: repeat(2, minmax(150px, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .output-models-filters {
+    grid-template-columns: 1fr;
+  }
 }
 
 .modal-dialog.output-model-save-dialog {

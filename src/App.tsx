@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { AppConfigProvider, useAppConfig } from './context/AppConfigContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { syncAutoActivityValues } from './lib/calculations';
@@ -32,12 +32,9 @@ function AppShell() {
   const [activitiesConstructionFilter, setActivitiesConstructionFilter] = useState('');
   const [outputModelNotice, setOutputModelNotice] = useState<string | null>(null);
 
-  // If the current role can't see whatever page is selected (e.g. a Guest's role only resolves
-  // once the WL_Users lookup finishes, or an admin demotes themselves while on Manage Users),
-  // fall back to Simulator — every role can reach that one.
-  useEffect(() => {
-    if (!authLoading && !pagesForRole(user.role).includes(page)) setPage('simulator');
-  }, [authLoading, user.role, page]);
+  // If the current role cannot see the selected page, render Simulator without triggering a
+  // synchronous state update from an effect. The stored page remains available if access returns.
+  const activePage = authLoading || pagesForRole(user.role).includes(page) ? page : 'simulator';
 
   const handleStart = () => {
     setConfig((prev) => ({
@@ -50,7 +47,7 @@ function AppShell() {
   return (
     <div className="app-shell-with-sidebar">
       <Sidebar
-        page={page}
+        page={activePage}
         role={user.role}
         onNavigate={(nextPage) => {
           setOutputModelNotice(null);
@@ -60,13 +57,13 @@ function AppShell() {
       <div className="app-shell">
         <header className="app-header">
           <div className="app-title">
-            <span className="app-logo">{iconForPage(page)}</span>
+            <span className="app-logo">{iconForPage(activePage)}</span>
             <div>
-              <h1>{labelForPage(page)}</h1>
-              <p>{PAGE_DESCRIPTION[page]}</p>
+              <h1>{labelForPage(activePage)}</h1>
+              <p>{PAGE_DESCRIPTION[activePage]}</p>
             </div>
           </div>
-          {page === 'simulator' && (
+          {activePage === 'simulator' && (
             <div className="app-header-stage">
               <span className={`stage-pill ${stage === 'setup' ? 'active' : ''}`}>1. Setup</span>
               <span className={`stage-pill ${stage === 'simulation' ? 'active' : ''}`}>2. Simulation</span>
@@ -80,15 +77,15 @@ function AppShell() {
 
         <main className="app-main">
           {outputModelNotice && <p className="construction-selector-error">{outputModelNotice}</p>}
-          {page === 'simulator' &&
+          {activePage === 'simulator' &&
             (stage === 'setup' ? (
               <SetupWizard onStart={handleStart} />
             ) : (
               <SimulationView config={config} setConfig={setConfig} onBack={() => setStage('setup')} />
             ))}
-          {page === 'layouts' && <LayoutManagerPage />}
-          {page === 'production' && <ProductionSimulationPage />}
-          {page === 'products' && (
+          {activePage === 'layouts' && <LayoutManagerPage />}
+          {activePage === 'production' && <ProductionSimulationPage />}
+          {activePage === 'products' && (
             <ProductsManager
               onOpenActivitiesForConstruction={(construction) => {
                 setActivitiesConstructionFilter(construction);
@@ -96,8 +93,8 @@ function AppShell() {
               }}
             />
           )}
-          {page === 'activities' && <ActivitiesManager initialConstructionFilter={activitiesConstructionFilter} />}
-          {page === 'outputModels' && (
+          {activePage === 'activities' && <ActivitiesManager initialConstructionFilter={activitiesConstructionFilter} />}
+          {activePage === 'outputModels' && (
             <OutputModelsManager
               onUseStartCondition={(row, conditions) => {
                 setConfig((prev) => ({
@@ -113,7 +110,7 @@ function AppShell() {
               }}
             />
           )}
-          {page === 'users' && <UsersManagerPage />}
+          {activePage === 'users' && <UsersManagerPage />}
         </main>
       </div>
     </div>
