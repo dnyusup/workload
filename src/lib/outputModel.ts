@@ -83,9 +83,7 @@ function activityPercentages(state: SimulationState) {
   const defectRepairing = sumActivityMinutes(serviceByActivity, 'defectRepairing');
   const diesChange = sumActivityMinutes(serviceByActivity, 'diesChange');
   const walking = Math.max(0, state.metrics.walkingMin);
-  const knownMinutes = doffing + loading + fractureRepairing + defectRepairing + diesChange + walking;
   const busyMinutes = Math.max(0, state.metrics.servicingMin + state.metrics.walkingMin);
-  const others = Math.max(0, busyMinutes - knownMinutes);
   const idle = state.operator.timeline
     .filter((segment) => segment.kind === 'idle')
     .reduce((total, segment) => total + Math.max(0, segment.endMin - segment.startMin), 0);
@@ -98,7 +96,7 @@ function activityPercentages(state: SimulationState) {
     defectRepairing: percentage(defectRepairing, nonBreakMinutes),
     diesChange: percentage(diesChange, nonBreakMinutes),
     walking: percentage(walking, nonBreakMinutes),
-    others: percentage(others, nonBreakMinutes),
+    others: 0,
     idle: percentage(idle, nonBreakMinutes),
   };
 }
