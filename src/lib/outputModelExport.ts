@@ -125,6 +125,7 @@ function formattedDate(value: string) {
 export function formatOutputModelExportValue(record: OutputModelExportRecord, key: OutputModelExportKey | 'mpp_version' | 'mpp_versionremark') {
   const value = record[key];
   if (value === null || value === undefined) return '';
+  if (key === 'mpp_version') return `="${String(value)}"`;
   if ((OUTPUT_MODEL_PERCENT_KEYS as readonly string[]).includes(key)) {
     return `${percentageForDisplay(Number(value)).toFixed(2)}%`;
   }

@@ -242,7 +242,7 @@ export function OutputModelsManager({
             Refresh
           </Button>
           <Button variant="secondary" onClick={exportExcel} disabled={loading || visibleRows.length === 0}>
-            📊 Export Excel
+            📊 Export
           </Button>
           <CustomSortControl
             columns={OUTPUT_MODEL_COLUMNS}
