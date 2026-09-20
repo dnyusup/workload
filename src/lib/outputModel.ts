@@ -75,7 +75,7 @@ function percentage(value: number, denominator: number) {
   return denominator > 0 ? (value / denominator) * 100 : 0;
 }
 
-function activityPercentages(state: SimulationState, workedElapsed: number) {
+function activityPercentages(state: SimulationState) {
   const serviceByActivity = state.metrics.servicingByActivity;
   const doffing = sumActivityMinutes(serviceByActivity, 'doffing');
   const loading = sumActivityMinutes(serviceByActivity, 'loading');
@@ -86,17 +86,20 @@ function activityPercentages(state: SimulationState, workedElapsed: number) {
   const knownMinutes = doffing + loading + fractureRepairing + defectRepairing + diesChange + walking;
   const busyMinutes = Math.max(0, state.metrics.servicingMin + state.metrics.walkingMin);
   const others = Math.max(0, busyMinutes - knownMinutes);
-  const idle = Math.max(0, workedElapsed - busyMinutes);
+  const idle = state.operator.timeline
+    .filter((segment) => segment.kind === 'idle')
+    .reduce((total, segment) => total + Math.max(0, segment.endMin - segment.startMin), 0);
+  const nonBreakMinutes = busyMinutes + idle;
 
   return {
-    doffing: percentage(doffing, workedElapsed),
-    loading: percentage(loading, workedElapsed),
-    fractureRepairing: percentage(fractureRepairing, workedElapsed),
-    defectRepairing: percentage(defectRepairing, workedElapsed),
-    diesChange: percentage(diesChange, workedElapsed),
-    walking: percentage(walking, workedElapsed),
-    others: percentage(others, workedElapsed),
-    idle: percentage(idle, workedElapsed),
+    doffing: percentage(doffing, nonBreakMinutes),
+    loading: percentage(loading, nonBreakMinutes),
+    fractureRepairing: percentage(fractureRepairing, nonBreakMinutes),
+    defectRepairing: percentage(defectRepairing, nonBreakMinutes),
+    diesChange: percentage(diesChange, nonBreakMinutes),
+    walking: percentage(walking, nonBreakMinutes),
+    others: percentage(others, nonBreakMinutes),
+    idle: percentage(idle, nonBreakMinutes),
   };
 }
 
@@ -147,7 +150,7 @@ export function buildOutputModelPayload(
   const shiftHours = Math.max(0, config.operator.shiftTime) / 60;
   const scheduledMachineMinutes = state.metrics.assignedMachineCount * Math.max(0, config.operator.shiftTime);
   const actualMachineEfficiency = percentage(totalRunningMachineMinutes, scheduledMachineMinutes);
-  const activityPercent = activityPercentages(state, workedElapsed);
+  const activityPercent = activityPercentages(state);
   const totalFractureCount = countActivityEvents(state.metrics.completedByActivity, 'fractureRepairing');
   const totalDefectCount = countActivityEvents(state.metrics.completedByActivity, 'defectRepairing');
   const actualFracturePerTon = tonage > 0 ? totalFractureCount / tonage : 0;
