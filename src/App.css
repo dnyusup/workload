@@ -776,20 +776,7 @@
   color: #f87171;
 }
 
-.inherited-condition-card {
-  margin-top: -8px;
-}
 
-.inherited-condition-picker {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.inherited-condition-picker-select {
-  width: min(520px, 100%);
-}
 
 .setup-form-disabled {
   border: 0;
