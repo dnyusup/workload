@@ -1661,17 +1661,6 @@
   font-size: 0.78rem;
 }
 
-.inherited-condition-control {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.inherited-condition-select {
-  width: min(300px, 30vw);
-  min-width: 180px;
-}
-
 .simulation-save-error {
   margin: -8px 0 0;
   color: #f87171;
@@ -1682,6 +1671,49 @@
   margin: -8px 0 0;
   color: #94a3b8;
   font-size: 0.78rem;
+}
+
+.modal-dialog.inherited-condition-dialog {
+  width: min(560px, calc(100vw - 32px));
+  background: #111827;
+  border: 1px solid #334155;
+  color: #e2e8f0;
+  box-shadow: 0 16px 40px rgba(2, 6, 23, 0.55);
+}
+
+.modal-dialog.inherited-condition-dialog h3 {
+  color: #f8fafc;
+}
+
+.modal-dialog.inherited-condition-dialog .data-manager-hint {
+  color: #94a3b8;
+}
+
+.inherited-condition-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 280px;
+  overflow-y: auto;
+  margin: 16px 0;
+}
+
+.inherited-condition-option {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: #0b1220;
+  color: #cbd5e1;
+  text-align: left;
+  cursor: pointer;
+}
+
+.inherited-condition-option:hover,
+.inherited-condition-option.is-selected {
+  border-color: #38bdf8;
+  background: rgba(14, 116, 144, 0.3);
+  color: #f8fafc;
 }
 
 .speed-group {

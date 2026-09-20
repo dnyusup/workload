@@ -29,9 +29,7 @@ export function Controls({
   copyingOutput,
   copiedOutput,
   inheritedConditionOptions,
-  selectedInheritedConditionId,
-  onInheritedConditionChange,
-  onUseInheritedCondition,
+  onOpenInheritedCondition,
 }: {
   playing: boolean;
   speed: number;
@@ -60,9 +58,7 @@ export function Controls({
   copyingOutput: boolean;
   copiedOutput: boolean;
   inheritedConditionOptions: Array<{ id: string; label: string }>;
-  selectedInheritedConditionId: string;
-  onInheritedConditionChange: (id: string) => void;
-  onUseInheritedCondition: () => void;
+  onOpenInheritedCondition: () => void;
 }) {
   const handleMachHandledChange = (value: number) => {
     if (!Number.isFinite(value)) return;
@@ -142,25 +138,9 @@ export function Controls({
         </Button>
       )}
       {!playing && !finished && inheritedConditionOptions.length > 0 && (
-        <div className="inherited-condition-control">
-          {inheritedConditionOptions.length > 1 && (
-            <select
-              className="input input-sm inherited-condition-select"
-              value={selectedInheritedConditionId}
-              onChange={(event) => onInheritedConditionChange(event.target.value)}
-              aria-label="Select inherited machine condition version"
-            >
-              {inheritedConditionOptions.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          )}
-          <Button variant="secondary" onClick={onUseInheritedCondition}>
-            ↺ Use inherited
-          </Button>
-        </div>
+        <Button variant="secondary" onClick={onOpenInheritedCondition}>
+          ↺ Use inherited
+        </Button>
       )}
       {!playing ? (
         <Button variant="primary" onClick={onPlay} disabled={finished}>

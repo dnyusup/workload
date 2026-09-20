@@ -70,22 +70,26 @@ function differenceValue(oldValue: ComparisonSource, newValue: ComparisonSource,
 
 export function OutputModelSaveDialog({
   existing,
+  existingVersions,
   draft,
   nextVersion,
   versionRemark,
   onVersionRemarkChange,
   onCancel,
+  onExistingVersionChange,
   onReplace,
   onSaveNewVersion,
   saving,
   error,
 }: {
   existing: Mpp_wl_outputmodelses;
+  existingVersions: Mpp_wl_outputmodelses[];
   draft: OutputModelPayload;
   nextVersion: string;
   versionRemark: string;
   onVersionRemarkChange: (value: string) => void;
   onCancel: () => void;
+  onExistingVersionChange: (id: string) => void;
   onReplace: () => void;
   onSaveNewVersion: () => void;
   saving: boolean;
@@ -103,14 +107,32 @@ export function OutputModelSaveDialog({
         <h3 id="output-model-save-title">Output model already exists</h3>
         <p className="data-manager-hint">
           Construction Detail <strong>{draft.mpp_constructiondetailcode}</strong> already has version{' '}
-          <strong>{existing.mpp_version ?? '0001'}</strong>. Compare the runtime output before saving.
+          <strong>{existing.mpp_version ?? '0001'}</strong>
+          {existing.mpp_versionremark?.trim() ? ` (${existing.mpp_versionremark.trim()})` : ''}. Compare the runtime output before saving.
         </p>
+        <div className="modal-field output-model-comparison-version">
+          <label htmlFor="output-model-comparison-version">Compare with existing version</label>
+          <select
+            id="output-model-comparison-version"
+            className="input"
+            value={existing.mpp_wl_outputmodelsid}
+            onChange={(event) => onExistingVersionChange(event.target.value)}
+            disabled={saving}
+          >
+            {existingVersions.map((version) => (
+              <option key={version.mpp_wl_outputmodelsid} value={version.mpp_wl_outputmodelsid}>
+                Version {version.mpp_version ?? '0001'}
+                {version.mpp_versionremark?.trim() ? ` — ${version.mpp_versionremark.trim()}` : ' — No remark'}
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="output-model-comparison-wrap">
           <table className="table output-model-comparison">
             <thead>
               <tr>
                 <th>Metric</th>
-                <th>Existing</th>
+                <th>Existing (v{existing.mpp_version ?? '0001'})</th>
                 <th>New</th>
                 <th>Difference</th>
               </tr>

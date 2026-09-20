@@ -5,6 +5,7 @@ import { LayoutCanvas } from './components/simulation/LayoutCanvas';
 import { Dashboard } from './components/simulation/Dashboard';
 import { Controls } from './components/simulation/Controls';
 import { OutputModelSaveDialog } from './components/simulation/OutputModelSaveDialog';
+import { InheritedConditionDialog } from './components/simulation/InheritedConditionDialog';
 import { useAuth } from './context/AuthContext';
 import type { Mpp_wl_outputmodelses } from './generated/models/Mpp_wl_outputmodelsesModel';
 import {
@@ -22,6 +23,7 @@ import { parseMachineStartConditions, useInheritedMachineConditions } from './ho
 interface PendingOutputModelSave {
   payload: OutputModelPayload;
   existing: Mpp_wl_outputmodelses;
+  existingVersions: Mpp_wl_outputmodelses[];
   nextVersion: string;
 }
 
@@ -48,6 +50,7 @@ export function SimulationView({
   const [selectedInheritedConditionId, setSelectedInheritedConditionId] = useState('');
   const [inheritedSelectionError, setInheritedSelectionError] = useState<string | null>(null);
   const [inheritedSelectionNotice, setInheritedSelectionNotice] = useState<string | null>(null);
+  const [inheritedDialogOpen, setInheritedDialogOpen] = useState(false);
   const {
     rows: inheritedConditionRows,
     loading: loadingInheritedConditions,
@@ -102,6 +105,7 @@ export function SimulationView({
       setPendingSave({
         payload: initialPayload,
         existing: latest,
+        existingVersions: existingRows,
         nextVersion: formatOutputModelVersion(nextVersionNumber),
       });
       setVersionRemark('');
@@ -118,6 +122,14 @@ export function SimulationView({
     setPendingSave(null);
     setVersionRemark('');
     setDialogError(null);
+  };
+
+  const handleComparisonVersionChange = (id: string) => {
+    setPendingSave((current) => {
+      if (!current) return current;
+      const selected = current.existingVersions.find((row) => row.mpp_wl_outputmodelsid === id);
+      return selected ? { ...current, existing: selected } : current;
+    });
   };
 
   const handleReplaceExisting = async () => {
@@ -186,10 +198,22 @@ export function SimulationView({
       setInheritedSelectionNotice(
         `Version ${selectedRow.mpp_version ?? '0001'} loaded: ${conditions.length} machines, ${stoppedCount} stopped, ${pendingTaskCount} pending task(s).`,
       );
+      setInheritedDialogOpen(false);
     } catch (err) {
       setInheritedSelectionNotice(null);
       setInheritedSelectionError(err instanceof Error ? err.message : 'The selected inherited machine condition is invalid.');
     }
+  };
+
+  const openInheritedConditionDialog = () => {
+    setSelectedInheritedConditionId(effectiveInheritedConditionId);
+    setInheritedSelectionError(null);
+    setInheritedDialogOpen(true);
+  };
+
+  const closeInheritedConditionDialog = () => {
+    setInheritedDialogOpen(false);
+    setInheritedSelectionError(null);
   };
 
   const handleConfigChange = (updater: (prev: AppConfig) => AppConfig) => {
@@ -246,9 +270,7 @@ export function SimulationView({
         copyingOutput={copyingOutput}
         copiedOutput={copiedOutput}
         inheritedConditionOptions={inheritedConditionOptions}
-        selectedInheritedConditionId={effectiveInheritedConditionId}
-        onInheritedConditionChange={setSelectedInheritedConditionId}
-        onUseInheritedCondition={handleUseInheritedCondition}
+        onOpenInheritedCondition={openInheritedConditionDialog}
         breakMessage={
           state.operator.phase === 'break'
             ? `☕ Operator is on ${state.operator.breakLabel} — ${Math.ceil(state.operator.breakRemainingMin)} minutes remaining`
@@ -294,9 +316,7 @@ export function SimulationView({
               copyingOutput={copyingOutput}
               copiedOutput={copiedOutput}
               inheritedConditionOptions={inheritedConditionOptions}
-              selectedInheritedConditionId={effectiveInheritedConditionId}
-              onInheritedConditionChange={setSelectedInheritedConditionId}
-              onUseInheritedCondition={handleUseInheritedCondition}
+              onOpenInheritedCondition={openInheritedConditionDialog}
               breakMessage={
                 state.operator.phase === 'break'
                   ? `☕ Operator is on ${state.operator.breakLabel} — ${Math.ceil(state.operator.breakRemainingMin)} minutes remaining`
@@ -310,15 +330,28 @@ export function SimulationView({
       {pendingSave && (
         <OutputModelSaveDialog
           existing={pendingSave.existing}
+          existingVersions={pendingSave.existingVersions}
           draft={pendingSave.payload}
           nextVersion={pendingSave.nextVersion}
           versionRemark={versionRemark}
           onVersionRemarkChange={setVersionRemark}
           onCancel={closeSaveDialog}
+          onExistingVersionChange={handleComparisonVersionChange}
           onReplace={() => void handleReplaceExisting()}
           onSaveNewVersion={() => void handleSaveNewVersion()}
           saving={savingWlm}
           error={dialogError}
+        />
+      )}
+      {inheritedDialogOpen && (
+        <InheritedConditionDialog
+          constructionDetail={config.selectedConstructionDetail}
+          options={inheritedConditionOptions}
+          selectedId={effectiveInheritedConditionId}
+          onSelect={setSelectedInheritedConditionId}
+          onCancel={closeInheritedConditionDialog}
+          onConfirm={handleUseInheritedCondition}
+          error={inheritedSelectionError}
         />
       )}
     </div>
