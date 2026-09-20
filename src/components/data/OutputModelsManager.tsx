@@ -6,6 +6,7 @@ import { OUTPUT_MODEL_PERCENT_KEYS, outputModelVersionNumber, percentageForDispl
 import { downloadOutputModelRows } from '../../lib/outputModelExport';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
+import { SearchableSelect, type SearchableSelectOption } from '../ui/SearchableSelect';
 import { CustomSortControl, type CustomSortLevel } from './CustomSortControl';
 import type { MachineStartCondition } from '../../types';
 
@@ -65,6 +66,15 @@ type OutputModelKey =
 interface OutputModelColumn {
   key: OutputModelKey;
   label: string;
+}
+
+type OutputModelFilterKey = 'area' | 'machine' | 'construction' | 'spoolType';
+
+interface OutputModelFilters {
+  area: string;
+  machine: string;
+  construction: string;
+  spoolType: string;
 }
 
 const OUTPUT_MODEL_COLUMNS: OutputModelColumn[] = [
@@ -149,6 +159,56 @@ function comparableValue(record: Mpp_wl_outputmodelses, key: OutputModelKey): st
   return typeof value === 'number' ? value : String(value ?? '');
 }
 
+function normalizedFilterValue(value: unknown): string {
+  return String(value ?? '').trim();
+}
+
+function matchesOutputModelSearch(row: Mpp_wl_outputmodelses, query: string): boolean {
+  if (!query) return true;
+  return [
+    row.mpp_constructiondetailcode,
+    row.mpp_construction,
+    row.mpp_areacode,
+    row.mpp_productcode,
+    row.mpp_updatedby,
+  ].some((value) => String(value ?? '').toLowerCase().includes(query));
+}
+
+function matchesOutputModelFilters(
+  row: Mpp_wl_outputmodelses,
+  filters: OutputModelFilters,
+  excludedFilter?: OutputModelFilterKey,
+): boolean {
+  if (excludedFilter !== 'area' && filters.area && normalizedFilterValue(row.mpp_areacode) !== filters.area) return false;
+  if (excludedFilter !== 'machine' && filters.machine && normalizedFilterValue(row.mpp_machinecode) !== filters.machine) return false;
+  if (excludedFilter !== 'construction' && filters.construction && normalizedFilterValue(row.mpp_construction) !== filters.construction) {
+    return false;
+  }
+  if (excludedFilter !== 'spoolType' && filters.spoolType && normalizedFilterValue(row.mpp_spooltype) !== filters.spoolType) {
+    return false;
+  }
+  return true;
+}
+
+function filterOptions(
+  rows: Mpp_wl_outputmodelses[],
+  searchQuery: string,
+  filters: OutputModelFilters,
+  key: OutputModelFilterKey,
+  field: keyof Mpp_wl_outputmodelses,
+  currentValue: string,
+  label: string,
+): SearchableSelectOption[] {
+  const values = rows
+    .filter((row) => matchesOutputModelSearch(row, searchQuery) && matchesOutputModelFilters(row, filters, key))
+    .map((row) => normalizedFilterValue(row[field]))
+    .filter(Boolean);
+  const uniqueValues = [...new Set([...values, currentValue].filter(Boolean))].sort((left, right) =>
+    left.localeCompare(right, undefined, { numeric: true, sensitivity: 'base' }),
+  );
+  return uniqueValues.map((value) => ({ value, label: `${label}: ${value}` }));
+}
+
 export function OutputModelsManager({
   onUseStartCondition,
 }: {
@@ -225,21 +285,17 @@ export function OutputModelsManager({
 
   const visibleRows = useMemo(() => {
     const query = search.trim().toLowerCase();
-    const filtered = query
-      ? rows.filter((row) =>
-          [row.mpp_constructiondetailcode, row.mpp_construction, row.mpp_areacode, row.mpp_productcode, row.mpp_updatedby]
-            .some((value) => String(value ?? '').toLowerCase().includes(query)),
-        )
-      : rows;
-    const fieldFiltered = filtered.filter((row) => {
-      if (areaFilter && String(row.mpp_areacode ?? '') !== areaFilter) return false;
-      if (machineFilter && String(row.mpp_machinecode ?? '') !== machineFilter) return false;
-      if (constructionFilter && String(row.mpp_construction ?? '') !== constructionFilter) return false;
-      if (spoolTypeFilter && String(row.mpp_spooltype ?? '') !== spoolTypeFilter) return false;
-      return true;
-    });
-    if (!sortLevels.length) return fieldFiltered;
-    return [...fieldFiltered].sort((left, right) => {
+    const filters = {
+      area: areaFilter,
+      machine: machineFilter,
+      construction: constructionFilter,
+      spoolType: spoolTypeFilter,
+    };
+    const filtered = rows.filter(
+      (row) => matchesOutputModelSearch(row, query) && matchesOutputModelFilters(row, filters),
+    );
+    if (!sortLevels.length) return filtered;
+    return [...filtered].sort((left, right) => {
       for (const level of sortLevels) {
         const leftValue = comparableValue(left, level.key as OutputModelKey);
         const rightValue = comparableValue(right, level.key as OutputModelKey);
@@ -253,20 +309,83 @@ export function OutputModelsManager({
     });
   }, [rows, search, areaFilter, machineFilter, constructionFilter, spoolTypeFilter, sortLevels]);
 
-  const filterOptions = useMemo(
+  const outputModelFilters = useMemo<OutputModelFilters>(
     () => ({
-      areas: [...new Set(rows.map((row) => String(row.mpp_areacode ?? '').trim()).filter(Boolean))].sort(),
-      machines: [...new Set(rows.map((row) => String(row.mpp_machinecode ?? '').trim()).filter(Boolean))].sort(),
-      constructions: [...new Set(rows.map((row) => String(row.mpp_construction ?? '').trim()).filter(Boolean))].sort(),
-      spoolTypes: [...new Set(rows.map((row) => String(row.mpp_spooltype ?? '').trim()).filter(Boolean))].sort(),
+      area: areaFilter,
+      machine: machineFilter,
+      construction: constructionFilter,
+      spoolType: spoolTypeFilter,
     }),
-    [rows],
+    [areaFilter, machineFilter, constructionFilter, spoolTypeFilter],
+  );
+  const searchQuery = search.trim().toLowerCase();
+  const areaOptions = useMemo(
+    () =>
+      filterOptions(
+        rows,
+        searchQuery,
+        outputModelFilters,
+        'area',
+        'mpp_areacode',
+        areaFilter,
+        'Area',
+      ),
+    [rows, searchQuery, outputModelFilters, areaFilter],
+  );
+  const machineOptions = useMemo(
+    () =>
+      filterOptions(
+        rows,
+        searchQuery,
+        outputModelFilters,
+        'machine',
+        'mpp_machinecode',
+        machineFilter,
+        'Mach',
+      ),
+    [rows, searchQuery, outputModelFilters, machineFilter],
+  );
+  const constructionOptions = useMemo(
+    () =>
+      filterOptions(
+        rows,
+        searchQuery,
+        outputModelFilters,
+        'construction',
+        'mpp_construction',
+        constructionFilter,
+        'Construction',
+      ),
+    [rows, searchQuery, outputModelFilters, constructionFilter],
+  );
+  const spoolTypeOptions = useMemo(
+    () =>
+      filterOptions(
+        rows,
+        searchQuery,
+        outputModelFilters,
+        'spoolType',
+        'mpp_spooltype',
+        spoolTypeFilter,
+        'Spool Type',
+      ),
+    [rows, searchQuery, outputModelFilters, spoolTypeFilter],
   );
 
   const exportExcel = () => {
     const date = new Date().toISOString().slice(0, 10);
     downloadOutputModelRows(visibleRows, `wl-outputmodels-${date}.csv`);
   };
+
+  const clearFilters = () => {
+    setSearch('');
+    setAreaFilter('');
+    setMachineFilter('');
+    setConstructionFilter('');
+    setSpoolTypeFilter('');
+  };
+
+  const hasActiveFilters = Boolean(search || areaFilter || machineFilter || constructionFilter || spoolTypeFilter);
 
   return (
     <Card
@@ -302,42 +421,41 @@ export function OutputModelsManager({
               placeholder="Search all columns…"
               aria-label="Search output model"
             />
-            <select className="input" value={areaFilter} onChange={(event) => setAreaFilter(event.target.value)}>
-              <option value="">All areas</option>
-              {filterOptions.areas.map((value) => (
-                <option key={value} value={value}>
-                  Area: {value}
-                </option>
-              ))}
-            </select>
-            <select className="input" value={machineFilter} onChange={(event) => setMachineFilter(event.target.value)}>
-              <option value="">All machines</option>
-              {filterOptions.machines.map((value) => (
-                <option key={value} value={value}>
-                  Mach: {value}
-                </option>
-              ))}
-            </select>
-            <select
-              className="input"
+            <SearchableSelect
+              value={areaFilter}
+              onChange={setAreaFilter}
+              options={areaOptions}
+              placeholder="All areas"
+              searchPlaceholder="Search area…"
+              className="output-model-filter"
+            />
+            <SearchableSelect
+              value={machineFilter}
+              onChange={setMachineFilter}
+              options={machineOptions}
+              placeholder="All machines"
+              searchPlaceholder="Search Mach…"
+              className="output-model-filter"
+            />
+            <SearchableSelect
               value={constructionFilter}
-              onChange={(event) => setConstructionFilter(event.target.value)}
-            >
-              <option value="">All constructions</option>
-              {filterOptions.constructions.map((value) => (
-                <option key={value} value={value}>
-                  Construction: {value}
-                </option>
-              ))}
-            </select>
-            <select className="input" value={spoolTypeFilter} onChange={(event) => setSpoolTypeFilter(event.target.value)}>
-              <option value="">All spool types</option>
-              {filterOptions.spoolTypes.map((value) => (
-                <option key={value} value={value}>
-                  Spool Type: {value}
-                </option>
-              ))}
-            </select>
+              onChange={setConstructionFilter}
+              options={constructionOptions}
+              placeholder="All constructions"
+              searchPlaceholder="Search construction…"
+              className="output-model-filter"
+            />
+            <SearchableSelect
+              value={spoolTypeFilter}
+              onChange={setSpoolTypeFilter}
+              options={spoolTypeOptions}
+              placeholder="All spool types"
+              searchPlaceholder="Search spool type…"
+              className="output-model-filter"
+            />
+            <Button variant="ghost" onClick={clearFilters} disabled={!hasActiveFilters}>
+              <span aria-hidden="true">✕</span> Clear filters
+            </Button>
           </div>
           <div className="data-table-wrap">
             <table className="table output-models-table">

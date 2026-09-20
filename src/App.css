@@ -181,12 +181,18 @@
 
 .output-models-filters {
   display: grid;
-  grid-template-columns: minmax(190px, 1.4fr) repeat(4, minmax(150px, 1fr));
+  grid-template-columns: minmax(190px, 1.4fr) repeat(4, minmax(150px, 1fr)) minmax(135px, auto);
   gap: 8px;
   margin-bottom: 10px;
 }
 
 .output-models-filters .input {
+  min-width: 0;
+}
+
+.output-models-filters .output-model-filter,
+.output-models-filters .output-model-filter .searchable-select-trigger {
+  width: 100%;
   min-width: 0;
 }
 
