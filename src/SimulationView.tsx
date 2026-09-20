@@ -47,6 +47,7 @@ export function SimulationView({
   const [copyOutputError, setCopyOutputError] = useState<string | null>(null);
   const [selectedInheritedConditionId, setSelectedInheritedConditionId] = useState('');
   const [inheritedSelectionError, setInheritedSelectionError] = useState<string | null>(null);
+  const [inheritedSelectionNotice, setInheritedSelectionNotice] = useState<string | null>(null);
   const {
     rows: inheritedConditionRows,
     loading: loadingInheritedConditions,
@@ -180,7 +181,13 @@ export function SimulationView({
       const conditions = parseMachineStartConditions(selectedRow.mpp_startmachcondition);
       setConfig((prev) => ({ ...prev, initialMachineConditions: conditions }));
       setInheritedSelectionError(null);
+      const stoppedCount = conditions.filter((condition) => condition.status !== 'running').length;
+      const pendingTaskCount = conditions.reduce((total, condition) => total + condition.pendingTasks.length, 0);
+      setInheritedSelectionNotice(
+        `Version ${selectedRow.mpp_version ?? '0001'} loaded: ${conditions.length} machines, ${stoppedCount} stopped, ${pendingTaskCount} pending task(s).`,
+      );
     } catch (err) {
+      setInheritedSelectionNotice(null);
       setInheritedSelectionError(err instanceof Error ? err.message : 'The selected inherited machine condition is invalid.');
     }
   };
@@ -191,6 +198,7 @@ export function SimulationView({
     setCopiedOutput(false);
     setCopyOutputError(null);
     setInheritedSelectionError(null);
+    setInheritedSelectionNotice(null);
     setPendingSave(null);
     setDialogError(null);
     setConfig(updater);
@@ -202,6 +210,7 @@ export function SimulationView({
     setCopiedOutput(false);
     setCopyOutputError(null);
     setInheritedSelectionError(null);
+    setInheritedSelectionNotice(null);
     setPendingSave(null);
     setDialogError(null);
     controls.reset();
@@ -244,6 +253,7 @@ export function SimulationView({
       />
       {saveWlmError && <p className="simulation-save-error" role="alert">{saveWlmError}</p>}
       {copyOutputError && <p className="simulation-save-error" role="alert">{copyOutputError}</p>}
+      {inheritedSelectionNotice && <p className="simulation-save-hint">{inheritedSelectionNotice}</p>}
       {visibleInheritedConditionError && (
         <p className="simulation-save-error" role="alert">
           {visibleInheritedConditionError}

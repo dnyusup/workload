@@ -8,6 +8,7 @@ export function InheritedMachineConditionSelector() {
   const { config, setConfig } = useAppConfig();
   const [selectedId, setSelectedId] = useState('');
   const [selectionError, setSelectionError] = useState<string | null>(null);
+  const [appliedMessage, setAppliedMessage] = useState<string | null>(null);
   const { rows, loading, error: loadError } = useInheritedMachineConditions(config.selectedConstructionDetail);
   const selectedRow = rows.find((row) => row.mpp_wl_outputmodelsid === selectedId) ?? rows[0];
 
@@ -18,7 +19,13 @@ export function InheritedMachineConditionSelector() {
       setConfig((prev) => ({ ...prev, initialMachineConditions: conditions }));
       setSelectedId(selectedRow.mpp_wl_outputmodelsid);
       setSelectionError(null);
+      const stoppedCount = conditions.filter((condition) => condition.status !== 'running').length;
+      const pendingTaskCount = conditions.reduce((total, condition) => total + condition.pendingTasks.length, 0);
+      setAppliedMessage(
+        `Version ${selectedRow.mpp_version ?? '0001'} loaded: ${conditions.length} machines, ${stoppedCount} stopped, ${pendingTaskCount} pending task(s).`,
+      );
     } catch (err) {
+      setAppliedMessage(null);
       setSelectionError(err instanceof Error ? err.message : 'The selected inherited machine condition is invalid.');
     }
   };
@@ -60,6 +67,7 @@ export function InheritedMachineConditionSelector() {
           </Button>
         </div>
       )}
+      {appliedMessage && <p className="simulation-save-hint">{appliedMessage}</p>}
       {selectionError && <p className="construction-selector-error">{selectionError}</p>}
     </Card>
   );
