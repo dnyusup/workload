@@ -61,6 +61,13 @@ export function SimulationView({
       })),
     [availableInheritedConditionRows],
   );
+  const selectedInheritedConditionRow = useMemo(
+    () =>
+      availableInheritedConditionRows.find((row) => row.mpp_wl_outputmodelsid === selectedInheritedConditionId) ??
+      availableInheritedConditionRows[0],
+    [availableInheritedConditionRows, selectedInheritedConditionId],
+  );
+  const effectiveInheritedConditionId = selectedInheritedConditionRow?.mpp_wl_outputmodelsid ?? '';
   const visibleInheritedConditionError = inheritedConditionLoadError ?? inheritedSelectionError;
   const inheritedConditionHint =
     !loadingInheritedConditions &&
@@ -167,9 +174,7 @@ export function SimulationView({
   };
 
   const handleUseInheritedCondition = () => {
-    const selectedRow = availableInheritedConditionRows.find(
-      (row) => row.mpp_wl_outputmodelsid === selectedInheritedConditionId,
-    );
+    const selectedRow = selectedInheritedConditionRow;
     if (!selectedRow) return;
     try {
       const conditions = parseMachineStartConditions(selectedRow.mpp_startmachcondition);
@@ -228,7 +233,7 @@ export function SimulationView({
         copyingOutput={copyingOutput}
         copiedOutput={copiedOutput}
         inheritedConditionOptions={inheritedConditionOptions}
-        selectedInheritedConditionId={selectedInheritedConditionId}
+        selectedInheritedConditionId={effectiveInheritedConditionId}
         onInheritedConditionChange={setSelectedInheritedConditionId}
         onUseInheritedCondition={handleUseInheritedCondition}
         breakMessage={
@@ -275,7 +280,7 @@ export function SimulationView({
               copyingOutput={copyingOutput}
               copiedOutput={copiedOutput}
               inheritedConditionOptions={inheritedConditionOptions}
-              selectedInheritedConditionId={selectedInheritedConditionId}
+              selectedInheritedConditionId={effectiveInheritedConditionId}
               onInheritedConditionChange={setSelectedInheritedConditionId}
               onUseInheritedCondition={handleUseInheritedCondition}
               breakMessage={
