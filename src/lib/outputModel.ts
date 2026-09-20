@@ -225,10 +225,19 @@ export async function prepareSimulationOutputModel(
 
 export async function findOutputModelsForConstruction(constructionDetail: string) {
   const escapedDetail = escapeODataString(constructionDetail);
-  return fetchAllPages(Mpp_wl_outputmodelsesService.getAll, {
+  const filteredRows = await fetchAllPages(Mpp_wl_outputmodelsesService.getAll, {
     filter: `mpp_constructiondetailcode eq '${escapedDetail}'`,
     orderBy: ['mpp_version asc', 'mpp_updatedon asc'],
   });
+  if (filteredRows.length > 0) return filteredRows;
+
+  const normalizedDetail = constructionDetail.trim().toLowerCase();
+  const allRows = await fetchAllPages(Mpp_wl_outputmodelsesService.getAll, {
+    orderBy: ['mpp_version asc', 'mpp_updatedon asc'],
+  });
+  return allRows.filter(
+    (row) => row.mpp_constructiondetailcode?.trim().toLowerCase() === normalizedDetail,
+  );
 }
 
 export async function createOutputModel(payload: OutputModelPayload): Promise<Mpp_wl_outputmodelses> {

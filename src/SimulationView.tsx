@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { AppConfig } from './types';
 import { useSimulation } from './hooks/useSimulation';
 import { LayoutCanvas } from './components/simulation/LayoutCanvas';
@@ -17,7 +17,7 @@ import {
   type OutputModelPayload,
 } from './lib/outputModel';
 import { copyOutputModelRows } from './lib/outputModelExport';
-import type { MachineStartCondition } from './types';
+import { parseMachineStartConditions, useInheritedMachineConditions } from './hooks/useInheritedMachineConditions';
 
 interface PendingOutputModelSave {
   payload: OutputModelPayload;
@@ -45,53 +45,14 @@ export function SimulationView({
   const [copyingOutput, setCopyingOutput] = useState(false);
   const [copiedOutput, setCopiedOutput] = useState(false);
   const [copyOutputError, setCopyOutputError] = useState<string | null>(null);
-  const [inheritedConditionRows, setInheritedConditionRows] = useState<Mpp_wl_outputmodelses[]>([]);
-  const [loadedConstructionDetail, setLoadedConstructionDetail] = useState('');
   const [selectedInheritedConditionId, setSelectedInheritedConditionId] = useState('');
-  const [loadingInheritedConditions, setLoadingInheritedConditions] = useState(false);
-  const [inheritedConditionError, setInheritedConditionError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const constructionDetail = config.selectedConstructionDetail?.trim();
-    if (!constructionDetail) return;
-    let cancelled = false;
-    // This effect synchronizes the toolbar with the external Dataverse query lifecycle.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLoadingInheritedConditions(true);
-    findOutputModelsForConstruction(constructionDetail)
-      .then((rows) => {
-        if (cancelled) return;
-        const rowsWithConditions = rows
-          .filter((row) => row.mpp_startmachcondition?.trim())
-          .sort(
-            (left, right) =>
-              outputModelVersionNumber(right.mpp_version) - outputModelVersionNumber(left.mpp_version),
-          );
-        setInheritedConditionRows(rowsWithConditions);
-        setLoadedConstructionDetail(constructionDetail);
-        setSelectedInheritedConditionId(rowsWithConditions[0]?.mpp_wl_outputmodelsid ?? '');
-        setInheritedConditionError(null);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setInheritedConditionRows([]);
-        setLoadedConstructionDetail(constructionDetail);
-        setSelectedInheritedConditionId('');
-        setInheritedConditionError(err instanceof Error ? err.message : 'Failed to load inherited machine conditions.');
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingInheritedConditions(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [config.selectedConstructionDetail]);
-
-  const availableInheritedConditionRows = useMemo(
-    () =>
-      loadedConstructionDetail === config.selectedConstructionDetail?.trim() ? inheritedConditionRows : [],
-    [config.selectedConstructionDetail, inheritedConditionRows, loadedConstructionDetail],
-  );
+  const [inheritedSelectionError, setInheritedSelectionError] = useState<string | null>(null);
+  const {
+    rows: inheritedConditionRows,
+    loading: loadingInheritedConditions,
+    error: inheritedConditionLoadError,
+  } = useInheritedMachineConditions(config.selectedConstructionDetail);
+  const availableInheritedConditionRows = inheritedConditionRows;
   const inheritedConditionOptions = useMemo(
     () =>
       availableInheritedConditionRows.map((row) => ({
@@ -100,8 +61,14 @@ export function SimulationView({
       })),
     [availableInheritedConditionRows],
   );
-  const visibleInheritedConditionError =
-    loadedConstructionDetail === config.selectedConstructionDetail?.trim() ? inheritedConditionError : null;
+  const visibleInheritedConditionError = inheritedConditionLoadError ?? inheritedSelectionError;
+  const inheritedConditionHint =
+    !loadingInheritedConditions &&
+    !visibleInheritedConditionError &&
+    Boolean(config.selectedConstructionDetail?.trim()) &&
+    inheritedConditionRows.length === 0
+      ? 'No saved machine start condition is available for this Construction Detail.'
+      : null;
 
   const handleSaveWlm = async () => {
     if (savingWlm || savedWlm || pendingSave) return;
@@ -205,14 +172,11 @@ export function SimulationView({
     );
     if (!selectedRow) return;
     try {
-      const conditions = JSON.parse(selectedRow.mpp_startmachcondition ?? '') as MachineStartCondition[];
-      if (!Array.isArray(conditions) || conditions.some((condition) => !condition.machineId)) {
-        throw new Error('The selected inherited machine condition is invalid.');
-      }
+      const conditions = parseMachineStartConditions(selectedRow.mpp_startmachcondition);
       setConfig((prev) => ({ ...prev, initialMachineConditions: conditions }));
-      setInheritedConditionError(null);
+      setInheritedSelectionError(null);
     } catch (err) {
-      setInheritedConditionError(err instanceof Error ? err.message : 'The selected inherited machine condition is invalid.');
+      setInheritedSelectionError(err instanceof Error ? err.message : 'The selected inherited machine condition is invalid.');
     }
   };
 
@@ -221,6 +185,7 @@ export function SimulationView({
     setSaveWlmError(null);
     setCopiedOutput(false);
     setCopyOutputError(null);
+    setInheritedSelectionError(null);
     setPendingSave(null);
     setDialogError(null);
     setConfig(updater);
@@ -231,6 +196,7 @@ export function SimulationView({
     setSaveWlmError(null);
     setCopiedOutput(false);
     setCopyOutputError(null);
+    setInheritedSelectionError(null);
     setPendingSave(null);
     setDialogError(null);
     controls.reset();
@@ -279,6 +245,7 @@ export function SimulationView({
         </p>
       )}
       {loadingInheritedConditions && <p className="simulation-save-hint">Loading inherited machine conditions…</p>}
+      {inheritedConditionHint && <p className="simulation-save-hint">{inheritedConditionHint}</p>}
       <div className="simulation-body">
         <LayoutCanvas
           state={state}

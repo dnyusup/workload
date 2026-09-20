@@ -15,6 +15,7 @@ import { MovementParamsForm } from './MovementParams';
 import { OutputEstimate } from './OutputEstimate';
 import { LayoutBuilder } from './LayoutBuilder';
 import { ConstructionDetailSelector } from './ConstructionDetailSelector';
+import { InheritedMachineConditionSelector } from './InheritedMachineConditionSelector';
 import { LayoutSelector } from './LayoutSelector';
 import type { AppConfig } from '../../types';
 
@@ -54,6 +55,7 @@ export function SetupWizard({ onStart }: { onStart: () => void }) {
         onApplyingChange={setApplyingConstruction}
         onApplied={setConstructionBaseline}
       />
+      <InheritedMachineConditionSelector />
       <div className="setup-stepper-row">
         <Stepper steps={STEPS} current={step} onSelect={setStep} disabled={applyingConstruction} />
         <div className="setup-nav">
