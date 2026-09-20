@@ -271,13 +271,6 @@
           "x-ms-dataverse-type": "DecimalType",
           "x-ms-schema-name": "mpp_lineardensity"
         },
-        "mpp_linearspeed": {
-          "type": "string",
-          "title": "LinearSpeed",
-          "x-ms-dataverse-attribute": "mpp_linearspeed",
-          "x-ms-dataverse-type": "IntegerType",
-          "x-ms-schema-name": "mpp_linearspeed"
-        },
         "mpp_linearspeeds": {
           "type": "string",
           "title": "LinearSpeeds",
