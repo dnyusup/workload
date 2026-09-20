@@ -16,6 +16,7 @@ import {
   replaceOutputModel,
   type OutputModelPayload,
 } from './lib/outputModel';
+import { copyOutputModelRows } from './lib/outputModelExport';
 
 interface PendingOutputModelSave {
   payload: OutputModelPayload;
@@ -40,6 +41,9 @@ export function SimulationView({
   const [pendingSave, setPendingSave] = useState<PendingOutputModelSave | null>(null);
   const [versionRemark, setVersionRemark] = useState('');
   const [dialogError, setDialogError] = useState<string | null>(null);
+  const [copyingOutput, setCopyingOutput] = useState(false);
+  const [copiedOutput, setCopiedOutput] = useState(false);
+  const [copyOutputError, setCopyOutputError] = useState<string | null>(null);
 
   const handleSaveWlm = async () => {
     if (savingWlm || savedWlm || pendingSave) return;
@@ -121,9 +125,27 @@ export function SimulationView({
     }
   };
 
+  const handleCopyOutput = async () => {
+    if (copyingOutput) return;
+    setCopyingOutput(true);
+    setCopiedOutput(false);
+    setCopyOutputError(null);
+    try {
+      const payload = await prepareSimulationOutputModel(config, state, user.email, { version: '0001' });
+      await copyOutputModelRows([payload]);
+      setCopiedOutput(true);
+    } catch (err) {
+      setCopyOutputError(err instanceof Error ? err.message : 'Failed to copy the simulation output.');
+    } finally {
+      setCopyingOutput(false);
+    }
+  };
+
   const handleConfigChange = (updater: (prev: AppConfig) => AppConfig) => {
     setSavedWlm(false);
     setSaveWlmError(null);
+    setCopiedOutput(false);
+    setCopyOutputError(null);
     setPendingSave(null);
     setDialogError(null);
     setConfig(updater);
@@ -132,6 +154,8 @@ export function SimulationView({
   const handleReset = () => {
     setSavedWlm(false);
     setSaveWlmError(null);
+    setCopiedOutput(false);
+    setCopyOutputError(null);
     setPendingSave(null);
     setDialogError(null);
     controls.reset();
@@ -158,6 +182,10 @@ export function SimulationView({
         onSaveWlm={() => void handleSaveWlm()}
         savingWlm={savingWlm || Boolean(pendingSave)}
         savedWlm={savedWlm}
+        canCopyOutput={state.finished}
+        onCopyOutput={() => void handleCopyOutput()}
+        copyingOutput={copyingOutput}
+        copiedOutput={copiedOutput}
         breakMessage={
           state.operator.phase === 'break'
             ? `☕ Operator is on ${state.operator.breakLabel} — ${Math.ceil(state.operator.breakRemainingMin)} minutes remaining`
@@ -165,6 +193,7 @@ export function SimulationView({
         }
       />
       {saveWlmError && <p className="simulation-save-error" role="alert">{saveWlmError}</p>}
+      {copyOutputError && <p className="simulation-save-error" role="alert">{copyOutputError}</p>}
       <div className="simulation-body">
         <LayoutCanvas
           state={state}
@@ -189,6 +218,10 @@ export function SimulationView({
               onSaveWlm={() => void handleSaveWlm()}
               savingWlm={savingWlm || Boolean(pendingSave)}
               savedWlm={savedWlm}
+              canCopyOutput={state.finished}
+              onCopyOutput={() => void handleCopyOutput()}
+              copyingOutput={copyingOutput}
+              copiedOutput={copiedOutput}
               breakMessage={
                 state.operator.phase === 'break'
                   ? `☕ Operator is on ${state.operator.breakLabel} — ${Math.ceil(state.operator.breakRemainingMin)} minutes remaining`

@@ -24,6 +24,10 @@ export function Controls({
   onSaveWlm,
   savingWlm,
   savedWlm,
+  canCopyOutput,
+  onCopyOutput,
+  copyingOutput,
+  copiedOutput,
 }: {
   playing: boolean;
   speed: number;
@@ -47,6 +51,10 @@ export function Controls({
   onSaveWlm: () => void;
   savingWlm: boolean;
   savedWlm: boolean;
+  canCopyOutput: boolean;
+  onCopyOutput: () => void;
+  copyingOutput: boolean;
+  copiedOutput: boolean;
 }) {
   const handleMachHandledChange = (value: number) => {
     if (!Number.isFinite(value)) return;
@@ -118,6 +126,11 @@ export function Controls({
       {finished && canSaveWlm && (
         <Button variant="secondary" onClick={onSaveWlm} disabled={savingWlm || savedWlm}>
           {savingWlm ? 'Saving…' : savedWlm ? 'WLM Saved' : 'Save WLM'}
+        </Button>
+      )}
+      {finished && canCopyOutput && (
+        <Button variant="secondary" onClick={onCopyOutput} disabled={copyingOutput}>
+          {copyingOutput ? 'Copying…' : copiedOutput ? '✓ Copied' : '📋 Copy'}
         </Button>
       )}
       {!playing ? (

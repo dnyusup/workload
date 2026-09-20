@@ -3,6 +3,7 @@ import { Mpp_wl_outputmodelsesService } from '../../generated/services/Mpp_wl_ou
 import type { Mpp_wl_outputmodelses } from '../../generated/models/Mpp_wl_outputmodelsesModel';
 import { fetchAllPages } from '../../lib/dataversePaging';
 import { OUTPUT_MODEL_PERCENT_KEYS, percentageForDisplay } from '../../lib/outputModel';
+import { downloadOutputModelRows } from '../../lib/outputModelExport';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { CustomSortControl, type CustomSortLevel } from './CustomSortControl';
@@ -218,6 +219,11 @@ export function OutputModelsManager({
     });
   }, [rows, search, sortLevels]);
 
+  const exportExcel = () => {
+    const date = new Date().toISOString().slice(0, 10);
+    downloadOutputModelRows(visibleRows, `wl-outputmodels-${date}.csv`);
+  };
+
   return (
     <Card
       title="WL_Outputmodels"
@@ -234,6 +240,9 @@ export function OutputModelsManager({
           />
           <Button variant="ghost" onClick={refresh} disabled={loading}>
             Refresh
+          </Button>
+          <Button variant="secondary" onClick={exportExcel} disabled={loading || visibleRows.length === 0}>
+            📊 Export Excel
           </Button>
           <CustomSortControl
             columns={OUTPUT_MODEL_COLUMNS}
