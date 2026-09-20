@@ -250,6 +250,13 @@
           "x-ms-dataverse-type": "DecimalType",
           "x-ms-schema-name": "mpp_fracturerepairingtime"
         },
+        "mpp_idle": {
+          "type": "string",
+          "title": "Idle",
+          "x-ms-dataverse-attribute": "mpp_idle",
+          "x-ms-dataverse-type": "DecimalType",
+          "x-ms-schema-name": "mpp_Idle"
+        },
         "mpp_laylength": {
           "type": "string",
           "title": "LayLength",

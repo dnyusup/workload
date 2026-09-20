@@ -49,6 +49,7 @@ export type OutputModelExportKey =
   | 'mpp_dieschangetime'
   | 'mpp_walkingtime'
   | 'mpp_othertime'
+  | 'mpp_idle'
   | 'mpp_updatedby'
   | 'mpp_updatedon';
 
@@ -109,6 +110,7 @@ export const OUTPUT_MODEL_EXPORT_COLUMNS: readonly OutputModelExportColumn[] = [
   { key: 'mpp_dieschangetime', label: 'DiesChange' },
   { key: 'mpp_walkingtime', label: 'Walking' },
   { key: 'mpp_othertime', label: 'Others' },
+  { key: 'mpp_idle', label: 'Idle' },
   { key: 'mpp_updatedby', label: 'UpdatedBy' },
   { key: 'mpp_updatedon', label: 'UpdatedOn' },
 ];

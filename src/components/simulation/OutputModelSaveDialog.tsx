@@ -19,7 +19,8 @@ type ComparisonKey =
   | 'mpp_defectrepairingtime'
   | 'mpp_dieschangetime'
   | 'mpp_walkingtime'
-  | 'mpp_othertime';
+  | 'mpp_othertime'
+  | 'mpp_idle';
 
 interface ComparisonField {
   key: ComparisonKey;
@@ -44,6 +45,7 @@ const COMPARISON_FIELDS: ComparisonField[] = [
   { key: 'mpp_dieschangetime', label: 'Dies Change', percent: true },
   { key: 'mpp_walkingtime', label: 'Walking', percent: true },
   { key: 'mpp_othertime', label: 'Others', percent: true },
+  { key: 'mpp_idle', label: 'Idle', percent: true },
 ];
 
 type ComparisonSource = Partial<Record<ComparisonKey, number>>;

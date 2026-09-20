@@ -30,6 +30,7 @@ export interface Mpp_wl_outputmodelsesBase {
   mpp_doffingtime?: number;
   mpp_fractureperton?: number;
   mpp_fracturerepairingtime?: number;
+  mpp_idle?: number;
   mpp_laylength?: number;
   mpp_lineardensity?: number;
   mpp_linearspeed?: number;
