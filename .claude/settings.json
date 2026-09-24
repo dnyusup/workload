@@ -22,7 +22,10 @@
       "Bash(grep -rhoE \".{0,150}\\(maxPageSize|maxpagesize\\).{0,150}\" node_modules/@microsoft/power-apps/dist)",
       "Bash(echo \"exit=$?\")",
       "Bash(git commit -q -m 'Load all WL_Products and WL_Activities rows past the 500-row page limit *)",
-      "Bash(git commit -q -m 'Update Claude permission allowlist *)"
+      "Bash(git commit -q -m 'Update Claude permission allowlist *)",
+      "Bash(python -)",
+      "Bash(grep -E \"^\\\\S.*\\\\.tsx?$|error\")",
+      "Bash(git stash *)"
     ]
   }
 }
