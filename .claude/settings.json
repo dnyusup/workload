@@ -13,7 +13,12 @@
       "Bash(pac --version)",
       "Bash(xargs grep -l \"IOperationResult\")",
       "Bash(grep -n \"machines.map\\(\\(m\\) =>\\\\|<g transform={\\\\`translate\\(\\\\${pan.x}\\\\|const \\\\[zoom, setZoom\\\\]\\\\|const \\\\[pan, setPan\\\\]\" src/components/production/ProductionRunView.tsx)",
-      "Bash(grep -n \"^}\\);$\" src/components/production/ProductionRunView.tsx)"
+      "Bash(grep -n \"^}\\);$\" src/components/production/ProductionRunView.tsx)",
+      "Bash(node -e ' *)",
+      "Bash(git add *)",
+      "Bash(git commit -q -m 'Sample machine start phase over longest cycle and tighten event forecast *)",
+      "Bash(git commit -q -m 'Show Output \\(Running Time\\) card before Output card *)",
+      "Bash(git commit -q -m 'Allow node -e commands in Claude settings *)"
     ]
   }
 }
