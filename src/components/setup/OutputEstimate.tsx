@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { activityCycleLength, deriveMachineSpec } from '../../lib/calculations';
 import type { ActivityConfig, AppConfig } from '../../types';
 import type { SingleOperatorForecast } from '../../lib/singleOperatorUtilization';
@@ -24,9 +25,12 @@ function estimatedQuantity(activity: ActivityConfig, spools: number) {
 export function OutputEstimate({
   config,
   forecast,
+  headerControls,
 }: {
   config: AppConfig;
   forecast: SingleOperatorForecast;
+  /** Rendered to the right of the "Output Estimate" heading. */
+  headerControls?: ReactNode;
 }) {
   const derived = deriveMachineSpec(config.spec);
   const runtimePerSpool = derived.runtimePerSpool;
@@ -66,8 +70,11 @@ export function OutputEstimate({
   return (
     <div className="output-estimate">
       <div className="output-estimate-heading">
-        <h3>Output Estimate</h3>
-        <p>Estimasi deterministik berdasarkan Forecast Man Occupation dan setup saat ini</p>
+        <div>
+          <h3>Output Estimate</h3>
+          <p>Estimasi deterministik berdasarkan Forecast Man Occupation dan setup saat ini</p>
+        </div>
+        {headerControls}
       </div>
       <div className="output-estimate-grid">
         <Card title="Output" className="output-estimate-card">

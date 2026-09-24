@@ -31,7 +31,10 @@
       "Bash(sed -i \"s/^  PendingTask,$/  PendingTask,\\\\n  ProductionMachineAssignment,/\" src/lib/productionSimulationEngine.ts)",
       "Bash(echo \"tsc exit=$?\")",
       "Bash(echo \"lint exit=$?\")",
-      "Bash(awk 'NR>=200 && NR<=275 && /^\\\\s+\\(if .*return|return \\)/ {print FILENAME\":\"NR\": \"$0}' src/components/simulation/LayoutCanvas.tsx)"
+      "Bash(awk 'NR>=200 && NR<=275 && /^\\\\s+\\(if .*return|return \\)/ {print FILENAME\":\"NR\": \"$0}' src/components/simulation/LayoutCanvas.tsx)",
+      "Bash(echo \"eslint exit=$?\")",
+      "Bash(echo \"tsc=$?\")",
+      "Bash(echo \"lint=$?\")"
     ]
   }
 }

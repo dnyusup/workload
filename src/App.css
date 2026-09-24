@@ -1173,10 +1173,42 @@
 
 .output-estimate {
   min-width: 0;
+  margin-bottom: 18px;
 }
 
 .output-estimate-heading {
   margin: 0 0 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px 16px;
+}
+
+.assigned-machines-control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 10px;
+}
+
+.assigned-machines-control .field {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.assigned-machines-control .field-label {
+  white-space: nowrap;
+}
+
+.assigned-machines-control .input {
+  width: 80px;
+}
+
+.assigned-machines-control .setup-forecast-utilization {
+  margin-top: 0;
+  min-height: 36px;
 }
 
 .output-estimate-heading h3 {
@@ -1202,6 +1234,9 @@
   display: flex;
   flex-direction: column;
   height: 100%;
+  /* The grid gap spaces these; a card's default margin-bottom would spill past its grid row
+   * (height: 100%) and butt up against whatever follows the Output Estimate. */
+  margin-bottom: 0;
 }
 
 .output-estimate-card .card-body {
