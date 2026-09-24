@@ -25,7 +25,12 @@
       "Bash(git commit -q -m 'Update Claude permission allowlist *)",
       "Bash(python -)",
       "Bash(grep -E \"^\\\\S.*\\\\.tsx?$|error\")",
-      "Bash(git stash *)"
+      "Bash(git stash *)",
+      "Bash(tasklist //FI \"IMAGENAME eq node.exe\")",
+      "PowerShell(Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Select-Object ProcessId, @{n='StartedMinAgo';e={[int]\\(\\(Get-Date\\) - $_.CreationDate\\).TotalMinutes}}, @{n='Cmd';e={$_.CommandLine.Substring\\(0,[Math]::Min\\(150,$_.CommandLine.Length\\)\\)}} | Format-List)",
+      "Bash(sed -i \"s/^  PendingTask,$/  PendingTask,\\\\n  ProductionMachineAssignment,/\" src/lib/productionSimulationEngine.ts)",
+      "Bash(echo \"tsc exit=$?\")",
+      "Bash(echo \"lint exit=$?\")"
     ]
   }
 }
