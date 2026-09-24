@@ -951,41 +951,6 @@ export function ProductionRunView({
 
         <div className="dashboard-scroll-outer">
           <div className="dashboard">
-            <Card title="Output" subtitle="Total finished spools across all machines this shift">
-              <div className="metric-row">
-                <span>#Spool</span>
-                <strong>{totalSpools}</strong>
-              </div>
-              <div className="metric-row">
-                <span>Tonage</span>
-                <strong>{fmt(tonage)} ton</strong>
-              </div>
-              <div className="metric-row">
-                <span>OEE (finished spool)</span>
-                <strong>{fmt(outputOee)}%</strong>
-              </div>
-              <div className="metric-row">
-                <span>Manhour/ton</span>
-                <strong>{fmt(manHourPerTon)}</strong>
-              </div>
-              <div className="metric-row">
-                <span>Machhours/ton</span>
-                <strong>{fmt(machHoursPerTon)}</strong>
-              </div>
-              <div className="metric-row" title="Total Fracture Repairing ÷ Tonage">
-                <span>Fracture/Ton (actual)</span>
-                <strong>{fmt(actualFracturePerTon)}</strong>
-              </div>
-              <div className="metric-row" title="Total Dies Change events ÷ Tonage">
-                <span>Dies/Ton (actual)</span>
-                <strong>{fmt(actualDiesPerTon)}</strong>
-              </div>
-              <div className="metric-row" title="Total Defect Repairing events ÷ Tonage">
-                <span>Defect/Ton (actual)</span>
-                <strong>{fmt(actualDefectPerTon)}</strong>
-              </div>
-            </Card>
-
             <Card
               title="Output (Running Time)"
               subtitle="Estimated from total machine running time; spool quantity can be decimal"
@@ -1025,6 +990,41 @@ export function ProductionRunView({
               <div className="metric-row" title="Total Defect Repairing dibagi tonage dari running time">
                 <span>Defect/Ton (running time)</span>
                 <strong>{fmt(runningTimeDefectPerTon)}</strong>
+              </div>
+            </Card>
+
+            <Card title="Output" subtitle="Total finished spools across all machines this shift">
+              <div className="metric-row">
+                <span>#Spool</span>
+                <strong>{totalSpools}</strong>
+              </div>
+              <div className="metric-row">
+                <span>Tonage</span>
+                <strong>{fmt(tonage)} ton</strong>
+              </div>
+              <div className="metric-row">
+                <span>OEE (finished spool)</span>
+                <strong>{fmt(outputOee)}%</strong>
+              </div>
+              <div className="metric-row">
+                <span>Manhour/ton</span>
+                <strong>{fmt(manHourPerTon)}</strong>
+              </div>
+              <div className="metric-row">
+                <span>Machhours/ton</span>
+                <strong>{fmt(machHoursPerTon)}</strong>
+              </div>
+              <div className="metric-row" title="Total Fracture Repairing ÷ Tonage">
+                <span>Fracture/Ton (actual)</span>
+                <strong>{fmt(actualFracturePerTon)}</strong>
+              </div>
+              <div className="metric-row" title="Total Dies Change events ÷ Tonage">
+                <span>Dies/Ton (actual)</span>
+                <strong>{fmt(actualDiesPerTon)}</strong>
+              </div>
+              <div className="metric-row" title="Total Defect Repairing events ÷ Tonage">
+                <span>Defect/Ton (actual)</span>
+                <strong>{fmt(actualDefectPerTon)}</strong>
               </div>
             </Card>
 
