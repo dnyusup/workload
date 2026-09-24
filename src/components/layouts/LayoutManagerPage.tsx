@@ -8,7 +8,7 @@ import {
   type SavedLayout,
 } from '../../lib/savedLayoutsStore';
 import { useDebouncedCallback } from '../../hooks/useDebouncedCallback';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/auth';
 import { isOwnedByCurrentUser } from '../../lib/ownership';
 import { resolveDisplayNames } from '../../lib/userDirectory';
 import { Card } from '../ui/Card';
@@ -40,7 +40,6 @@ export function LayoutManagerPage() {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
     loadSavedLayouts()
       .then((result) => {
         if (cancelled) return;

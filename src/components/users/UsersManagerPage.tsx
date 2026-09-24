@@ -5,7 +5,7 @@ import { Mpp_wl_usersesService } from '../../generated/services/Mpp_wl_usersesSe
 import type { Mpp_wl_userses } from '../../generated/models/Mpp_wl_usersesModel';
 import { fetchAllPages } from '../../lib/dataversePaging';
 import { useDebouncedCallback } from '../../hooks/useDebouncedCallback';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/auth';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 
@@ -53,16 +53,22 @@ export function UsersManagerPage() {
     [rows],
   );
 
-  const loadRows = () => {
-    setLoading(true);
-    setError(null);
+  // Split so the initial load (where `loading` already starts true) doesn't set state
+  // synchronously inside the mount effect; reloads go through loadRows().
+  const fetchRows = () => {
     fetchAllPages(Mpp_wl_usersesService.getAll, {})
       .then((result) => setRows(result.map(toAccessRow)))
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load user access list.'))
       .finally(() => setLoading(false));
   };
 
-  useEffect(loadRows, []);
+  const loadRows = () => {
+    setLoading(true);
+    setError(null);
+    fetchRows();
+  };
+
+  useEffect(fetchRows, []);
 
   const runSearch = useDebouncedCallback((term: string) => {
     if (term.trim().length < 2) {

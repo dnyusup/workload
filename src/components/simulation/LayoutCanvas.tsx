@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { MachineTimelineKind, OperatorTimelineKind, SimulationState } from '../../types';
 import { MachineZoneLabels } from '../ui/MachineZoneLabels';
 import { MachineDonut } from './MachineDonut';
@@ -264,13 +264,16 @@ export function LayoutCanvas({
   );
   const selectedOperatorRange =
     selectedOperatorSegment == null ? null : operator.timeline[selectedOperatorSegment] ?? null;
-  const machineSummary = (timeline: typeof machines[number]['timeline']) =>
-    allMachineTimelineKinds.map(({ kind }) => ({
-      kind,
-      minutes: timeline
-        .filter((segment) => segment.kind === kind)
-        .reduce((total, segment) => total + Math.max(0, Math.min(segment.endMin, timelineDuration) - segment.startMin), 0),
-    }));
+  const machineSummary = useCallback(
+    (timeline: typeof machines[number]['timeline']) =>
+      allMachineTimelineKinds.map(({ kind }) => ({
+        kind,
+        minutes: timeline
+          .filter((segment) => segment.kind === kind)
+          .reduce((total, segment) => total + Math.max(0, Math.min(segment.endMin, timelineDuration) - segment.startMin), 0),
+      })),
+    [allMachineTimelineKinds, timelineDuration],
+  );
   const totalMachineSummary = useMemo(
     () =>
       allMachineTimelineKinds.map(({ kind }) => ({
@@ -280,7 +283,7 @@ export function LayoutCanvas({
           0,
         ),
       })),
-    [allMachineTimelineKinds, plannedMachines, timelineDuration],
+    [allMachineTimelineKinds, plannedMachines, machineSummary],
   );
 
   return (

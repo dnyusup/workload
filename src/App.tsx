@@ -1,10 +1,13 @@
 import { useState } from 'react';
-import { AppConfigProvider, useAppConfig } from './context/AppConfigContext';
-import { AuthProvider, useAuth } from './context/AuthContext';
+import { AppConfigProvider } from './context/AppConfigContext';
+import { useAppConfig } from './context/appConfig';
+import { AuthProvider } from './context/AuthContext';
+import { useAuth } from './context/auth';
 import { syncAutoActivityValues } from './lib/calculations';
 import { SetupWizard } from './components/setup/SetupWizard';
 import { SimulationView } from './SimulationView';
-import { Sidebar, pagesForRole, iconForPage, labelForPage, type AppPage } from './components/layout/Sidebar';
+import { Sidebar } from './components/layout/Sidebar';
+import { pagesForRole, iconForPage, labelForPage, type AppPage } from './components/layout/menu';
 import { ProductsManager } from './components/data/ProductsManager';
 import { ActivitiesManager } from './components/data/ActivitiesManager';
 import { OutputModelsManager } from './components/data/OutputModelsManager';

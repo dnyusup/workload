@@ -6,7 +6,7 @@ import { Dashboard } from './components/simulation/Dashboard';
 import { Controls } from './components/simulation/Controls';
 import { OutputModelSaveDialog } from './components/simulation/OutputModelSaveDialog';
 import { InheritedConditionDialog } from './components/simulation/InheritedConditionDialog';
-import { useAuth } from './context/AuthContext';
+import { useAuth } from './context/auth';
 import type { Mpp_wl_outputmodelses } from './generated/models/Mpp_wl_outputmodelsesModel';
 import {
   createOutputModel,

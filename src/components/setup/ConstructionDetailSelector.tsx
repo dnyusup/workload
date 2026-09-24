@@ -3,7 +3,7 @@ import { Mpp_wl_productsesService } from '../../generated/services/Mpp_wl_produc
 import { Mpp_wl_activitiesService } from '../../generated/services/Mpp_wl_activitiesService';
 import type { Mpp_wl_activities } from '../../generated/models/Mpp_wl_activitiesModel';
 import type { Mpp_wl_productses } from '../../generated/models/Mpp_wl_productsesModel';
-import { useAppConfig } from '../../context/AppConfigContext';
+import { useAppConfig } from '../../context/appConfig';
 import { fetchAllPages } from '../../lib/dataversePaging';
 import { buildActivitiesFromRows, isLoadingTaskRow, mapProductToSpec } from '../../lib/productCatalog';
 import { deriveMachineSpec, ensureCoreActivities } from '../../lib/calculations';
@@ -42,7 +42,6 @@ export function ConstructionDetailSelector({
 
   useEffect(() => {
     let cancelled = false;
-    setLoadingProducts(true);
     fetchAllPages(Mpp_wl_productsesService.getAll, { orderBy: ['mpp_constructiondetailcode asc'] })
       .then((data) => {
         if (!cancelled) setProducts(data);

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useAppConfig } from '../../context/AppConfigContext';
+import { useAppConfig } from '../../context/appConfig';
 import { deriveMachineSpec, syncAutoActivityValues } from '../../lib/calculations';
 import { rebuildLoadingActivities } from '../../lib/productCatalog';
 import {

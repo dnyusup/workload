@@ -1,5 +1,6 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import type { AppConfig } from '../types';
+import { AppConfigContext } from './appConfig';
 import { defaultActivities, deriveMachineSpec, ensureCoreActivities } from '../lib/calculations';
 import { generatePairedGrid } from '../lib/gridLayout';
 
@@ -94,18 +95,10 @@ function loadConfig(): AppConfig {
   return defaultConfig();
 }
 
-interface AppConfigContextValue {
-  config: AppConfig;
-  setConfig: (updater: (prev: AppConfig) => AppConfig) => void;
-  resetToDefault: () => void;
-}
-
-const AppConfigContext = createContext<AppConfigContextValue | null>(null);
-
 export function AppConfigProvider({ children }: { children: ReactNode }) {
   const [config, setConfigState] = useState<AppConfig>(() => loadConfig());
 
-  const setConfig = (updater: (prev: AppConfig) => AppConfig) => {
+  const setConfig = useCallback((updater: (prev: AppConfig) => AppConfig) => {
     setConfigState((prev) => {
       const next = updater(prev);
       try {
@@ -115,17 +108,11 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
       }
       return next;
     });
-  };
+  }, []);
 
-  const resetToDefault = () => setConfig(() => defaultConfig());
+  const resetToDefault = useCallback(() => setConfig(() => defaultConfig()), [setConfig]);
 
-  const value = useMemo(() => ({ config, setConfig, resetToDefault }), [config]);
+  const value = useMemo(() => ({ config, setConfig, resetToDefault }), [config, setConfig, resetToDefault]);
 
   return <AppConfigContext.Provider value={value}>{children}</AppConfigContext.Provider>;
-}
-
-export function useAppConfig() {
-  const ctx = useContext(AppConfigContext);
-  if (!ctx) throw new Error('useAppConfig must be used within AppConfigProvider');
-  return ctx;
 }

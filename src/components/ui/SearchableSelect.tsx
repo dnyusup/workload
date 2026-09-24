@@ -107,14 +107,12 @@ export function SearchableSelect({
   useEffect(() => {
     if (!open) return;
     updatePosition();
-    setQuery('');
     window.addEventListener('resize', updatePosition);
     window.addEventListener('scroll', updatePosition, true);
     return () => {
       window.removeEventListener('resize', updatePosition);
       window.removeEventListener('scroll', updatePosition, true);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   // Focusing the search box has to wait for the PORTALED panel to actually exist in the DOM —
@@ -163,7 +161,12 @@ export function SearchableSelect({
         ref={triggerRef}
         type="button"
         className="input searchable-select-trigger"
-        onClick={() => !disabled && setOpen((o) => !o)}
+        onClick={() => {
+          if (disabled) return;
+          // Start every opening with an empty search box.
+          if (!open) setQuery('');
+          setOpen(!open);
+        }}
         disabled={disabled}
       >
         <span className={selected ? 'searchable-select-value' : 'searchable-select-placeholder'}>

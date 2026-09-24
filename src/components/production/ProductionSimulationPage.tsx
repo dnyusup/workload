@@ -13,7 +13,7 @@ import {
   type ProductionSetupSummary,
 } from '../../lib/productionSetupsStore';
 import { useDebouncedCallback } from '../../hooks/useDebouncedCallback';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/auth';
 import { isOwnedByCurrentUser } from '../../lib/ownership';
 import { resolveDisplayNames } from '../../lib/userDirectory';
 import { Mpp_wl_productsesService } from '../../generated/services/Mpp_wl_productsesService';
@@ -144,9 +144,9 @@ export function ProductionSimulationPage() {
     return s.createdByName || 'Unknown';
   };
 
-  const refreshSummaries = () => {
-    setLoadingSummaries(true);
-    setSummariesError(null);
+  // Split so the initial load (where `loadingSummaries` already starts true) doesn't set state
+  // synchronously inside the mount effect; the Retry button goes through refreshSummaries().
+  const fetchSummaries = () => {
     listProductionSetupSummaries()
       .then((result) => {
         const visible = isAdmin ? result : result.filter((s) => isOwnedByCurrentUser(s, user));
@@ -162,19 +162,27 @@ export function ProductionSimulationPage() {
       .finally(() => setLoadingSummaries(false));
   };
 
+  const refreshSummaries = () => {
+    setLoadingSummaries(true);
+    setSummariesError(null);
+    fetchSummaries();
+  };
+
+  // Mount-only on purpose: fetchSummaries is recreated every render.
   useEffect(() => {
-    refreshSummaries();
+    fetchSummaries();
     loadSavedLayouts()
       .then(setSavedLayouts)
       .catch(() => {
         // Layout picker just stays empty if this fails — creating a setup will show no options.
       });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // `loadingProducts` starts true for the first load; the Retry button (reloadProducts) resets
+  // loading/error itself before bumping productsReloadKey.
   useEffect(() => {
     let cancelled = false;
-    setLoadingProducts(true);
-    setProductsError(null);
     fetchAllPages(Mpp_wl_productsesService.getAll, { orderBy: ['mpp_constructiondetailcode asc'] })
       .then((data) => {
         if (!cancelled) setProducts(data);
@@ -201,6 +209,9 @@ export function ProductionSimulationPage() {
   // instead of racing an empty product list.
   useEffect(() => {
     if (!selectedId || loadingProducts) {
+      // Selection-driven reset/fetch: selectedId changes from many places (list clicks, create,
+      // delete), so resetting here keeps them all consistent.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (!selectedId) setSelectedSetup(null);
       return;
     }
@@ -385,7 +396,14 @@ export function ProductionSimulationPage() {
       {productsError && (
         <div className="production-run-warnings" style={{ gridColumn: '1 / -1' }}>
           <div>Failed to load WL_Products: {productsError}</div>
-          <Button variant="secondary" onClick={() => setProductsReloadKey((k) => k + 1)}>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setLoadingProducts(true);
+              setProductsError(null);
+              setProductsReloadKey((k) => k + 1);
+            }}
+          >
             Retry
           </Button>
         </div>
@@ -635,6 +653,8 @@ function ProductionSetupEditor({
       assignment.defectRepairingOperatorId ?? '',
     ]);
     const multiOperator = allOperatorIds.length > 0 && new Set(allOperatorIds).size === 1 ? allOperatorIds[0] : '';
+    // Intentional selection → form sync (see comment above); the fields stay user-editable after.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setBulkConstructionId(construction);
     setBulkMultiOperatorId(multiOperator);
     setBulkDoffingOperatorId(doffing);

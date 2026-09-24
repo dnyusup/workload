@@ -1,5 +1,5 @@
 import type { MovementParams } from '../../types';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/auth';
 import { Card } from '../ui/Card';
 import { Field, NumberInput } from '../ui/Field';
 

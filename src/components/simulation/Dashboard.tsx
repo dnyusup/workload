@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { AppConfig, DowntimeReason, SimulationState } from '../../types';
 import { deriveMachineSpec } from '../../lib/calculations';
 import { Card } from '../ui/Card';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/auth';
 
 function fmt(v: number) {
   return Math.round(v * 10) / 10;

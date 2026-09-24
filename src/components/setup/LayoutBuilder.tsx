@@ -644,6 +644,8 @@ export function LayoutBuilder({
   // Keeps the rename box in sync with whichever single machine is currently selected — reset to
   // blank once the selection stops being exactly one machine, so a stale number can't linger.
   useEffect(() => {
+    // Intentional selection → input sync; the box stays user-editable until selection changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setRenameValue(soleSelected?.label ?? '');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [soleSelected?.id]);

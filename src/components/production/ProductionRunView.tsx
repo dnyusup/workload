@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MachineTimelineKind, OperatorTimelineKind, ProductionMachineAssignment, ProductionSetup, ProductionSimulationState } from '../../types';
 import type { ResolvedConstruction } from '../../lib/productionConstructionResolver';
 import { useProductionSimulation } from '../../hooks/useProductionSimulation';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/auth';
 
 const HIDDEN_SPOOL_LABEL_AREAS = new Set(['WW', 'IS', 'IP', 'BA', 'CA']);
 import { MachineZoneLabels } from '../ui/MachineZoneLabels';
@@ -251,7 +251,6 @@ export function ProductionRunView({
         });
       }, ROUTE_HOLD_MS);
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [operators]);
   useEffect(
     () => () => {
@@ -576,20 +575,23 @@ export function ProductionRunView({
     [machines],
   );
 
-  const machineSummary = (timeline: (typeof machines)[number]['timeline']) =>
-    allMachineTimelineKinds.map(({ kind }) => ({
-      kind,
-      minutes: timeline
-        .filter((segment) => segment.kind === kind)
-        .reduce((total, segment) => total + Math.max(0, Math.min(segment.endMin, timelineDuration) - segment.startMin), 0),
-    }));
+  const machineSummary = useCallback(
+    (timeline: (typeof machines)[number]['timeline']) =>
+      allMachineTimelineKinds.map(({ kind }) => ({
+        kind,
+        minutes: timeline
+          .filter((segment) => segment.kind === kind)
+          .reduce((total, segment) => total + Math.max(0, Math.min(segment.endMin, timelineDuration) - segment.startMin), 0),
+      })),
+    [allMachineTimelineKinds, timelineDuration],
+  );
   const totalMachineSummary = useMemo(
     () =>
       allMachineTimelineKinds.map(({ kind }) => ({
         kind,
         minutes: machines.reduce((total, machine) => total + machineSummary(machine.timeline).find((item) => item.kind === kind)!.minutes, 0),
       })),
-    [allMachineTimelineKinds, machines, timelineDuration],
+    [allMachineTimelineKinds, machines, machineSummary],
   );
 
   const selectedOperator = selectedOperatorHighlight ? operators.find((op) => op.id === selectedOperatorHighlight.operatorId) : null;
