@@ -6,6 +6,7 @@ import {
   type Mpp_wl_activitiesBase,
 } from '../../generated/models/Mpp_wl_activitiesModel';
 import { Mpp_wl_productsesService } from '../../generated/services/Mpp_wl_productsesService';
+import { fetchAllPages } from '../../lib/dataversePaging';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { SearchableSelect } from '../ui/SearchableSelect';
@@ -115,14 +116,18 @@ export function ActivitiesManager({
 
   useEffect(() => {
     let cancelled = false;
-    Mpp_wl_productsesService.getAll({}).then((result) => {
-      if (cancelled || !result.success) return;
-      const map = new Map<string, string>();
-      for (const product of result.data ?? []) {
-        if (product.mpp_constructioncode) map.set(product.mpp_constructioncode, product.mpp_area ?? '');
-      }
-      setAreaByConstruction(map);
-    });
+    fetchAllPages(Mpp_wl_productsesService.getAll)
+      .then((data) => {
+        if (cancelled) return;
+        const map = new Map<string, string>();
+        for (const product of data) {
+          if (product.mpp_constructioncode) map.set(product.mpp_constructioncode, product.mpp_area ?? '');
+        }
+        setAreaByConstruction(map);
+      })
+      .catch(() => {
+        // Area lookup is best-effort; rows just show without their area if this fails.
+      });
     return () => {
       cancelled = true;
     };
@@ -132,23 +137,19 @@ export function ActivitiesManager({
     let cancelled = false;
     setLoading(true);
     setLoadError(null);
-    Mpp_wl_activitiesService.getAll({ orderBy: ['mpp_constructiontype asc', 'mpp_taskname asc'] })
-      .then((result) => {
+    fetchAllPages(Mpp_wl_activitiesService.getAll, { orderBy: ['mpp_constructiontype asc', 'mpp_taskname asc'] })
+      .then((data) => {
         if (cancelled) return;
-        if (result.success) {
-          setRows(
-            (result.data ?? []).map((record) => ({
-              id: record.mpp_wl_activityid,
-              isNew: false,
-              dirty: false,
-              saving: false,
-              error: null,
-              fields: fieldsFromRecord(record),
-            })),
-          );
-        } else {
-          setLoadError(result.error?.message ?? 'Failed to load WL_Activities.');
-        }
+        setRows(
+          data.map((record) => ({
+            id: record.mpp_wl_activityid,
+            isNew: false,
+            dirty: false,
+            saving: false,
+            error: null,
+            fields: fieldsFromRecord(record),
+          })),
+        );
       })
       .catch((err) => {
         if (!cancelled) setLoadError(err instanceof Error ? err.message : 'Failed to load WL_Activities.');

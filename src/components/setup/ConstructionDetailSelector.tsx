@@ -4,6 +4,7 @@ import { Mpp_wl_activitiesService } from '../../generated/services/Mpp_wl_activi
 import type { Mpp_wl_activities } from '../../generated/models/Mpp_wl_activitiesModel';
 import type { Mpp_wl_productses } from '../../generated/models/Mpp_wl_productsesModel';
 import { useAppConfig } from '../../context/AppConfigContext';
+import { fetchAllPages } from '../../lib/dataversePaging';
 import { buildActivitiesFromRows, mapProductToSpec } from '../../lib/productCatalog';
 import { deriveMachineSpec, ensureCoreActivities } from '../../lib/calculations';
 import {
@@ -34,14 +35,9 @@ export function ConstructionDetailSelector({
   useEffect(() => {
     let cancelled = false;
     setLoadingProducts(true);
-    Mpp_wl_productsesService.getAll({ orderBy: ['mpp_constructiondetailcode asc'] })
-      .then((result) => {
-        if (cancelled) return;
-        if (result.success) {
-          setProducts(result.data ?? []);
-        } else {
-          setError(result.error?.message ?? 'Failed to load Construction Detail list.');
-        }
+    fetchAllPages(Mpp_wl_productsesService.getAll, { orderBy: ['mpp_constructiondetailcode asc'] })
+      .then((data) => {
+        if (!cancelled) setProducts(data);
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load Construction Detail list.');

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Mpp_wl_productsesService } from '../../generated/services/Mpp_wl_productsesService';
+import { fetchAllPages } from '../../lib/dataversePaging';
 import type { Mpp_wl_productses, Mpp_wl_productsesBase } from '../../generated/models/Mpp_wl_productsesModel';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
@@ -152,23 +153,19 @@ export function ProductsManager({
     let cancelled = false;
     setLoading(true);
     setLoadError(null);
-    Mpp_wl_productsesService.getAll({ orderBy: ['mpp_constructiondetailcode asc'] })
-      .then((result) => {
+    fetchAllPages(Mpp_wl_productsesService.getAll, { orderBy: ['mpp_constructiondetailcode asc'] })
+      .then((data) => {
         if (cancelled) return;
-        if (result.success) {
-          setRows(
-            (result.data ?? []).map((record) => ({
-              id: record.mpp_wl_productsid,
-              isNew: false,
-              dirty: false,
-              saving: false,
-              error: null,
-              fields: fieldsFromRecord(record),
-            })),
-          );
-        } else {
-          setLoadError(result.error?.message ?? 'Failed to load WL_Products.');
-        }
+        setRows(
+          data.map((record) => ({
+            id: record.mpp_wl_productsid,
+            isNew: false,
+            dirty: false,
+            saving: false,
+            error: null,
+            fields: fieldsFromRecord(record),
+          })),
+        );
       })
       .catch((err) => {
         if (!cancelled) setLoadError(err instanceof Error ? err.message : 'Failed to load WL_Products.');

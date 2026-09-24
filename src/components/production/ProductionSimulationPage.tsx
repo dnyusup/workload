@@ -17,6 +17,7 @@ import { useAuth } from '../../context/AuthContext';
 import { isOwnedByCurrentUser } from '../../lib/ownership';
 import { resolveDisplayNames } from '../../lib/userDirectory';
 import { Mpp_wl_productsesService } from '../../generated/services/Mpp_wl_productsesService';
+import { fetchAllPages } from '../../lib/dataversePaging';
 import type { Mpp_wl_productses } from '../../generated/models/Mpp_wl_productsesModel';
 import { resolveConstructions, type ResolvedConstruction } from '../../lib/productionConstructionResolver';
 import { calculatePlannedUtilization, type PlannedUtilization } from '../../lib/productionUtilization';
@@ -174,14 +175,9 @@ export function ProductionSimulationPage() {
     let cancelled = false;
     setLoadingProducts(true);
     setProductsError(null);
-    Mpp_wl_productsesService.getAll({ orderBy: ['mpp_constructiondetailcode asc'] })
-      .then((result) => {
-        if (cancelled) return;
-        if (result.success) {
-          setProducts(result.data ?? []);
-        } else {
-          setProductsError(result.error?.message ?? 'Failed to load WL_Products.');
-        }
+    fetchAllPages(Mpp_wl_productsesService.getAll, { orderBy: ['mpp_constructiondetailcode asc'] })
+      .then((data) => {
+        if (!cancelled) setProducts(data);
       })
       .catch((err) => {
         if (!cancelled) setProductsError(err instanceof Error ? err.message : 'Failed to load WL_Products.');
