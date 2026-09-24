@@ -129,7 +129,16 @@ export class ProductionSimulationEngine {
       const spoolWeight = construction ? deriveMachineSpec(construction.spec).spoolWeight : 0;
       const activities = construction ? construction.activities : [];
       const theoreticalSpoolsPerShift = assigned ? Math.max(1, Math.floor(setup.shiftTime / runtimePerSpool)) : 0;
-      const startSpools = assigned ? Math.floor(Math.random() * theoreticalSpoolsPerShift) : 0;
+      // Phase spans the longest count-based cycle (see the same note in simulationEngine.ts) so a
+      // Loading cycle longer than one shift's spools isn't under-sampled at shift start.
+      const longestCycle = activities
+        .filter((activity) => !GLOBAL_EVENT_ACTIVITIES.has(activity.key) && !activity.loadingInterrupt)
+        .reduce((max, activity) => {
+          const cycle = construction?.cycleLengths[activity.key];
+          return cycle !== undefined && Number.isFinite(cycle) && cycle > max ? cycle : max;
+        }, 0);
+      const startPhaseRange = Math.max(theoreticalSpoolsPerShift, Math.ceil(longestCycle));
+      const startSpools = assigned ? Math.floor(Math.random() * startPhaseRange) : 0;
       const completedByActivity = emptyCounts(activities);
       activities.forEach(({ key }) => {
         const cycle = construction ? construction.cycleLengths[key] : undefined;

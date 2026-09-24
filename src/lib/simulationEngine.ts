@@ -105,6 +105,19 @@ export class SimulationEngine {
     // Theoretical spools one machine would complete across a full shift, used to randomize
     // each machine's starting phase so the shift doesn't begin with every machine freshly at 0.
     const theoreticalSpoolsPerShift = Math.max(1, Math.floor(config.operator.shiftTime / this.runtimePerSpool));
+    // Starting phase must span the LONGEST per-machine cycle, not just one shift's worth of
+    // spools: a count-based Loading (POlength ÷ SpoolLength, e.g. CB/BU/SP) can have a cycle
+    // longer than the ~7 spools a machine makes per shift. Drawing the phase only from
+    // [0, spoolsPerShift) then under-samples machines that start close to their next Loading, so
+    // fewer than the expected number come due in the shift (WW's weight-based Loading already
+    // randomizes over its full cycle, which is why it didn't drift).
+    const longestCycle = config.activities
+      .filter((activity) => !GLOBAL_EVENT_ACTIVITIES.has(activity.key) && !activity.loadingInterrupt)
+      .reduce((max, activity) => {
+        const cycle = this.cycleLengths[activity.key];
+        return Number.isFinite(cycle) && cycle > max ? cycle : max;
+      }, 0);
+    const startPhaseRange = Math.max(theoreticalSpoolsPerShift, Math.ceil(longestCycle));
     const diesActivity = config.activities.find((activity) => activity.key === 'diesChange');
     this.plannedDies =
       diesActivity && diesActivity.numerator > 0
@@ -117,7 +130,7 @@ export class SimulationEngine {
       const startSpools = assigned
         ? savedCondition
           ? Math.max(0, Math.floor(savedCondition.spoolsCompleted))
-          : Math.floor(Math.random() * theoreticalSpoolsPerShift)
+          : Math.floor(Math.random() * startPhaseRange)
         : 0;
       // Per-machine cycle catch-up only applies to Doffing/Loading — Fracture Repairing is global.
       const completedByActivity = savedCondition
@@ -288,26 +301,45 @@ export class SimulationEngine {
     };
   }
 
-  private expectedEvents(theoreticalSpoolsPerShift: number, key: ActivityKey): number {
+  /** Expected occurrences of an activity per finished spool on one machine (0 if it never comes due). */
+  private eventsPerSpool(key: ActivityKey): number {
     const cycle = this.cycleLengths[key];
     if (!Number.isFinite(cycle) || cycle <= 0) return 0;
-    const totalTheoreticalSpools = theoreticalSpoolsPerShift * this.assignedIds.size;
-    if (key === 'diesChange') {
-      return this.plannedDies > 0 ? Math.ceil(this.plannedDies / AVERAGE_DIES_PER_CHANGE_EVENT) : 0;
-    }
-    let expectedEvents = Math.floor(totalTheoreticalSpools / cycle);
+    let rate = 1 / cycle;
     const activity = this.config.activities.find((item) => item.key === key);
     if (activity?.parentKey) {
       const parentCycle = this.cycleLengths[activity.parentKey];
       if (Number.isFinite(parentCycle) && parentCycle > 0) {
         const overlapCycle = leastCommonMultiple(cycle, parentCycle);
-        if (overlapCycle > 0) {
-          // Parent activity covers the child at shared spool boundaries.
-          expectedEvents -= Math.floor(totalTheoreticalSpools / overlapCycle);
-        }
+        // Parent activity covers the child at shared spool boundaries.
+        if (overlapCycle > 0) rate -= 1 / overlapCycle;
       }
     }
-    return Math.max(0, expectedEvents);
+    return Math.max(0, rate);
+  }
+
+  /** Spools one machine can realistically finish in a shift: a machine is not producing while it
+   * is stopped for Doffing/Loading/Fracture etc., so each spool really costs runtime PLUS the
+   * average stop time those activities add per spool (Run-condition tasks don't stop it). The old
+   * estimate used runtime alone (shift ÷ runtimePerSpool), which overstated spool count — and every
+   * per-spool activity forecast built on it, Loading most visibly. Operator queueing/walking isn't
+   * knowable up front, so this is still a best case, just a much tighter one. */
+  private expectedSpoolsPerMachine(): number {
+    const stopMinPerSpool = this.config.activities
+      .filter((activity) => activity.key !== 'diesChange' && activity.machCondition === 'stop')
+      .reduce((sum, activity) => sum + this.eventsPerSpool(activity.key) * activity.timeMinutes, 0);
+    const minutesPerSpool = this.runtimePerSpool + stopMinPerSpool;
+    return minutesPerSpool > 0 ? this.config.operator.shiftTime / minutesPerSpool : 0;
+  }
+
+  private expectedEvents(_theoreticalSpoolsPerShift: number, key: ActivityKey): number {
+    const cycle = this.cycleLengths[key];
+    if (!Number.isFinite(cycle) || cycle <= 0) return 0;
+    if (key === 'diesChange') {
+      return this.plannedDies > 0 ? Math.ceil(this.plannedDies / AVERAGE_DIES_PER_CHANGE_EVENT) : 0;
+    }
+    const totalSpools = this.expectedSpoolsPerMachine() * this.assignedIds.size;
+    return Math.max(0, Math.round(totalSpools * this.eventsPerSpool(key)));
   }
 
   private findActivity(key: ActivityKey): ActivityConfig {
