@@ -7,6 +7,7 @@ import type {
   MachineTimelineSegment,
   OperatorTimelineKind,
   PendingTask,
+  ProductionMachineAssignment,
   ProductionOperatorRuntimeState,
   ProductionSetup,
   ProductionSimMetrics,
@@ -112,6 +113,15 @@ export class ProductionSimulationEngine {
   /** Built once at construction time (assignments never change mid-run) so per-Construction
    * fracture logic never has to re-filter the full machine list every tick sub-step. */
   private machinesByConstruction = new Map<string, ProdMachine[]>();
+  /** Built once at construction time — every task's assignedOperatorId comes from its own
+   * machine's assignment (see operatorIdForTask), so an operator can only ever have work on the
+   * machines assigned to it. pickNextTarget scans just those instead of every machine: it runs
+   * for each idle operator on every 0.02-min sub-step, and scanning the full list there made a
+   * tick cost O(machines × operators) — the dominant cost at a few thousand machines. Kept in
+   * this.machines order so candidate order (and so tie-breaking) is unchanged. */
+  private machinesByOperator = new Map<string, ProdMachine[]>();
+  private machineById = new Map<string, ProdMachine>();
+  private assignmentByMachineId = new Map<string, ProductionMachineAssignment>();
 
   constructor(setup: ProductionSetup, resolved: Map<string, ResolvedConstruction>, resolveErrors: string[] = []) {
     this.setup = setup;
@@ -187,6 +197,29 @@ export class ProductionSimulationEngine {
     });
 
     resolved.forEach((construction, id) => this.constructionLabelById.set(id, construction.label));
+    // First match wins, same as the setup.assignments.find() lookup this replaces.
+    setup.assignments.forEach((a) => {
+      if (!this.assignmentByMachineId.has(a.machineId)) this.assignmentByMachineId.set(a.machineId, a);
+    });
+    this.machines.forEach((m) => {
+      this.machineById.set(m.id, m);
+      const assignment = this.assignmentByMachineId.get(m.id);
+      if (!assignment) return;
+      const operatorIds = new Set(
+        [
+          assignment.doffingOperatorId,
+          assignment.loadingOperatorId,
+          assignment.fractureRepairingOperatorId,
+          assignment.diesChangeOperatorId,
+          assignment.defectRepairingOperatorId,
+        ].filter((id): id is string => !!id),
+      );
+      operatorIds.forEach((id) => {
+        const list = this.machinesByOperator.get(id);
+        if (list) list.push(m);
+        else this.machinesByOperator.set(id, [m]);
+      });
+    });
     this.machines.forEach((m) => {
       if (!m.constructionId) return;
       const list = this.machinesByConstruction.get(m.constructionId);
@@ -309,8 +342,7 @@ export class ProductionSimulationEngine {
   }
 
   private operatorIdForTask(machineAssignment: ProdMachine, activity: ActivityKey): string | undefined {
-    const assignment = this.setup.assignments.find((a) => a.machineId === machineAssignment.id);
-    return assignedOperatorIdForActivity(assignment, activity);
+    return assignedOperatorIdForActivity(this.assignmentByMachineId.get(machineAssignment.id), activity);
   }
 
   /** If both Loading Partial1 and Partial2 just came due together on the same machine, the
@@ -642,7 +674,7 @@ export class ProductionSimulationEngine {
   }
 
   private pickNextTarget(operator: ProductionOperatorRuntimeState): ProdMachine | null {
-    const candidates = this.machines.filter((m) => {
+    const candidates = (this.machinesByOperator.get(operator.id) ?? []).filter((m) => {
       if (m.status !== 'needs-service' && m.status !== 'running') return false;
       if (m.lockedByOperatorId && m.lockedByOperatorId !== operator.id) return false;
       return this.tasksFor(operator.id, m).length > 0;
@@ -736,7 +768,7 @@ export class ProductionSimulationEngine {
   }
 
   private syncMachineRunStateForCurrentTask(operator: ProductionOperatorRuntimeState, atMin: number) {
-    const machine = this.machines.find((m) => m.id === operator.targetMachineId);
+    const machine = operator.targetMachineId ? this.machineById.get(operator.targetMachineId) : undefined;
     if (!machine) return;
     const task = this.serviceTaskForCurrentZone(operator);
     if (!task) return;
@@ -769,7 +801,7 @@ export class ProductionSimulationEngine {
     operator.phase = 'servicing';
     operator.x = operator.toX;
     operator.y = operator.toY;
-    const machine = this.machines.find((m) => m.id === operator.targetMachineId) as ProdMachine | undefined;
+    const machine = operator.targetMachineId ? this.machineById.get(operator.targetMachineId) : undefined;
     let tasks: PendingTask[] = [];
     if (machine) {
       tasks = this.tasksFor(operator.id, machine);
@@ -792,7 +824,7 @@ export class ProductionSimulationEngine {
   }
 
   private finishService(operator: ProductionOperatorRuntimeState, atMin: number) {
-    const machine = this.machines.find((m) => m.id === operator.targetMachineId) as ProdMachine | undefined;
+    const machine = operator.targetMachineId ? this.machineById.get(operator.targetMachineId) : undefined;
     if (machine) {
       // finishWalk only ever splices THIS operator's own tasks off pendingTasks (see
       // tasksFor/finishWalk) — a different activity due on the same machine, assigned to a

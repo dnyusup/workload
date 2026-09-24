@@ -3,8 +3,11 @@ import type { AppConfig, SimulationState } from '../types';
 import { SimulationEngine } from '../lib/simulationEngine';
 
 export function useSimulation(config: AppConfig) {
-  const engineRef = useRef<SimulationEngine>(new SimulationEngine(config));
-  const [state, setState] = useState<SimulationState>(() => new SimulationEngine(config).getState());
+  // Lazy useState so the engine is built once on mount, not on every render (a `useRef(new ...)`
+  // argument is evaluated each render and thrown away).
+  const [initialEngine] = useState(() => new SimulationEngine(config));
+  const engineRef = useRef<SimulationEngine>(initialEngine);
+  const [state, setState] = useState<SimulationState>(() => initialEngine.getState());
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
   const rafRef = useRef<number | null>(null);
@@ -15,7 +18,6 @@ export function useSimulation(config: AppConfig) {
     setState(engineRef.current.getState());
     setPlaying(false);
     lastTsRef.current = null;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config]);
 
   useEffect(() => {

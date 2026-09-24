@@ -15,11 +15,14 @@ const STATE_UPDATE_INTERVAL_MS = 80;
 export function useProductionSimulation(setup: ProductionSetup, resolved: Map<string, ResolvedConstruction>, resolveErrors: string[]) {
   const makeEngine = useCallback(
     () => new ProductionSimulationEngine(setup, resolved, resolveErrors),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [setup, resolved, resolveErrors],
   );
-  const engineRef = useRef<ProductionSimulationEngine>(makeEngine());
-  const [state, setState] = useState<ProductionSimulationState>(() => engineRef.current.getState());
+  // Lazy useState so the engine is built once on mount — `useRef(makeEngine())` evaluated its
+  // argument on EVERY render, constructing (and discarding) a whole engine each time the throttled
+  // state update re-rendered, ~10ms apiece at ~1500 machines.
+  const [initialEngine] = useState(makeEngine);
+  const engineRef = useRef<ProductionSimulationEngine>(initialEngine);
+  const [state, setState] = useState<ProductionSimulationState>(() => initialEngine.getState());
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
   const rafRef = useRef<number | null>(null);
