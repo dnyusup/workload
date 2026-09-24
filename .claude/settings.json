@@ -18,7 +18,11 @@
       "Bash(git add *)",
       "Bash(git commit -q -m 'Sample machine start phase over longest cycle and tighten event forecast *)",
       "Bash(git commit -q -m 'Show Output \\(Running Time\\) card before Output card *)",
-      "Bash(git commit -q -m 'Allow node -e commands in Claude settings *)"
+      "Bash(git commit -q -m 'Allow node -e commands in Claude settings *)",
+      "Bash(grep -rhoE \".{0,150}\\(maxPageSize|maxpagesize\\).{0,150}\" node_modules/@microsoft/power-apps/dist)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(git commit -q -m 'Load all WL_Products and WL_Activities rows past the 500-row page limit *)",
+      "Bash(git commit -q -m 'Update Claude permission allowlist *)"
     ]
   }
 }
