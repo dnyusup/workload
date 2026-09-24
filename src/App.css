@@ -784,7 +784,7 @@
 
 .construction-selector-row {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 8px 16px;
   flex-wrap: wrap;
 }
@@ -804,7 +804,49 @@
   min-width: min(360px, 100%);
   max-width: 520px;
   flex: 1 1 440px;
-  gap: 0;
+  gap: 4px;
+}
+
+/* `.btn.` prefix: .btn/.btn-ghost come later in this file and would otherwise override the
+   padding (squeezing the icon to a few px) and colors. */
+.btn.construction-selector-clear {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #0b1220;
+  border-color: #334155;
+  color: #e2e8f0;
+}
+
+.btn.construction-selector-clear:not(:disabled):hover {
+  color: #f87171;
+  border-color: #f87171;
+}
+
+.construction-selector-clear svg {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.btn.construction-selector-clear:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.construction-selector-filter {
+  flex: 0 1 150px;
+  min-width: 110px;
+  gap: 4px;
 }
 
 .construction-selector-meta {

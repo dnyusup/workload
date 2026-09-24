@@ -1,3 +1,5 @@
+import type { Mpp_wl_activities } from './generated/models/Mpp_wl_activitiesModel';
+
 export interface MachineSpecInput {
   area: string;
   layLength: number;
@@ -8,6 +10,11 @@ export interface MachineSpecInput {
   fracturePerTon: number;
   diesPerTon: number;
   defectsPerTon: number;
+  /** WL_Products POlength1/2/3 — drive Loading's cycle (see buildLoadingActivities). 0/undefined
+   * means "not filled". Optional so configs saved before these existed still load. */
+  poLength1?: number;
+  poLength2?: number;
+  poLength3?: number;
 }
 
 export const PRODUCT_AREAS = ['BU', 'CB', 'SP', 'CH', 'CR', 'WW', 'IS', 'IP', 'CA', 'BA'] as const;
@@ -123,6 +130,9 @@ export interface AppConfig {
   /** Display text (mpp_constructiondetailcode) for `selectedProductId`, cached alongside it so the
    * UI (e.g. the Simulation controls bar) can show it without re-fetching WL_Products. */
   selectedConstructionDetail?: string;
+  /** The selected Construction's Task=Loading rows from WL_Activities, kept so Loading (and its
+   * Partial subs) can be rebuilt whenever POlength/SpoolLength are edited in the spec form. */
+  loadingActivityRows?: Mpp_wl_activities[];
   /** Optional inherited machine state loaded from a saved WL_Outputmodels record. */
   initialMachineConditions?: MachineStartCondition[];
 }

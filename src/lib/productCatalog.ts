@@ -2,9 +2,9 @@ import type { Mpp_wl_activities } from '../generated/models/Mpp_wl_activitiesMod
 import { Mpp_wl_activitiesmpp_taskname } from '../generated/models/Mpp_wl_activitiesModel';
 import type { Mpp_wl_productses } from '../generated/models/Mpp_wl_productsesModel';
 import type { ActivityConfig, MachCondition, MachineSpecInput } from '../types';
-import { fractureRepairingDenominator } from './calculations';
+import { deriveMachineSpec, fractureRepairingDenominator } from './calculations';
 
-const WEIGHT_LOADING_AREAS = ['WW', 'BA', 'CA', 'IS', 'IP'];
+export const WEIGHT_LOADING_AREAS = ['WW', 'BA', 'CA', 'IS', 'IP'];
 const DIES_CHANGE_AREAS = ['WW', 'BA', 'CA'];
 const DEFECT_REPAIRING_AREAS = ['CB', 'BU', 'SP', 'CH', 'CR'];
 
@@ -52,7 +52,60 @@ export function mapProductToSpec(product: Mpp_wl_productses): MachineSpecInput {
     fracturePerTon: parseNumber(product.mpp_fractureperton, 0),
     diesPerTon: parseNumber(product.mpp_dieston, 0),
     defectsPerTon: parseNumber(product.mpp_defectston, 0),
+    poLength1: parseNumber(product.mpp_polength1, 0),
+    poLength2: parseNumber(product.mpp_polength2, 0),
+    poLength3: parseNumber(product.mpp_polength3, 0),
   };
+}
+
+export function isLoadingTaskRow(row: Mpp_wl_activities): boolean {
+  return taskLabelText(row) === 'Loading';
+}
+
+function isLoadingActivity(activity: ActivityConfig): boolean {
+  return activity.key === 'loading' || activity.parentKey === 'loading';
+}
+
+/** Rebuilds Loading and its Partial subs from the (possibly hand-edited) spec's POlength1/2/3,
+ * SpoolLength and SpoolWeight, so editing those in the spec form changes Loading frequency the
+ * same way picking a Construction Detail with those values would. Time and MachCondition the
+ * user already edited in the Activity Table are kept for any Loading row that still exists.
+ * If the rebuild can't produce a parent Loading (its WL_Activities row is missing), the current
+ * Loading rows are left as they were and only the errors are returned. */
+export function rebuildLoadingActivities(
+  activities: ActivityConfig[],
+  spec: MachineSpecInput,
+  loadingRows: Mpp_wl_activities[],
+): { activities: ActivityConfig[]; errors: string[] } {
+  const { spoolWeight } = deriveMachineSpec(spec);
+  const built = buildActivitiesFromRows(
+    loadingRows.filter(isLoadingTaskRow),
+    {
+      mpp_area: spec.area,
+      mpp_polength1: spec.poLength1 ?? 0,
+      mpp_polength2: spec.poLength2 ?? 0,
+      mpp_polength3: spec.poLength3 ?? 0,
+      mpp_spoollength: spec.spoolLength,
+      mpp_dieston: String(spec.diesPerTon),
+      mpp_defectston: String(spec.defectsPerTon),
+    },
+    spoolWeight,
+    spec.fracturePerTon,
+  );
+  const rebuilt = built.activities.filter(isLoadingActivity);
+  if (!rebuilt.some((activity) => activity.key === 'loading')) {
+    return { activities, errors: built.errors };
+  }
+
+  const existingByKey = new Map(activities.filter(isLoadingActivity).map((activity) => [activity.key, activity]));
+  const merged = rebuilt.map((activity) => {
+    const existing = existingByKey.get(activity.key);
+    return existing ? { ...activity, timeMinutes: existing.timeMinutes, machCondition: existing.machCondition } : activity;
+  });
+  const insertAt = activities.findIndex(isLoadingActivity);
+  const others = activities.filter((activity) => !isLoadingActivity(activity));
+  const at = insertAt < 0 ? Math.min(1, others.length) : insertAt;
+  return { activities: [...others.slice(0, at), ...merged, ...others.slice(at)], errors: built.errors };
 }
 
 /** ROUNDDOWN(value/divisor) — the number of whole spools that fit within a given Pay-Off length. */

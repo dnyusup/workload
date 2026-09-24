@@ -1,5 +1,6 @@
 import type { MachineSpecInput } from '../../types';
 import { deriveMachineSpec } from '../../lib/calculations';
+import { WEIGHT_LOADING_AREAS } from '../../lib/productCatalog';
 import { Card } from '../ui/Card';
 import { PRODUCT_AREAS } from '../../types';
 import { Field, NumberInput, SelectInput } from '../ui/Field';
@@ -7,11 +8,17 @@ import { Field, NumberInput, SelectInput } from '../ui/Field';
 export function SpecForm({
   spec,
   onChange,
+  loadingLinked = false,
+  loadingErrors = [],
 }: {
   spec: MachineSpecInput;
   onChange: (next: MachineSpecInput) => void;
+  /** True once a Construction Detail's Loading rows are loaded, i.e. POlength edits rebuild Loading. */
+  loadingLinked?: boolean;
+  loadingErrors?: string[];
 }) {
   const derived = deriveMachineSpec(spec);
+  const weightLoading = WEIGHT_LOADING_AREAS.includes(spec.area.trim().toUpperCase());
   const set = (key: keyof MachineSpecInput) => (v: number) => onChange({ ...spec, [key]: v });
   const setArea = (area: string) => onChange({ ...spec, area });
 
@@ -46,6 +53,24 @@ export function SpecForm({
           <NumberInput value={spec.defectsPerTon} onChange={set('defectsPerTon')} />
         </Field>
       </div>
+
+      <div className="divider" />
+
+      <div className="grid-2">
+        {(['poLength1', 'poLength2', 'poLength3'] as const).map((key, i) => (
+          <Field key={key} label={`POlength${i + 1}${weightLoading ? ' (kg)' : ''}`}>
+            <NumberInput value={spec[key] ?? 0} min={0} onChange={set(key)} />
+          </Field>
+        ))}
+      </div>
+      <p className="field-hint">
+        {!loadingLinked
+          ? 'Select a Construction Detail to apply POlength to Loading.'
+          : weightLoading
+            ? 'Loading every POlength ÷ SpoolWeight spools (only the first filled POlength is used for this Area). 0 = not filled.'
+            : 'Loading every ROUNDDOWN(max POlength ÷ SpoolLength) spools; the other filled POlengths become Partial1/Partial2. 0 = not filled.'}
+      </p>
+      {loadingErrors.length > 0 && <p className="construction-selector-error">{loadingErrors.join(' ')}</p>}
 
       <div className="divider" />
 

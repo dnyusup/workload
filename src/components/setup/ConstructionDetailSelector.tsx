@@ -5,7 +5,7 @@ import type { Mpp_wl_activities } from '../../generated/models/Mpp_wl_activities
 import type { Mpp_wl_productses } from '../../generated/models/Mpp_wl_productsesModel';
 import { useAppConfig } from '../../context/AppConfigContext';
 import { fetchAllPages } from '../../lib/dataversePaging';
-import { buildActivitiesFromRows, mapProductToSpec } from '../../lib/productCatalog';
+import { buildActivitiesFromRows, isLoadingTaskRow, mapProductToSpec } from '../../lib/productCatalog';
 import { deriveMachineSpec, ensureCoreActivities } from '../../lib/calculations';
 import {
   previewAssignedMachineIds,
@@ -18,6 +18,14 @@ import { SearchableSelect } from '../ui/SearchableSelect';
 function escapeODataString(value: string): string {
   return value.replace(/'/g, "''");
 }
+
+type FilterKey = 'area' | 'mach' | 'product';
+
+const FILTERS: { key: FilterKey; label: string; pick: (p: Mpp_wl_productses) => string }[] = [
+  { key: 'area', label: 'Area', pick: (p) => (p.mpp_area ?? '').trim() },
+  { key: 'mach', label: 'Mach', pick: (p) => (p.mpp_machinecode ?? '').trim() },
+  { key: 'product', label: 'Product', pick: (p) => (p.mpp_productspecification ?? '').trim() },
+];
 
 export function ConstructionDetailSelector({
   onApplyingChange,
@@ -55,6 +63,34 @@ export function ConstructionDetailSelector({
     [products, config.selectedProductId],
   );
 
+  const [filters, setFilters] = useState<Record<FilterKey, string>>({ area: '', mach: '', product: '' });
+
+  // Each filter's options are narrowed by the OTHER filters (so every filter affects every other
+  // one), and the Construction Detail list by all three.
+  const { filterOptions, constructionOptions } = useMemo(() => {
+    const matches = (p: Mpp_wl_productses, skip: FilterKey | null) =>
+      FILTERS.every(({ key, pick }) => key === skip || !filters[key] || pick(p) === filters[key]);
+    const filterOptions = Object.fromEntries(
+      FILTERS.map(({ key, pick }) => {
+        const values = new Set(products.filter((p) => matches(p, key)).map(pick).filter(Boolean));
+        // Keep the current value listed even if another filter has since ruled it out, so the
+        // trigger still shows what's selected instead of silently falling back to the placeholder.
+        if (filters[key]) values.add(filters[key]);
+        const options = Array.from(values)
+          .sort((a, b) => a.localeCompare(b))
+          .map((v) => ({ value: v, label: v }));
+        return [key, options];
+      }),
+    ) as Record<FilterKey, { value: string; label: string }[]>;
+    const visible = products.filter((p) => matches(p, null));
+    if (selectedProduct && !visible.includes(selectedProduct)) visible.unshift(selectedProduct);
+    const constructionOptions = visible.map((p) => ({
+      value: p.mpp_wl_productsid,
+      label: p.mpp_constructiondetailcode ?? p.mpp_wl_productsid,
+    }));
+    return { filterOptions, constructionOptions };
+  }, [products, filters, selectedProduct]);
+
   const handleSelect = async (productId: string) => {
     const product = products.find((p) => p.mpp_wl_productsid === productId);
     if (!product) return;
@@ -90,6 +126,7 @@ export function ConstructionDetailSelector({
         activities,
         selectedProductId: product.mpp_wl_productsid,
         selectedConstructionDetail: product.mpp_constructiondetailcode,
+        loadingActivityRows: activityRows.filter(isLoadingTaskRow),
         initialMachineConditions: undefined,
       };
       const recommendedMachineCount = recommendedMachineCountForForecast(nextConfig);
@@ -111,14 +148,41 @@ export function ConstructionDetailSelector({
   return (
     <Card className="construction-selector">
       <div className="construction-selector-row">
+        {FILTERS.map(({ key, label }) => (
+          <div key={key} className="field construction-selector-filter">
+            <span className="field-label">{label}</span>
+            <SearchableSelect
+              value={filters[key]}
+              onChange={(value) => setFilters((prev) => ({ ...prev, [key]: value }))}
+              disabled={loadingProducts || applying}
+              placeholder="All"
+              searchPlaceholder={`Cari ${label}…`}
+              options={filterOptions[key]}
+            />
+          </div>
+        ))}
+        <button
+          type="button"
+          className="btn btn-ghost construction-selector-clear"
+          aria-label="Clear filters"
+          title="Clear filters"
+          disabled={loadingProducts || applying || FILTERS.every(({ key }) => !filters[key])}
+          onClick={() => setFilters({ area: '', mach: '', product: '' })}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M13 3H2l8 9.46V19l4 2v-8.54l.9-1.06" />
+            <path d="m22 3-5 5M17 3l5 5" />
+          </svg>
+        </button>
         <div className="field construction-selector-field">
+          <span className="field-label">Construction Detail</span>
           <SearchableSelect
             value={config.selectedProductId ?? ''}
             onChange={handleSelect}
             disabled={loadingProducts || applying}
-            placeholder={loadingProducts ? 'Loading products…' : 'Select Construction Detail'}
+            placeholder={loadingProducts ? 'Loading products…' : `Select Construction Detail (${constructionOptions.length})`}
             searchPlaceholder="Cari Construction Detail…"
-            options={products.map((p) => ({ value: p.mpp_wl_productsid, label: p.mpp_constructiondetailcode ?? p.mpp_wl_productsid }))}
+            options={constructionOptions}
           />
         </div>
         {selectedProduct && (

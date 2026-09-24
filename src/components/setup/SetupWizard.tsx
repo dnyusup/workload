@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useAppConfig } from '../../context/AppConfigContext';
 import { deriveMachineSpec, syncAutoActivityValues } from '../../lib/calculations';
+import { rebuildLoadingActivities } from '../../lib/productCatalog';
 import {
   calculateSingleOperatorForecast,
   previewAssignedMachineIds,
@@ -24,6 +25,7 @@ export function SetupWizard({ onStart }: { onStart: () => void }) {
   const { config, setConfig } = useAppConfig();
   const [step, setStep] = useState(0);
   const [applyingConstruction, setApplyingConstruction] = useState(false);
+  const [loadingErrors, setLoadingErrors] = useState<string[]>([]);
   const [constructionBaseline, setConstructionBaseline] = useState<AppConfig | null>(
     () => (config.selectedProductId ? config : null),
   );
@@ -52,7 +54,10 @@ export function SetupWizard({ onStart }: { onStart: () => void }) {
     <div className="setup-wizard">
       <ConstructionDetailSelector
         onApplyingChange={setApplyingConstruction}
-        onApplied={setConstructionBaseline}
+        onApplied={(applied) => {
+          setConstructionBaseline(applied);
+          setLoadingErrors([]);
+        }}
       />
       <div className="setup-stepper-row">
         <Stepper steps={STEPS} current={step} onSelect={setStep} disabled={applyingConstruction} />
@@ -93,13 +98,20 @@ export function SetupWizard({ onStart }: { onStart: () => void }) {
             <div className="setup-column">
               <SpecForm
                 spec={config.spec}
-                onChange={(spec) =>
-                  setConfig((prev) => ({
-                    ...prev,
-                    spec,
-                    activities: syncAutoActivityValues(prev.activities, spec),
-                  }))
-                }
+                loadingLinked={!!config.loadingActivityRows}
+                loadingErrors={loadingErrors}
+                onChange={(spec) => {
+                  // POlength/SpoolLength/SpoolWeight all feed Loading's cycle, so rebuild it
+                  // alongside the other auto-synced activity values on every spec edit.
+                  const applySpec = (prev: AppConfig) => {
+                    const synced = syncAutoActivityValues(prev.activities, spec);
+                    return prev.loadingActivityRows
+                      ? rebuildLoadingActivities(synced, spec, prev.loadingActivityRows)
+                      : { activities: synced, errors: [] };
+                  };
+                  setLoadingErrors(applySpec(config).errors);
+                  setConfig((prev) => ({ ...prev, spec, activities: applySpec(prev).activities }));
+                }}
               />
               <OperatorForm
                 operator={config.operator}
