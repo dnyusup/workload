@@ -16,7 +16,7 @@ import {
   machineTimelineColor,
   machineTimelineLabel,
 } from '../simulation/timelineDisplay';
-import { buildConstructionColorMap } from '../../lib/constructionColors';
+import { buildSetupConstructionColorMap } from '../../lib/constructionColors';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { ShiftTimeCard } from '../simulation/ShiftTimeCard';
@@ -152,7 +152,11 @@ export function ProductionRunView({
   const isAdmin = user.role === 'admin';
   const { machines, operators, metrics } = state;
   const [targetUtilization, setTargetUtilization] = useState(85);
-  const constructionColorMap = useMemo(() => buildConstructionColorMap(allProductIds), [allProductIds]);
+  // Same colors as the machine bodies on the Production Setup canvas (Construction Detail View).
+  const constructionColorMap = useMemo(
+    () => buildSetupConstructionColorMap(setup.assignments.map((a) => a.constructionDetailId), allProductIds),
+    [setup.assignments, allProductIds],
+  );
   const assignmentByMachineId = useMemo(() => new Map(setup.assignments.map((a) => [a.machineId, a])), [setup.assignments]);
   const areaByConstructionId = useMemo(
     () => new Map([...resolved].map(([id, construction]) => [id, construction.spec.area.trim().toUpperCase()])),

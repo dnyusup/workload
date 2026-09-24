@@ -21,12 +21,13 @@ import { fetchAllPages } from '../../lib/dataversePaging';
 import type { Mpp_wl_productses } from '../../generated/models/Mpp_wl_productsesModel';
 import { resolveConstructions, type ResolvedConstruction } from '../../lib/productionConstructionResolver';
 import { calculatePlannedUtilization, type PlannedUtilization } from '../../lib/productionUtilization';
-import { buildConstructionColorMap } from '../../lib/constructionColors';
+import { buildDistinctColorMap, buildSetupConstructionColorMap } from '../../lib/constructionColors';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Field, NumberInput, SelectInput } from '../ui/Field';
 import { SearchableSelect } from '../ui/SearchableSelect';
-import { LayoutBuilder } from '../setup/LayoutBuilder';
+import { BlockingProgressOverlay } from '../ui/BlockingProgressOverlay';
+import { LayoutBuilder, type MachineAppearance } from '../setup/LayoutBuilder';
 import { ProductionRunView } from './ProductionRunView';
 
 const TASK_PRIORITY_OPTIONS: { value: TaskPriorityMode; label: string }[] = [
@@ -43,6 +44,42 @@ function readOperatorAssignmentType(): OperatorAssignmentType {
   } catch {
     return 'multi';
   }
+}
+
+type CanvasViewMode = 'construction' | 'operator';
+const CANVAS_VIEW_STORAGE_KEY = 'workload-production-canvas-view';
+
+function readCanvasViewMode(): CanvasViewMode {
+  try {
+    return localStorage.getItem(CANVAS_VIEW_STORAGE_KEY) === 'operator' ? 'operator' : 'construction';
+  } catch {
+    return 'construction';
+  }
+}
+
+/** Same gray as the `.machine-plan-unplanned` body — used for anything not assigned yet. */
+const UNASSIGNED_FILL = '#334155';
+const OPERATOR_VIEW_BASE_FILL = '#0f172a';
+const LEGEND_MAX_ITEMS = 60;
+
+type OperatorSlot = { label: string; field: keyof ProductionMachineAssignment };
+const DOFFING_SLOT: OperatorSlot = { label: 'Doffing', field: 'doffingOperatorId' };
+const LOADING_SLOT: OperatorSlot = { label: 'Loading', field: 'loadingOperatorId' };
+const FRACTURE_SLOT: OperatorSlot = { label: 'Fracture Repairing', field: 'fractureRepairingOperatorId' };
+const DEFECT_SLOT: OperatorSlot = { label: 'Defect Repairing', field: 'defectRepairingOperatorId' };
+const DIES_SLOT: OperatorSlot = { label: 'Dies Change', field: 'diesChangeOperatorId' };
+
+/** Body slices shown in Operator View, in order: CB/BU/SP/CH/CR add Defect Repairing, WW/BA/CA
+ * add Dies Change instead; any other (or unknown) Area only has the three common tasks. */
+function operatorSlotsForArea(area: string | undefined): OperatorSlot[] {
+  if (area && ['CB', 'BU', 'SP', 'CH', 'CR'].includes(area)) return [DOFFING_SLOT, LOADING_SLOT, FRACTURE_SLOT, DEFECT_SLOT];
+  if (area && ['WW', 'BA', 'CA'].includes(area)) return [DOFFING_SLOT, LOADING_SLOT, FRACTURE_SLOT, DIES_SLOT];
+  return [DOFFING_SLOT, LOADING_SLOT, FRACTURE_SLOT];
+}
+
+/** The operator explicitly assigned to a slot — blank stays blank (gray) until it's filled in. */
+function operatorForSlot(a: ProductionMachineAssignment | undefined, slot: OperatorSlot): string | undefined {
+  return (a?.[slot.field] as string | undefined) || undefined;
 }
 
 function downloadCsv(filename: string, headers: string[], rows: (string | number)[][]) {
@@ -565,8 +602,6 @@ function ProductionSetupEditor({
   plannedUtilizationErrors: string[];
   plannedUtilizationLoading: boolean;
 }) {
-  const diesChangeAreas = new Set(['WW', 'BA', 'CA']);
-  const defectRepairingAreas = new Set(['CB', 'BU', 'SP', 'CH', 'CR']);
   const [selectedMachineIds, setSelectedMachineIds] = useState<string[]>([]);
   const [newOperatorName, setNewOperatorName] = useState('');
   const [addingOperator, setAddingOperator] = useState(false);
@@ -600,6 +635,15 @@ function ProductionSetupEditor({
   const [plannedUtilizationFullscreen, setPlannedUtilizationFullscreen] = useState(false);
   const plannedUtilizationPanelRef = useRef<HTMLDivElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const [canvasView, setCanvasView] = useState<CanvasViewMode>(readCanvasViewMode);
+  const changeCanvasView = (mode: CanvasViewMode) => {
+    setCanvasView(mode);
+    try {
+      localStorage.setItem(CANVAS_VIEW_STORAGE_KEY, mode);
+    } catch {
+      // Preference just isn't remembered if storage is unavailable.
+    }
+  };
 
   const assignmentByMachine = new Map(setup.assignments.map((a) => [a.machineId, a]));
   const areaByConstructionId = new Map(
@@ -608,6 +652,14 @@ function ProductionSetupEditor({
       .map((product) => [product.mpp_wl_productsid, product.mpp_area!.trim().toUpperCase()]),
   );
   const operatorLabel = (id?: string) => (id ? setup.operators.find((o) => o.id === id)?.label ?? '—' : '—');
+
+  // Every Construction used in this setup gets its own fill (ordered like WL_Products, so it
+  // matches the dropdown); every operator likewise gets its own.
+  const constructionFillMap = useMemo(
+    () => buildSetupConstructionColorMap(setup.assignments.map((a) => a.constructionDetailId), products.map((p) => p.mpp_wl_productsid)),
+    [setup.assignments, products],
+  );
+  const operatorFillMap = useMemo(() => buildDistinctColorMap(setup.operators.map((o) => o.id)), [setup.operators]);
   const operatorUtilizationFor = (id: string) =>
     plannedUtilization?.operators.find((item) => item.operatorId === id);
   const operatorForecastLabel = (id: string, label: string) => {
@@ -706,42 +758,61 @@ function ProductionSetupEditor({
     void enterFullscreen();
   }, [plannedUtilizationOpen, plannedUtilizationFullscreen]);
 
-  const constructionColorMap = useMemo(
-    () => buildConstructionColorMap(products.map((p) => p.mpp_wl_productsid)),
-    [products],
-  );
 
-  const machineAppearance = (m: LayoutMachine) => {
+  const machineAppearance = (m: LayoutMachine): MachineAppearance => {
     const a = assignmentByMachine.get(m.id);
-    if (!a?.constructionDetailId) {
-      return { status: 'unplanned' as const, tooltip: `Machine ${m.label}\nNot planned yet (no Construction assigned).` };
-    }
-    const area = areaByConstructionId.get(a.constructionDetailId);
-    const requiresDiesChange = area ? diesChangeAreas.has(area) : false;
-    const requiresDefectRepairing = area ? defectRepairingAreas.has(area) : false;
-    const fullyAssigned = !!(
-      a.doffingOperatorId &&
-      a.loadingOperatorId &&
-      a.fractureRepairingOperatorId &&
-      (!requiresDiesChange || a.diesChangeOperatorId) &&
-      (!requiresDefectRepairing || a.defectRepairingOperatorId)
-    );
+    const area = a?.constructionDetailId ? areaByConstructionId.get(a.constructionDetailId) : undefined;
+    const slots = operatorSlotsForArea(area);
+    const handlers = slots.map((slot) => operatorForSlot(a, slot));
+    const constructionColor = a?.constructionDetailId ? constructionFillMap.get(a.constructionDetailId) : undefined;
     const tooltip = [
       `Machine ${m.label}`,
-      `Construction: ${a.constructionDetailLabel ?? '—'}`,
+      `Construction: ${a?.constructionDetailLabel ?? '—'}`,
       `Area: ${area ?? '—'}`,
-      `Doffing: ${operatorLabel(a.doffingOperatorId)}`,
-      `Loading: ${operatorLabel(a.loadingOperatorId)}`,
-      `Fracture Repairing: ${operatorLabel(a.fractureRepairingOperatorId)}`,
-      ...(requiresDiesChange ? [`Dies Change: ${operatorLabel(a.diesChangeOperatorId)}`] : []),
-      ...(requiresDefectRepairing ? [`Defect Repairing: ${operatorLabel(a.defectRepairingOperatorId)}`] : []),
+      ...slots.map((slot, i) => `${slot.label}: ${operatorLabel(handlers[i])}`),
     ].join('\n');
+
+    if (canvasView === 'operator') {
+      // Border = Construction color whenever one is assigned, even before any operator is.
+      if (handlers.every((id) => !id)) return { status: 'unplanned', borderColor: constructionColor, tooltip };
+      return {
+        fill: OPERATOR_VIEW_BASE_FILL,
+        borderColor: constructionColor,
+        segments: handlers.map((id) => (id ? operatorFillMap.get(id) ?? UNASSIGNED_FILL : UNASSIGNED_FILL)),
+        tooltip,
+      };
+    }
+
+    if (!a?.constructionDetailId) return { status: 'unplanned', tooltip };
     return {
-      status: fullyAssigned ? ('assigned' as const) : ('planned' as const),
-      borderColor: constructionColorMap.get(a.constructionDetailId),
+      fill: constructionColor ?? UNASSIGNED_FILL,
+      borderColor: 'rgba(226, 232, 240, 0.55)',
       tooltip,
     };
   };
+
+  const constructionLabelById = new Map(
+    setup.assignments
+      .filter((a) => a.constructionDetailId)
+      .map((a) => [a.constructionDetailId as string, a.constructionDetailLabel ?? (a.constructionDetailId as string)]),
+  );
+  const legendItems =
+    canvasView === 'operator'
+      ? setup.operators.map((o) => ({ id: o.id, label: o.label, color: operatorFillMap.get(o.id) ?? UNASSIGNED_FILL }))
+      : [...constructionFillMap].map(([id, color]) => ({ id, label: constructionLabelById.get(id) ?? id, color }));
+
+  const canvasViewSelect = (
+    <select
+      className="input toolbar-view-select"
+      value={canvasView}
+      onChange={(e) => changeCanvasView(e.target.value as CanvasViewMode)}
+      title="Color machines by Construction Detail or by assigned operators"
+      aria-label="Canvas view"
+    >
+      <option value="construction">Construction Detail View</option>
+      <option value="operator">Operator View</option>
+    </select>
+  );
 
   /** Applies a patch to the selected machines both locally (optimistic) and in Dataverse — every
    * bulk-assign action (Construction / per-activity operator / Unplan) goes through this. */
@@ -1349,6 +1420,7 @@ function ProductionSetupEditor({
         selectMachineGroups={false}
         onSelectionChange={setSelectedMachineIds}
         machineAppearance={machineAppearance}
+        toolbarStart={canvasViewSelect}
         sidePanel={assignSelectionCard}
         onChange={() => {}}
         operatorStart={setup.operatorStart ?? null}
@@ -1375,10 +1447,22 @@ function ProductionSetupEditor({
         </div>
       )}
       <div className="legend">
-        <span className="legend-item"><span className="legend-swatch machine-plan-unplanned" /> Not planned</span>
-        <span className="legend-item"><span className="legend-swatch machine-plan-planned" /> Construction assigned</span>
-        <span className="legend-item"><span className="legend-swatch machine-plan-assigned" /> All operators assigned</span>
-        <span className="production-legend-hint">Border color = Construction Detail (hover a machine for details)</span>
+        <span className="legend-item">
+          <span className="legend-swatch machine-plan-unplanned" /> {canvasView === 'operator' ? 'Not assigned' : 'Not planned'}
+        </span>
+        {legendItems.slice(0, LEGEND_MAX_ITEMS).map((item) => (
+          <span key={item.id} className="legend-item">
+            <span className="legend-swatch" style={{ background: item.color }} /> {item.label}
+          </span>
+        ))}
+        {legendItems.length > LEGEND_MAX_ITEMS && (
+          <span className="production-legend-hint">+{legendItems.length - LEGEND_MAX_ITEMS} more</span>
+        )}
+        <span className="production-legend-hint">
+          {canvasView === 'operator'
+            ? 'Body split in order: Doffing | Loading | Fracture Repairing | Defect Repairing (CB/BU/SP/CH/CR) or Dies Change (WW/BA/CA). Gray = not assigned yet. Border = Construction. Hover a machine for details.'
+            : 'Body color = Construction Detail. Hover a machine for details.'}
+        </span>
       </div>
 
       {assignSelectionCard}
@@ -1408,9 +1492,12 @@ function ProductionSetupEditor({
         }
       >
         {importProgress && (
-          <p className="data-manager-hint" role="status" aria-live="polite">
-            {importMessage}
-          </p>
+          <>
+            <p className="data-manager-hint" role="status" aria-live="polite">
+              {importMessage}
+            </p>
+            <BlockingProgressOverlay title="Importing CSV assignments…" done={importProgress.done} total={importProgress.total} />
+          </>
         )}
         {!importProgress && importMessage && <p className="data-manager-hint">{importMessage}</p>}
         <div className="machine-timeline-rows">

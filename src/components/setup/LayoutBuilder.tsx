@@ -67,6 +67,48 @@ function nextMachineNumber(existing: LayoutMachine[]): number {
   }, 0) + 1;
 }
 
+/** Per-machine visual overlay a parent can supply (see `machineAppearance` below). */
+export interface MachineAppearance {
+  status?: 'unplanned' | 'planned' | 'assigned';
+  borderColor?: string;
+  /** Overrides the body fill color (takes precedence over the `status` class fill). */
+  fill?: string;
+  /** Splits the body into equal slices, one color each, in order — along the machine's longer
+   * side so every slice stays as large as possible. */
+  segments?: string[];
+  tooltip?: string;
+}
+
+const SEGMENT_INSET = 2;
+const SEGMENT_GAP = 1.5;
+
+function MachineBodySegments({ colors, width, height }: { colors: string[]; width: number; height: number }) {
+  const n = colors.length;
+  const alongHeight = height >= width;
+  const span = (alongHeight ? height : width) - SEGMENT_INSET * 2 - SEGMENT_GAP * (n - 1);
+  const size = Math.max(0, span / n);
+  const cross = Math.max(0, (alongHeight ? width : height) - SEGMENT_INSET * 2);
+  return (
+    <>
+      {colors.map((color, i) => {
+        const offset = SEGMENT_INSET + i * (size + SEGMENT_GAP);
+        return (
+          <rect
+            key={i}
+            x={alongHeight ? SEGMENT_INSET : offset}
+            y={alongHeight ? offset : SEGMENT_INSET}
+            width={alongHeight ? cross : size}
+            height={alongHeight ? size : cross}
+            rx={3}
+            fill={color}
+            pointerEvents="none"
+          />
+        );
+      })}
+    </>
+  );
+}
+
 export function LayoutBuilder({
   layout,
   machHandled,
@@ -78,6 +120,7 @@ export function LayoutBuilder({
   onSelectionChange,
   machineAppearance,
   sidePanel,
+  toolbarStart,
   onChange,
   operatorStart,
   onOperatorStartChange,
@@ -107,12 +150,14 @@ export function LayoutBuilder({
    * (unplanned/planned/fully assigned), a unique border color per Construction, and a hover
    * tooltip with Construction + assigned operators. Omit for plain layout editing, where machines
    * keep their normal appearance. */
-  machineAppearance?: (machine: LayoutMachine) => { status?: 'unplanned' | 'planned' | 'assigned'; borderColor?: string; tooltip?: string } | undefined;
+  machineAppearance?: (machine: LayoutMachine) => MachineAppearance | undefined;
   /** Extra content (e.g. a bulk "Assign Selection" panel) rendered as a floating panel over the
    * canvas WHILE this builder is in browser fullscreen — the Fullscreen API only keeps this
    * element's own DOM subtree visible, so a selection-actions panel that normally lives outside
    * this component would otherwise disappear the moment fullscreen is entered. */
   sidePanel?: ReactNode;
+  /** Extra toolbar controls rendered just before the Zoom out button (e.g. a view switcher). */
+  toolbarStart?: ReactNode;
   onChange: (next: LayoutMachine[]) => void;
   /** Where the operator stands before the simulation starts — one per layout. Omit both this and
    * `onOperatorStartChange` to hide the start-point UI entirely (e.g. the read-only Production
@@ -918,6 +963,7 @@ export function LayoutBuilder({
               <span className="toolbar-divider" />
             </>
           )}
+          {toolbarStart}
           <Button
             variant="ghost"
             className="toolbar-icon-button"
@@ -1178,8 +1224,14 @@ export function LayoutBuilder({
                     className={`machine-box ${m.type === 'bfx' ? 'machine-bfx' : ''} ${
                       !assigned ? 'machine-unassigned' : ''
                     } ${selectedIds.has(m.id) ? 'machine-selected' : ''} ${statusClass}`}
-                    style={appearance?.borderColor && !selectedIds.has(m.id) ? { stroke: appearance.borderColor, strokeWidth: 2.5 } : undefined}
+                    style={{
+                      ...(appearance?.fill ? { fill: appearance.fill } : null),
+                      ...(appearance?.borderColor && !selectedIds.has(m.id) ? { stroke: appearance.borderColor, strokeWidth: 2.5 } : null),
+                    }}
                   />
+                  {appearance?.segments && appearance.segments.length > 0 && (
+                    <MachineBodySegments colors={appearance.segments} width={w} height={h} />
+                  )}
                   {selectedIds.has(m.id) && (
                     <rect width={w} height={h} rx={6} className="machine-selection-hatch" />
                   )}
