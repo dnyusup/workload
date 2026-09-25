@@ -35,15 +35,13 @@ export function ShiftTimeCard({
             <span>Elapsed</span>
             <strong>{formatTime(elapsedMinutes)}</strong>
           </div>
-          <div className="shift-time-header-metric">
+          {/* Shift clock range and available time live in this tooltip to keep the card compact. */}
+          <div
+            className="shift-time-header-metric"
+            title={`${formatClock(shiftStartMin)}–${formatClock(shiftStartMin + totalMinutes)} · Available ${formatTime(availableMinutes)} (shift minus lunch and meeting)`}
+          >
             <span>Total shift</span>
-            <strong>
-              {formatTime(totalMinutes)} ({formatClock(shiftStartMin)}–{formatClock(shiftStartMin + totalMinutes)})
-            </strong>
-          </div>
-          <div className="shift-time-header-metric">
-            <span>Available</span>
-            <strong>{formatTime(availableMinutes)}</strong>
+            <strong>{formatTime(totalMinutes)}</strong>
           </div>
         </div>
       }

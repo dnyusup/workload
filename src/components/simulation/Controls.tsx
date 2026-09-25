@@ -96,7 +96,7 @@ export function Controls({
           Construction Detail: <strong>{config.selectedConstructionDetail ?? '—'}</strong>
         </span>
         <label className="controls-live-field">
-          <span>#Mach Assigned</span>
+          <span title="Machines assigned to the operator">#Mach</span>
           <input
             className={`input input-sm ${liveSettingsDisabled ? 'input-readonly' : ''}`}
             type="number"
@@ -108,15 +108,16 @@ export function Controls({
           />
         </label>
         <label className="controls-live-field">
-          <span>Fracture/Ton</span>
+          <span title="Fracture per ton">Fr/Ton</span>
           <input
             className={`input input-sm ${liveSettingsDisabled ? 'input-readonly' : ''}`}
             type="number"
             min={0}
-            step="any"
-            value={config.spec.fracturePerTon}
+            step={0.01}
+            // Shown (and, when edited here, stored) to 2 decimals.
+            value={Math.round(config.spec.fracturePerTon * 100) / 100}
             readOnly={liveSettingsDisabled}
-            onChange={(e) => handleFracturePerTonChange(parseFloat(e.target.value))}
+            onChange={(e) => handleFracturePerTonChange(Math.round(parseFloat(e.target.value) * 100) / 100)}
             title={liveSettingsDisabled ? 'Click Reset to edit before starting the shift' : 'Changes here restart the simulation with the new value'}
           />
         </label>

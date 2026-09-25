@@ -1219,7 +1219,6 @@ export function ProductionRunView({
                     setRejectPercent(Number.isFinite(next) ? Math.min(100, Math.max(0, next)) : 0);
                   }}
                 />
-                <span className="reject-field-hint">Quality {fmt(quality * 100)}%</span>
               </label>
               <button
                 type="button"
