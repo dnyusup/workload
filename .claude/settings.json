@@ -55,7 +55,9 @@
       "Bash(python \"C:/Users/DENI~1.YUS/AppData/Local/Temp/claude/c--Users-deni-yusup-powerapps-code-WorkLoad/409c86d1-3484-41f0-bd8a-2cc317ab1d03/scratchpad/routes_layer.py\")",
       "Bash(python \"C:/Users/DENI~1.YUS/AppData/Local/Temp/claude/c--Users-deni-yusup-powerapps-code-WorkLoad/409c86d1-3484-41f0-bd8a-2cc317ab1d03/scratchpad/fp_engine.py\")",
       "Bash(python \"C:/Users/DENI~1.YUS/AppData/Local/Temp/claude/c--Users-deni-yusup-powerapps-code-WorkLoad/409c86d1-3484-41f0-bd8a-2cc317ab1d03/scratchpad/fp_ui.py\")",
-      "Bash(python \"C:/Users/DENI~1.YUS/AppData/Local/Temp/claude/c--Users-deni-yusup-powerapps-code-WorkLoad/409c86d1-3484-41f0-bd8a-2cc317ab1d03/scratchpad/reject.py\")"
+      "Bash(python \"C:/Users/DENI~1.YUS/AppData/Local/Temp/claude/c--Users-deni-yusup-powerapps-code-WorkLoad/409c86d1-3484-41f0-bd8a-2cc317ab1d03/scratchpad/reject.py\")",
+      "Bash(git push *)",
+      "Bash(python -c ' *)"
     ]
   }
 }

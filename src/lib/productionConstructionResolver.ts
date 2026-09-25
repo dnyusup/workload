@@ -11,10 +11,26 @@ export interface ResolvedConstruction {
   label: string;
   /** WL_Products SpoolType (e.g. BS40) — decides Finish Product vs Semi Finish Product tonnage. */
   spoolType: string;
+  /** WL_Products descriptive columns, for grouping the Production Report. */
+  attributes: ConstructionAttributes;
   spec: MachineSpecInput;
   activities: ActivityConfig[];
   runtimePerSpool: number;
   cycleLengths: Record<ActivityKey, number>;
+}
+
+export interface ConstructionAttributes {
+  constructionDetail: string;
+  construction: string;
+  area: string;
+  machineCode: string;
+  product: string;
+  tensileGroup: string;
+  spoolType: string;
+  layLength: string;
+  spoolLength: string;
+  speed: string;
+  numberOfWires: string;
 }
 
 /** Dataverse's `eq` on a string column is case-insensitive, so grouping in memory has to be too —
@@ -85,6 +101,19 @@ export async function resolveConstructions(
       // SpoolType column first; else the Construction code's last segment
       // (Mach-Product-LayLength-TensileGroup-SpoolType).
       spoolType: (product.mpp_spooltype?.trim() || product.mpp_constructioncode?.split('-').pop()?.trim() || ''),
+      attributes: {
+        constructionDetail: product.mpp_constructiondetailcode?.trim() ?? '',
+        construction: product.mpp_constructioncode?.trim() ?? '',
+        area: product.mpp_area?.trim().toUpperCase() ?? '',
+        machineCode: product.mpp_machinecode?.trim() ?? '',
+        product: product.mpp_productspecification?.trim() ?? '',
+        tensileGroup: product.mpp_tensilegroup?.trim() ?? '',
+        spoolType: (product.mpp_spooltype?.trim() || product.mpp_constructioncode?.split('-').pop()?.trim() || ''),
+        layLength: product.mpp_laylength != null ? String(product.mpp_laylength) : '',
+        spoolLength: product.mpp_spoollength != null ? String(product.mpp_spoollength) : '',
+        speed: product.mpp_speed?.toString().trim() ?? '',
+        numberOfWires: product.mpp_numberoffibers != null ? String(product.mpp_numberoffibers) : '',
+      },
       spec,
       activities,
       runtimePerSpool: derived.runtimePerSpool > 0 ? derived.runtimePerSpool : 1,

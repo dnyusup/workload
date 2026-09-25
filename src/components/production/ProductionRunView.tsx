@@ -19,8 +19,10 @@ import {
 import { buildSetupConstructionColorMap } from '../../lib/constructionColors';
 import { isFinishProductSpoolType } from '../../lib/productType';
 import { estimateProductionEvents } from '../../lib/productionEstimate';
+import { summarizeOperatorTimelines } from '../../lib/operatorOccupation';
 import { buildCanvasLegendData, type LegendHover } from '../../lib/canvasLegend';
 import { CanvasLegendPanel } from './CanvasLegendPanel';
+import { ProductionReportView } from './ProductionReportView';
 import { useFillToWindowBottom } from '../../hooks/useFillToWindowBottom';
 import { useTimelineZoomScroll } from '../../hooks/useTimelineZoom';
 import { TimelineRuler, TimelineZoomControl } from '../ui/TimelineZoom';
@@ -102,44 +104,6 @@ function verdictFor(utilization: number): { text: string; className: string } {
   return { text: 'Operator capacity is sufficient.', className: 'verdict-ok' };
 }
 
-const NON_SERVICE_KINDS = new Set(['walking', 'lunch', 'meeting', 'idle']);
-
-/** Same detail level as the single-operator Simulator's Man Occupation card (Man Occupation %,
- * Walking, Total service, per-activity service breakdown, Idle) — derived straight from the
- * timeline segments of whichever operator(s) are passed in, so the same function covers both the
- * "all operators combined" default view and a single filtered operator. */
-function summarizeOperatorTimelines(
-  ops: ProductionSimulationState['operators'],
-  timelineDuration: number,
-  activityLabel: (key: string) => string,
-) {
-  const segments = ops.flatMap((op) => op.timeline);
-  const minutesWhere = (pred: (kind: string) => boolean) =>
-    segments
-      .filter((s) => pred(s.kind))
-      .reduce((total, s) => total + Math.max(0, Math.min(s.endMin, timelineDuration) - s.startMin), 0);
-
-  const walking = minutesWhere((k) => k === 'walking');
-  const breakMin = minutesWhere((k) => k === 'lunch' || k === 'meeting');
-  const idle = minutesWhere((k) => k === 'idle');
-
-  const serviceLabelTotals = new Map<string, number>();
-  segments
-    .filter((s) => !NON_SERVICE_KINDS.has(s.kind))
-    .forEach((s) => {
-      const label = activityLabel(s.kind);
-      const minutes = Math.max(0, Math.min(s.endMin, timelineDuration) - s.startMin);
-      serviceLabelTotals.set(label, (serviceLabelTotals.get(label) ?? 0) + minutes);
-    });
-  const serviceBreakdown = Array.from(serviceLabelTotals.entries()).map(([label, minutes]) => ({ label, minutes }));
-  const totalService = serviceBreakdown.reduce((total, s) => total + s.minutes, 0);
-
-  const elapsed = timelineDuration * ops.length - breakMin;
-  const busy = walking + totalService;
-  const utilization = elapsed > 0 ? (busy / elapsed) * 100 : 0;
-
-  return { walking, totalService, serviceBreakdown, idle, elapsed, utilization };
-}
 
 function operatorStatusLabel(op: ProductionSimulationState['operators'][number]) {
   if (op.phase === 'break') return `${op.breakLabel} (${Math.ceil(op.breakRemainingMin)}m)`;
@@ -172,6 +136,7 @@ export function ProductionRunView({
   // Reject % = the OEE Quality loss. Display-only (the engine is unchanged): it scales tonnage down
   // to GOOD tonnage and multiplies into every OEE figure. Plain state — back to 0 per page visit.
   const [rejectPercent, setRejectPercent] = useState(0);
+  const [showReport, setShowReport] = useState(false);
   const quality = 1 - Math.min(100, Math.max(0, rejectPercent)) / 100;
   // Same colors as the machine bodies on the Production Setup canvas (Construction Detail View).
   const constructionColorMap = useMemo(
@@ -714,6 +679,19 @@ export function ProductionRunView({
     </div>
   );
 
+  if (showReport) {
+    return (
+      <ProductionReportView
+        state={state}
+        setup={setup}
+        resolved={resolved}
+        rejectPercent={rejectPercent}
+        activityLabel={activityLabel}
+        onBack={() => setShowReport(false)}
+      />
+    );
+  }
+
   return (
     <div className="production-run-view">
       {renderProductionControls()}
@@ -1243,6 +1221,22 @@ export function ProductionRunView({
                 />
                 <span className="reject-field-hint">Quality {fmt(quality * 100)}%</span>
               </label>
+              <button
+                type="button"
+                className="btn btn-ghost report-open-button"
+                onClick={() => {
+                  // The report reads one frozen snapshot — pause so it doesn't change underneath.
+                  controls.pause();
+                  setShowReport(true);
+                }}
+                title="Open the Production Report (pauses the simulation)"
+                aria-label="Open Production Report"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
+                </svg>
+                Report
+              </button>
             </Card>
 
             <Card
