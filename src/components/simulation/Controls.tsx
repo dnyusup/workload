@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import type { AppConfig } from '../../types';
 import { deriveMachineSpec, fractureRepairingDenominator } from '../../lib/calculations';
 import { Button } from '../ui/Button';
+import { ShiftStartField } from '../ui/ShiftStartField';
 import { ShiftTimeCard } from './ShiftTimeCard';
 
 export function Controls({
@@ -142,6 +143,7 @@ export function Controls({
           ↺ Use inherited
         </Button>
       )}
+      <ShiftStartField />
       {!playing ? (
         <Button variant="primary" onClick={onPlay} disabled={finished}>
           ▶ Play

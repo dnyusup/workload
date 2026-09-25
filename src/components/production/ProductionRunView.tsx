@@ -20,6 +20,9 @@ import { buildSetupConstructionColorMap } from '../../lib/constructionColors';
 import { buildCanvasLegendData, type LegendHover } from '../../lib/canvasLegend';
 import { CanvasLegendPanel } from './CanvasLegendPanel';
 import { useFillToWindowBottom } from '../../hooks/useFillToWindowBottom';
+import { useTimelineZoomScroll } from '../../hooks/useTimelineZoom';
+import { TimelineRuler, TimelineZoomControl } from '../ui/TimelineZoom';
+import { ShiftStartField } from '../ui/ShiftStartField';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { ShiftTimeCard } from '../simulation/ShiftTimeCard';
@@ -28,6 +31,10 @@ const LABEL_MARGIN = 24;
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 4;
 const FIT_MARGIN = 60;
+/** Operator timeline tracks are indented by .layout-operator-timeline (see App.css). */
+const OPERATOR_TIMELINE_INDENT_PX = 80;
+/** Machine timeline rows: label column (72px) + grid gap (8px) before the track starts. */
+const MACHINE_TIMELINE_LABEL_PX = 80;
 const OPERATOR_COLORS = ['#38bdf8', '#f472b6', '#facc15', '#4ade80', '#a78bfa', '#fb923c', '#22d3ee', '#f87171'];
 const ROUTE_HOLD_MS = 5000;
 
@@ -199,6 +206,12 @@ export function ProductionRunView({
   // you just want to look at the canvas, not scroll through the table.
   const [showMachineTimeline, setShowMachineTimeline] = useState(false);
   const [showOperatorTimeline, setShowOperatorTimeline] = useState(false);
+  const {
+    zoom: operatorTimelineZoom,
+    scrollRef: operatorTimelineScrollRef,
+    scrollStyle: operatorTimelineScrollStyle,
+  } = useTimelineZoomScroll();
+  const { zoom: machineTimelineZoom, scrollRef: machineTimelineScrollRef } = useTimelineZoomScroll();
   const [operatorTimelineSearch, setOperatorTimelineSearch] = useState('');
   const [selectedOperatorHighlight, setSelectedOperatorHighlight] = useState<{ operatorId: string; index: number } | null>(null);
   /** Clicking an operator's name in the Operator Timeline filters the Man Occupation card
@@ -674,6 +687,7 @@ export function ProductionRunView({
         }
       />
       {state.finished && <span className="finished-badge">Shift complete</span>}
+      <ShiftStartField />
       {!playing ? (
         <Button variant="primary" onClick={controls.play} disabled={state.finished}>
           ▶ Play
@@ -857,6 +871,11 @@ export function ProductionRunView({
             <span className="legend-item"><span className="legend-swatch sim-machine-unassigned" /> Unassigned Construction</span>
           </div>
 
+          {/* One zoom for both the Operator and the Machine timeline below. */}
+          <div className="timeline-zoom-bar">
+            <TimelineZoomControl />
+          </div>
+
           <div className="timeline-heading">
             <strong>Operator Timeline</strong>
             <span className="production-timeline-heading-actions">
@@ -871,13 +890,20 @@ export function ProductionRunView({
           </div>
           {showOperatorTimeline && (
             <>
-              <input
-                className="input input-sm production-timeline-search"
-                placeholder="Search operator…"
-                value={operatorTimelineSearch}
-                onChange={(e) => setOperatorTimelineSearch(e.target.value)}
-              />
-              <div className="production-operator-timeline-list">
+              <div className="timeline-list-toolbar">
+                <input
+                  className="input input-sm production-timeline-search"
+                  placeholder="Search operator…"
+                  value={operatorTimelineSearch}
+                  onChange={(e) => setOperatorTimelineSearch(e.target.value)}
+                />
+              </div>
+              <div
+                className="production-operator-timeline-list timeline-zoom-scroll"
+                ref={operatorTimelineScrollRef}
+                style={operatorTimelineScrollStyle}
+              >
+                <TimelineRuler shiftTimeMin={metrics.shiftTimeMin} zoom={operatorTimelineZoom} offsetPx={OPERATOR_TIMELINE_INDENT_PX} />
                 {operatorTimelineList.length === 0 && <p className="empty-hint">No operators match.</p>}
                 {operatorTimelineList.map((op) => (
                   <div className="operator-timeline layout-operator-timeline production-operator-timeline" key={op.id}>
@@ -961,13 +987,17 @@ export function ProductionRunView({
             </div>
             {showMachineTimeline && (
               <>
-                <input
-                  className="input input-sm production-timeline-search"
-                  placeholder="Search machine number…"
-                  value={machineTimelineSearch}
-                  onChange={(e) => setMachineTimelineSearch(e.target.value)}
-                />
+                <div className="timeline-list-toolbar">
+                  <input
+                    className="input input-sm production-timeline-search"
+                    placeholder="Search machine number…"
+                    value={machineTimelineSearch}
+                    onChange={(e) => setMachineTimelineSearch(e.target.value)}
+                  />
+                </div>
                 <MachineTimelineRows
+                  zoom={machineTimelineZoom}
+                  scrollRef={machineTimelineScrollRef}
                   machines={machineTimelineRows}
                   selectedMachineId={selectedMachineId}
                   onSelectMachine={onSelectMachine}
@@ -1458,6 +1488,8 @@ const MachinesLayer = memo(function MachinesLayer({
  * tick would also re-diff this entire table. Can also be hidden outright (see showMachineTimeline
  * in the parent) when even the memoized render is more than needed. */
 const MachineTimelineRows = memo(function MachineTimelineRows({
+  zoom,
+  scrollRef,
   machines,
   selectedMachineId,
   onSelectMachine,
@@ -1465,6 +1497,8 @@ const MachineTimelineRows = memo(function MachineTimelineRows({
   shiftTimeMin,
   selectedOperatorRange,
 }: {
+  zoom: number;
+  scrollRef: React.RefObject<HTMLDivElement | null>;
   machines: ProductionSimulationState['machines'];
   selectedMachineId: string | null;
   onSelectMachine: (id: string) => void;
@@ -1474,7 +1508,8 @@ const MachineTimelineRows = memo(function MachineTimelineRows({
 }) {
   if (machines.length === 0) return <p className="empty-hint">No machines match.</p>;
   return (
-    <div className="machine-timeline-rows">
+    <div className="machine-timeline-rows timeline-zoom-scroll" ref={scrollRef} style={{ '--timeline-zoom': zoom } as React.CSSProperties}>
+      <TimelineRuler shiftTimeMin={shiftTimeMin} zoom={zoom} offsetPx={MACHINE_TIMELINE_LABEL_PX} />
       {machines.map((machine) => (
         <button
           key={machine.id}

@@ -3408,3 +3408,170 @@
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
+
+/* ---- Timeline zoom (Operator / Machine timelines) ---- */
+.timeline-list-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin: 6px 0;
+}
+
+.timeline-list-toolbar .production-timeline-search {
+  margin: 0;
+}
+
+
+.timeline-zoom-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: 0.72rem;
+  color: #94a3b8;
+}
+
+.timeline-zoom-control button {
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  background: #0b1220;
+  color: #e2e8f0;
+  font-size: 0.8rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.timeline-zoom-control button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.timeline-zoom-control button:not(:disabled):hover {
+  border-color: #38bdf8;
+  color: #38bdf8;
+}
+
+.timeline-zoom-control input[type='range'] {
+  width: 120px;
+  accent-color: #38bdf8;
+}
+
+.timeline-zoom-level {
+  min-width: 34px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: #e2e8f0;
+}
+
+/* The zoomed list scrolls sideways; every track is widened by --timeline-zoom while labels and
+   headings stay pinned on the left. */
+.timeline-zoom-scroll {
+  overflow-x: auto;
+}
+
+.timeline-zoom-scroll .operator-timeline-track {
+  width: calc(100% * var(--timeline-zoom, 1));
+  flex: none;
+}
+
+.timeline-zoom-scroll .timeline-heading {
+  position: sticky;
+  left: 0;
+}
+
+.timeline-zoom-scroll .machine-timeline-label {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: #111827;
+}
+
+.timeline-ruler {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  height: 16px;
+  margin-bottom: 2px;
+  background: #111827;
+}
+
+.timeline-ruler-track {
+  position: relative;
+  height: 100%;
+  width: calc(100% * var(--timeline-zoom, 1));
+}
+
+.timeline-ruler-tick {
+  position: absolute;
+  bottom: 0;
+  transform: translateX(-50%);
+  padding-bottom: 2px;
+  border-left: 1px solid transparent;
+  color: #64748b;
+  font-size: 0.62rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.timeline-ruler-tick:first-child {
+  transform: none;
+}
+
+.timeline-ruler-tick:last-child {
+  transform: translateX(-100%);
+}
+
+.timeline-ruler-tick.is-hour {
+  color: #cbd5e1;
+}
+
+/* Workload operator timeline: the scroll area takes over the old 80px track indent. */
+.layout-operator-timeline-scroll {
+  margin-left: 80px;
+}
+
+/* Production Run operator rows keep their 80px track indent — zoom only the remaining width, so
+   1× (Fit to shift) still fits exactly with no sideways scroll. */
+.timeline-zoom-scroll .layout-operator-timeline > .operator-timeline-track {
+  width: calc((100% - 80px) * var(--timeline-zoom, 1));
+}
+
+.shift-start-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.shift-start-field > span:first-child {
+  margin-right: 4px;
+}
+
+.shift-start-field select.input {
+  width: auto;
+  padding: 6px 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.shift-start-sep {
+  color: #e2e8f0;
+  font-weight: 600;
+}
+
+/* The one timeline zoom bar, above the Operator + Machine timelines. */
+.timeline-zoom-bar {
+  display: flex;
+  justify-content: flex-end;
+  margin: 10px 0 2px;
+}
+
+.timeline-zoom-caption {
+  margin-right: 2px;
+}

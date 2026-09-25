@@ -3,6 +3,8 @@ import type { MachineTimelineKind, OperatorTimelineKind, SimulationState } from 
 import { MachineZoneLabels } from '../ui/MachineZoneLabels';
 import { MachineDonut } from './MachineDonut';
 import { Button } from '../ui/Button';
+import { TimelineRuler, TimelineZoomControl } from '../ui/TimelineZoom';
+import { useTimelineZoomScroll } from '../../hooks/useTimelineZoom';
 import {
   machineZoneColors,
   operatorFacing,
@@ -90,6 +92,16 @@ export function LayoutCanvas({
   // being stuck at a fixed height — the ResizeObserver already watching wrapperRef picks up the
   // new size automatically and updates the SVG viewBox, so nothing else needs to react to this.
   const [canvasHeight, setCanvasHeight] = useState(420);
+  const {
+    zoom: operatorTimelineZoom,
+    scrollRef: operatorTimelineScrollRef,
+    scrollStyle: operatorTimelineScrollStyle,
+  } = useTimelineZoomScroll();
+  const {
+    zoom: machineTimelineZoom,
+    scrollRef: machineTimelineScrollRef,
+    scrollStyle: machineTimelineScrollStyle,
+  } = useTimelineZoomScroll();
   const canvasResizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
   const [resizingCanvas, setResizingCanvas] = useState(false);
   const MIN_CANVAS_HEIGHT = 240;
@@ -456,11 +468,21 @@ export function LayoutCanvas({
         <LegendItem colorClass="sim-machine-running" label="Running" />
         <LegendItem colorClass="sim-machine-stopped" label="Stopped / Waiting" />
       </div>
+      {/* One zoom for both the Operator and the Machine timeline below. */}
+      <div className="timeline-zoom-bar">
+        <TimelineZoomControl />
+      </div>
       <div className="operator-timeline layout-operator-timeline">
         <div className="timeline-heading">
           <strong>Operator Timeline</strong>
           <span>Real-time activity during the shift</span>
         </div>
+        <div
+          className="timeline-zoom-scroll layout-operator-timeline-scroll"
+          ref={operatorTimelineScrollRef}
+          style={operatorTimelineScrollStyle}
+        >
+        <TimelineRuler shiftTimeMin={metrics.shiftTimeMin} zoom={operatorTimelineZoom} />
         <div className="operator-timeline-track">
           {operator.timeline.map((segment, index) => {
             const width = ((Math.min(segment.endMin, metrics.shiftTimeMin) - segment.startMin) / (metrics.shiftTimeMin || 1)) * 100;
@@ -480,9 +502,6 @@ export function LayoutCanvas({
             <div className="operator-timeline-current" style={{ left: `${(timelineDuration / (metrics.shiftTimeMin || 1)) * 100}%` }} />
           )}
         </div>
-        <div className="operator-timeline-axis">
-          <span>0j</span>
-          <span>{Math.round(metrics.shiftTimeMin / 60)}j</span>
         </div>
         <div className="timeline-summary">
           {timelineTotals.map(({ kind, minutes }) => {
@@ -503,7 +522,12 @@ export function LayoutCanvas({
           <strong>Machine Timeline</strong>
           <span>Click a bar to view the machine summary</span>
         </div>
-        <div className="machine-timeline-rows">
+        <div
+          className="machine-timeline-rows timeline-zoom-scroll"
+          ref={machineTimelineScrollRef}
+          style={machineTimelineScrollStyle}
+        >
+        <TimelineRuler shiftTimeMin={metrics.shiftTimeMin} zoom={machineTimelineZoom} offsetPx={80} />
         {plannedMachines.map((machine) => (
           <button
             key={machine.id}
