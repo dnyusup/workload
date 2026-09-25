@@ -237,7 +237,8 @@ export function LayoutCanvas({
   const timelineDuration = Math.max(0, Math.min(metrics.clockMin, metrics.shiftTimeMin));
   const allOperatorTimelineKinds = useMemo(
     () => [
-      ...timelineKinds,
+      // "Other break" is only listed once the operator actually takes one.
+      ...timelineKinds.filter((item) => item.kind !== 'otherBreak' || operator.timeline.some((s) => s.kind === 'otherBreak')),
       ...operator.timeline
         .filter((segment) => !timelineKinds.some((item) => item.kind === segment.kind))
         .reduce<{ kind: OperatorTimelineKind; label: string; color: string }[]>((items, segment) => {

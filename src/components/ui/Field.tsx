@@ -3,15 +3,25 @@ import type { ReactNode } from 'react';
 export function Field({
   label,
   hint,
+  tooltip,
   children,
 }: {
   label: string;
   hint?: string;
+  /** Explanation shown on hover of an ⓘ next to the label, instead of a hint line below. */
+  tooltip?: string;
   children: ReactNode;
 }) {
   return (
     <label className="field">
-      <span className="field-label">{label}</span>
+      <span className="field-label">
+        {label}
+        {tooltip && (
+          <span className="field-info" title={tooltip} aria-label={tooltip}>
+            ⓘ
+          </span>
+        )}
+      </span>
       {children}
       {hint && <span className="field-hint">{hint}</span>}
     </label>

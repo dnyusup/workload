@@ -1,6 +1,6 @@
 import type { ProductionSimulationState } from '../types';
 
-const NON_SERVICE_KINDS = new Set(['walking', 'lunch', 'meeting', 'idle']);
+const NON_SERVICE_KINDS = new Set(['walking', 'lunch', 'meeting', 'otherBreak', 'idle']);
 
 /** Same detail level as the single-operator Simulator's Man Occupation card (Man Occupation %,
  * Walking, Total service, per-activity service breakdown, Idle) — derived straight from the
@@ -18,7 +18,7 @@ export function summarizeOperatorTimelines(
       .reduce((total, s) => total + Math.max(0, Math.min(s.endMin, timelineDuration) - s.startMin), 0);
 
   const walking = minutesWhere((k) => k === 'walking');
-  const breakMin = minutesWhere((k) => k === 'lunch' || k === 'meeting');
+  const breakMin = minutesWhere((k) => k === 'lunch' || k === 'meeting' || k === 'otherBreak');
   const idle = minutesWhere((k) => k === 'idle');
 
   const serviceLabelTotals = new Map<string, number>();

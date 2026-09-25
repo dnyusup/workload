@@ -1,5 +1,5 @@
 import type { ActivityConfig, AppConfig } from '../types';
-import { activityCycleLength, availableTimeMinutes, deriveMachineSpec, distanceMeters } from './calculations';
+import { activityCycleLength, availableTimeMinutes, deriveMachineSpec, distanceMeters, extraBreakMinutes } from './calculations';
 
 const AVERAGE_DIES_PER_CHANGE_EVENT = (7 + 26) / 2;
 const GLOBAL_EVENT_ACTIVITIES = new Set(['fractureRepairing', 'diesChange', 'defectRepairing']);
@@ -68,6 +68,7 @@ export function calculateSingleOperatorForecast(config: AppConfig): SingleOperat
     config.operator.shiftTime,
     config.operator.lunchTime,
     config.operator.meetingTime,
+    extraBreakMinutes(config.operator.extraBreaks),
   );
   const handled = Math.max(0, Math.floor(config.operator.machHandled));
   // Use the explicit assignment first, then fill the requested count from the remaining layout

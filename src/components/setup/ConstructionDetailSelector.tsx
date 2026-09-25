@@ -121,6 +121,9 @@ export function ConstructionDetailSelector({
 
       const nextConfig = {
         ...config,
+        // Extra "Other" breaks belong to the previous Construction's scenario — start clean (before
+        // the recommended machine count below is worked out).
+        operator: { ...config.operator, extraBreaks: [] },
         spec: newSpec,
         activities,
         selectedProductId: product.mpp_wl_productsid,

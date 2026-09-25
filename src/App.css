@@ -4358,3 +4358,49 @@
     grid-template-columns: minmax(70px, 38%) minmax(0, 1fr) auto;
   }
 }
+
+/* Operator Activities: fixed two columns so each break's time sits beside its start minute. */
+.operator-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 18px;
+  align-items: start;
+}
+
+.operator-extra-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.operator-extra-remove {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.operator-extra-remove:hover {
+  border-color: #f87171;
+  color: #f87171;
+}
+
+.btn.operator-add-activity {
+  margin-top: 12px;
+}
+
+.field-info {
+  margin-left: 6px;
+  color: #64748b;
+  cursor: help;
+}
+
+.field-info:hover {
+  color: #38bdf8;
+}

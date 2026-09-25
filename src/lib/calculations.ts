@@ -120,6 +120,11 @@ export function distanceMeters(
   return pixelsPerMeter > 0 ? distPx / pixelsPerMeter : distPx;
 }
 
-export function availableTimeMinutes(shiftTime: number, lunchTime: number, meetingTime: number): number {
-  return Math.max(0, shiftTime - lunchTime - meetingTime);
+export function availableTimeMinutes(shiftTime: number, lunchTime: number, meetingTime: number, extraBreakMinutes = 0): number {
+  return Math.max(0, shiftTime - lunchTime - meetingTime - extraBreakMinutes);
+}
+
+/** Total minutes of the setup's extra ("Other") operator breaks. */
+export function extraBreakMinutes(extraBreaks: { time: number }[] | undefined): number {
+  return (extraBreaks ?? []).reduce((sum, b) => sum + Math.max(0, b.time || 0), 0);
 }

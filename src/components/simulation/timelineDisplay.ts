@@ -80,6 +80,7 @@ export const timelineKinds: { kind: OperatorTimelineKind; label: string; color: 
   { kind: 'walking', label: 'Walking', color: '#fbbf24' },
   { kind: 'lunch', label: 'Lunch', color: '#64748b' },
   { kind: 'meeting', label: 'Meeting', color: '#94a3b8' },
+  { kind: 'otherBreak', label: 'Other break', color: '#475569' },
   { kind: 'idle', label: 'Idle', color: '#334155' },
 ];
 
@@ -133,7 +134,9 @@ export interface TimelineSummary {
 
 type TimelineSegment = { kind: string; label: string; startMin: number; endMin: number };
 
-const OPERATOR_BASE_GROUPS: TimelineSummaryGroup[] = timelineKinds.map(({ kind, label, color }) => ({ key: kind, label, color }));
+// "Other break" only exists in Workload setups that add one — list it only once it occurs.
+const OPERATOR_KIND_GROUPS: TimelineSummaryGroup[] = timelineKinds.map(({ kind, label, color }) => ({ key: kind, label, color }));
+const OPERATOR_BASE_GROUPS: TimelineSummaryGroup[] = OPERATOR_KIND_GROUPS.filter((g) => g.key !== 'otherBreak');
 const MACHINE_BASE_GROUPS: TimelineSummaryGroup[] = machineTimelineKinds.map(({ kind, label, color }) => ({ key: kind, label, color }));
 const operatorBaseKinds = new Set<string>(timelineKinds.map((item) => item.kind));
 const machineBaseKinds = new Set<string>(machineTimelineKinds.map((item) => item.kind));
@@ -142,7 +145,7 @@ const machineBaseKinds = new Set<string>(machineTimelineKinds.map((item) => item
  * per Construction (`doffing-sub-<row id>`), so "Doffing ScanMES" on 65 Constructions would be 65
  * separate kinds — group them by their display label instead. */
 function operatorSegmentGroup(segment: TimelineSegment): TimelineSummaryGroup {
-  if (operatorBaseKinds.has(segment.kind)) return OPERATOR_BASE_GROUPS.find((g) => g.key === segment.kind)!;
+  if (operatorBaseKinds.has(segment.kind)) return OPERATOR_KIND_GROUPS.find((g) => g.key === segment.kind)!;
   const label = segment.label.split(' — ')[0];
   return { key: `label:${label}`, label, color: '#c084fc' };
 }

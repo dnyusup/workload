@@ -15,7 +15,7 @@ import type {
   SimMetrics,
   SimulationState,
 } from '../types';
-import { activityCycleLength, availableTimeMinutes, deriveMachineSpec, distanceMeters } from './calculations';
+import { activityCycleLength, availableTimeMinutes, deriveMachineSpec, distanceMeters, extraBreakMinutes } from './calculations';
 import { machineWidthPx, machineHeightPx } from './layoutConstants';
 import { buildServiceSegments } from './machineZones';
 import { computeWalkingWaypoints } from './operatorRouting';
@@ -75,6 +75,8 @@ export class SimulationEngine {
   private assignedIds: Set<string>;
   private initialMachineConditions: MachineStartCondition[];
   private breaks: BreakDef[];
+  /** Timeline kind each break is recorded as (Lunch / Meeting / Other break). */
+  private breakKindByLabel = new Map<string, 'lunch' | 'meeting' | 'otherBreak'>();
   /** Fracture Repairing isn't tracked per machine — it fires once the SUM of spools completed
    * across the whole line reaches its cycle length, then lands on a random currently-running
    * machine (applied once that machine's current spool finishes, never interrupting it mid-run). */
@@ -270,7 +272,17 @@ export class SimulationEngine {
         duration: Math.max(0, config.operator.meetingTime),
         done: config.operator.meetingTime <= 0,
       },
+      ...(config.operator.extraBreaks ?? []).map((extra, index) => ({
+        key: `other-${extra.id}`,
+        label: `Other${index + 1}`,
+        startAt: Math.max(0, extra.startAt || 0),
+        duration: Math.max(0, extra.time || 0),
+        done: !(extra.time > 0),
+      })),
     ].sort((a, b) => a.startAt - b.startAt);
+    this.breakKindByLabel = new Map(
+      this.breaks.map((b) => [b.label, b.key === 'lunch' ? 'lunch' : b.key === 'meeting' ? 'meeting' : 'otherBreak'] as const),
+    );
 
     this.metrics = {
       clockMin: 0,
@@ -280,6 +292,7 @@ export class SimulationEngine {
         config.operator.shiftTime,
         config.operator.lunchTime,
         config.operator.meetingTime,
+        extraBreakMinutes(config.operator.extraBreaks),
       ),
       breakElapsedMin: 0,
       walkingMin: 0,
@@ -800,7 +813,12 @@ export class SimulationEngine {
         const step = Math.min(remaining, this.operator.breakRemainingMin);
         this.operator.breakRemainingMin -= step;
         this.metrics.breakElapsedMin += step;
-        this.recordOperatorTime(clockCursor, step, dueBreakKind(this.operator.breakLabel), this.operator.breakLabel ?? 'Break');
+        this.recordOperatorTime(
+          clockCursor,
+          step,
+          this.breakKindByLabel.get(this.operator.breakLabel ?? '') ?? dueBreakKind(this.operator.breakLabel),
+          this.operator.breakLabel ?? 'Break',
+        );
         remaining -= step;
         clockCursor += step;
         if (this.operator.breakRemainingMin <= 1e-9) {

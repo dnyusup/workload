@@ -29,6 +29,14 @@ export interface MachineSpecDerived {
 
 export type TaskPriorityMode = 'nearest' | 'quickest';
 
+/** An extra operator break added in the setup ("Other1", "Other2", …) — like Lunch/Meeting:
+ * the operator stops working for `time` minutes starting at minute `startAt` of the shift. */
+export interface ExtraBreak {
+  id: string;
+  time: number;
+  startAt: number;
+}
+
 export interface OperatorConfig {
   machHandled: number;
   shiftTime: number;
@@ -37,6 +45,8 @@ export interface OperatorConfig {
   meetingTime: number;
   meetingStartAt: number;
   taskPriority: TaskPriorityMode;
+  /** Optional so configs saved before this existed still load. */
+  extraBreaks?: ExtraBreak[];
 }
 
 export type ActivityKey = string;
@@ -254,7 +264,7 @@ export interface OperatorRuntimeState {
   timeline: OperatorTimelineSegment[];
 }
 
-export type OperatorTimelineKind = ActivityKey | 'walking' | 'lunch' | 'meeting' | 'idle';
+export type OperatorTimelineKind = ActivityKey | 'walking' | 'lunch' | 'meeting' | 'otherBreak' | 'idle';
 
 export interface OperatorTimelineSegment {
   startMin: number;
