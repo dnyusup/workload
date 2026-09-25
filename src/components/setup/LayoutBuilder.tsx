@@ -136,6 +136,23 @@ function selectionPanelPlacement(anchor: Point, size: { width: number; height: n
   return style;
 }
 
+/** Small pill next to the pointer showing how many machines the select box currently covers;
+ * flips to the pointer's other side near the canvas's right/bottom edge so it stays visible. */
+function SelectCountBadge({ anchor, viewSize, text }: { anchor: Point; viewSize: { width: number; height: number }; text: string }) {
+  const width = Math.max(64, text.length * 7 + 16);
+  const height = 22;
+  const x = anchor.x + 14 + width > viewSize.width ? anchor.x - 14 - width : anchor.x + 14;
+  const y = anchor.y + 14 + height > viewSize.height ? anchor.y - 14 - height : anchor.y + 14;
+  return (
+    <g transform={`translate(${x}, ${y})`} className="layout-select-count" pointerEvents="none">
+      <rect width={width} height={height} rx={11} />
+      <text x={width / 2} y={15} textAnchor="middle">
+        {text}
+      </text>
+    </g>
+  );
+}
+
 export function LayoutBuilder({
   layout,
   machHandled,
@@ -581,6 +598,27 @@ export function LayoutBuilder({
     }
   };
 
+  /** Machines inside a box drawn from `startVb` to `currentVb` (viewBox coordinates), expanded to
+   * their whole group when group selection is on. Used both for the live count while dragging
+   * and for the final selection on pointer-up, so the two always agree. */
+  const machinesInSelectBox = (startVb: Point, currentVb: Point): Set<string> => {
+    const minWorld = { x: (Math.min(startVb.x, currentVb.x) - pan.x) / zoom, y: (Math.min(startVb.y, currentVb.y) - pan.y) / zoom };
+    const maxWorld = { x: (Math.max(startVb.x, currentVb.x) - pan.x) / zoom, y: (Math.max(startVb.y, currentVb.y) - pan.y) / zoom };
+    const hits = layout.filter(
+      (m) => m.x < maxWorld.x && m.x + machineWidthPx(m, pixelsPerMeter) > minWorld.x && m.y < maxWorld.y && m.y + machineHeightPx(m, pixelsPerMeter) > minWorld.y,
+    );
+    const hitSet = new Set(hits.map((m) => m.id));
+    if (selectMachineGroups) {
+      const hitGroupIds = new Set(hits.map((m) => m.groupId).filter((id): id is string => !!id));
+      if (hitGroupIds.size > 0) {
+        layout.forEach((machine) => {
+          if (machine.groupId && hitGroupIds.has(machine.groupId)) hitSet.add(machine.id);
+        });
+      }
+    }
+    return hitSet;
+  };
+
   const handlePointerUp = (e: React.PointerEvent<SVGSVGElement>) => {
     const wrapperRect = wrapperRef.current?.getBoundingClientRect();
     if (wrapperRect) setSelectionAnchor({ x: e.clientX - wrapperRect.left, y: e.clientY - wrapperRect.top });
@@ -598,24 +636,8 @@ export function LayoutBuilder({
         setDrag(null);
         return;
       }
-      const minVb = { x: Math.min(startVb.x, currentVb.x), y: Math.min(startVb.y, currentVb.y) };
-      const maxVb = { x: Math.max(startVb.x, currentVb.x), y: Math.max(startVb.y, currentVb.y) };
-      const minWorld = { x: (minVb.x - pan.x) / zoom, y: (minVb.y - pan.y) / zoom };
-      const maxWorld = { x: (maxVb.x - pan.x) / zoom, y: (maxVb.y - pan.y) / zoom };
-      const hits = layout
-        .filter((m) => m.x < maxWorld.x && m.x + machineWidthPx(m, pixelsPerMeter) > minWorld.x && m.y < maxWorld.y && m.y + machineHeightPx(m, pixelsPerMeter) > minWorld.y)
-        .map((m) => m.id);
-      if (hits.length > 0) {
-        const hitSet = new Set(hits);
-        layout.forEach((machine) => {
-          if (
-            selectMachineGroups &&
-            machine.groupId &&
-            hits.some((id) => layout.find((candidate) => candidate.id === id)?.groupId === machine.groupId)
-          ) {
-            hitSet.add(machine.id);
-          }
-        });
+      const hitSet = machinesInSelectBox(startVb, currentVb);
+      if (hitSet.size > 0) {
         setSelectedIds((prev) => (drag.rightClick ? hitSet : new Set([...prev, ...hitSet])));
       }
     }
@@ -748,6 +770,17 @@ export function LayoutBuilder({
     if (!onAssignedChange || selectedIds.size === 0) return;
     onAssignedChange((assignedMachineIds ?? []).filter((id) => !selectedIds.has(id)));
   };
+
+  // Live "how many machines" readout while box-selecting (right-click drag or Shift+drag). A
+  // right-click box replaces the selection; a Shift box adds to it, so show the running total.
+  const selectBoxCount = (() => {
+    if (drag?.mode !== 'select') return null;
+    if (Math.hypot(drag.currentVb.x - drag.startVb.x, drag.currentVb.y - drag.startVb.y) < DRAG_THRESHOLD) return null;
+    const hits = machinesInSelectBox(drag.startVb, drag.currentVb);
+    if (drag.rightClick) return `${hits.size} machine${hits.size === 1 ? '' : 's'}`;
+    const total = new Set([...selectedIds, ...hits]).size;
+    return `+${hits.size} → ${total} selected`;
+  })();
 
   const soleSelected = selectedIds.size === 1 ? layout.find((m) => selectedIds.has(m.id)) : undefined;
 
@@ -1411,6 +1444,9 @@ export function LayoutBuilder({
               height={Math.abs(drag.currentVb.y - drag.startVb.y)}
               className="layout-select-box"
             />
+          )}
+          {selectBoxCount && drag?.mode === 'select' && (
+            <SelectCountBadge anchor={drag.currentVb} viewSize={viewSize} text={selectBoxCount} />
           )}
         </svg>
       </div>

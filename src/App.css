@@ -3395,3 +3395,16 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+
+.layout-select-count rect {
+  fill: #0f172a;
+  stroke: #38bdf8;
+  stroke-width: 1.5;
+}
+
+.layout-select-count text {
+  fill: #e2e8f0;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
