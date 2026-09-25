@@ -3409,6 +3409,59 @@
   font-variant-numeric: tabular-nums;
 }
 
+.layout-select-count text.layout-select-count-detail {
+  fill: #cbd5e1;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+/* ---- Assign Selection: realtime man occupation of the selected machines ---- */
+.selection-occupation {
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border, rgba(148, 163, 184, 0.35));
+  border-radius: 8px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.selection-occupation-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+  opacity: 0.8;
+}
+
+.selection-occupation-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 10px;
+  align-items: baseline;
+  padding: 1px 0;
+}
+
+.selection-occupation-row.is-total {
+  font-weight: 700;
+  font-size: 13px;
+  padding-bottom: 4px;
+  margin-bottom: 3px;
+  border-bottom: 1px solid var(--border, rgba(148, 163, 184, 0.35));
+}
+
+.selection-occupation-row.is-activity {
+  padding-left: 10px;
+}
+
+.selection-occupation-ideal {
+  opacity: 0.7;
+  font-weight: 400;
+}
+
+.selection-occupation-row .planned-utilization-status {
+  padding: 0 6px;
+}
+
 /* ---- Timeline zoom (Operator / Machine timelines) ---- */
 .timeline-list-toolbar {
   display: flex;

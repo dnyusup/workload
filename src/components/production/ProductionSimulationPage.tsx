@@ -20,7 +20,12 @@ import { Mpp_wl_productsesService } from '../../generated/services/Mpp_wl_produc
 import { fetchAllPages } from '../../lib/dataversePaging';
 import type { Mpp_wl_productses } from '../../generated/models/Mpp_wl_productsesModel';
 import { resolveConstructions, type ResolvedConstruction } from '../../lib/productionConstructionResolver';
-import { calculatePlannedUtilization, type PlannedUtilization } from '../../lib/productionUtilization';
+import {
+  calculatePlannedUtilization,
+  calculateSelectionOccupation,
+  type PlannedUtilization,
+  type SelectionOccupation,
+} from '../../lib/productionUtilization';
 import { buildDistinctColorMap, buildSetupConstructionColorMap } from '../../lib/constructionColors';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
@@ -355,9 +360,10 @@ export function ProductionSimulationPage() {
   const [resolving, setResolving] = useState(false);
   const [plannedResolution, setPlannedResolution] = useState<{
     utilization: PlannedUtilization | null;
+    resolved: Map<string, ResolvedConstruction> | null;
     errors: string[];
     loading: boolean;
-  }>({ utilization: null, errors: [], loading: false });
+  }>({ utilization: null, resolved: null, errors: [], loading: false });
 
   useEffect(() => {
     if (!selectedSetup || loadingProducts) return;
@@ -374,6 +380,7 @@ export function ProductionSimulationPage() {
         if (!cancelled) {
           setPlannedResolution({
             utilization: calculatePlannedUtilization(selectedSetup, resolved),
+            resolved,
             errors,
             loading: false,
           });
@@ -383,6 +390,7 @@ export function ProductionSimulationPage() {
         if (!cancelled) {
           setPlannedResolution({
             utilization: null,
+            resolved: null,
             errors: [err instanceof Error ? err.message : 'Failed to resolve Construction Details for planned utilization.'],
             loading: false,
           });
@@ -567,6 +575,7 @@ export function ProductionSimulationPage() {
             plannedUtilization={plannedResolution.utilization}
             plannedUtilizationErrors={plannedResolution.errors}
             plannedUtilizationLoading={plannedResolution.loading}
+            resolvedConstructions={plannedResolution.resolved}
           />
         ) : (
           <Card title="No Setup Selected">
@@ -590,6 +599,7 @@ function ProductionSetupEditor({
   plannedUtilization,
   plannedUtilizationErrors,
   plannedUtilizationLoading,
+  resolvedConstructions,
 }: {
   setup: ProductionSetup;
   products: Mpp_wl_productses[];
@@ -602,6 +612,7 @@ function ProductionSetupEditor({
   plannedUtilization: PlannedUtilization | null;
   plannedUtilizationErrors: string[];
   plannedUtilizationLoading: boolean;
+  resolvedConstructions: Map<string, ResolvedConstruction> | null;
 }) {
   const [selectedMachineIds, setSelectedMachineIds] = useState<string[]>([]);
   const [newOperatorName, setNewOperatorName] = useState('');
@@ -1145,6 +1156,62 @@ function ProductionSetupEditor({
 
   const canRun = setup.operators.length > 0 && setup.assignments.some((a) => a.constructionDetailId);
 
+  const occupationFor = (machineIds: string[]): SelectionOccupation | null =>
+    resolvedConstructions && machineIds.length > 0
+      ? calculateSelectionOccupation(setup, resolvedConstructions, machineIds)
+      : null;
+  const selectionOccupation = useMemo(
+    () => occupationFor(selectedMachineIds),
+    // occupationFor only reads these values.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [setup, resolvedConstructions, selectedMachineIds],
+  );
+  const formatOccupation = (row: SelectionOccupation['allTask']) =>
+    `${row.forecastUtilizationPercent.toFixed(2)}% (ideal ${row.utilizationPercent.toFixed(2)}%)`;
+  const selectBoxDetails = (machineIds: string[]): string[] => {
+    const occupation = occupationFor(machineIds);
+    if (!occupation) return plannedUtilizationLoading ? ['Man occupation: loading…'] : [];
+    if (occupation.plannedMachineCount === 0) return ['No Construction assigned yet'];
+    return [
+      `All Task: ${formatOccupation(occupation.allTask)}`,
+      ...occupation.activities
+        .filter((row) => row.plannedMinutes > 0)
+        .map((row) => `· ${row.label}: ${formatOccupation(row)}`),
+    ];
+  };
+  const occupationStatus = (percent: number) =>
+    percent > 100 ? 'overload' : percent > (plannedUtilization?.targetPercent ?? 85) ? 'above-target' : 'under-target';
+  const selectionOccupationPanel = selectionOccupation && (
+    <div className="selection-occupation" aria-live="polite">
+      <div className="selection-occupation-title">
+        <span>Man Occupation (1 operator)</span>
+        <span title={selectionOccupation.constructionLabels.join(', ')}>
+          {selectionOccupation.plannedMachineCount}/{selectionOccupation.machineCount} planned ·{' '}
+          {selectionOccupation.constructionLabels.length} Construction
+        </span>
+      </div>
+      {selectionOccupation.plannedMachineCount === 0 ? (
+        <p className="data-manager-hint">Apply a Construction Detail to see man occupation.</p>
+      ) : (
+        [selectionOccupation.allTask, ...selectionOccupation.activities.filter((row) => row.plannedMinutes > 0)].map(
+          (row) => (
+            <div
+              key={row.key}
+              className={`selection-occupation-row ${row.key === 'all' ? 'is-total' : 'is-activity'}`}
+              title={`${row.plannedMinutes.toFixed(1)} min ideal demand of ${selectionOccupation.availableMinutes.toFixed(1)} min net available`}
+            >
+              <span>{row.label}</span>
+              <span className={`planned-utilization-status planned-utilization-status-${occupationStatus(row.forecastUtilizationPercent)}`}>
+                {row.forecastUtilizationPercent.toFixed(2)}%
+              </span>
+              <span className="selection-occupation-ideal">ideal {row.utilizationPercent.toFixed(2)}%</span>
+            </div>
+          ),
+        )
+      )}
+    </div>
+  );
+
   const constructionDirty = bulkConstructionId !== appliedConstructionId;
   const multiOperatorDirty = bulkMultiOperatorId !== appliedMultiOperatorId;
   const doffingDirty = bulkDoffingOperatorId !== appliedDoffingOperatorId;
@@ -1162,6 +1229,7 @@ function ProductionSetupEditor({
         </Button>
       }
     >
+      {selectionOccupationPanel}
       <div className="production-assign-mode-row">
         <label htmlFor="production-operator-assignment-type">Opr Assign Type</label>
         <select
@@ -1445,6 +1513,7 @@ function ProductionSetupEditor({
         readOnly
         selectMachineGroups={false}
         onSelectionChange={setSelectedMachineIds}
+        selectBoxDetails={selectBoxDetails}
         machineAppearance={machineAppearance}
         toolbarStart={canvasViewSelect}
         selectionPanel={assignSelectionCard}

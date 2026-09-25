@@ -345,3 +345,109 @@ export function calculatePlannedUtilization(
     unresolvedMachineIds,
   };
 }
+
+export interface SelectionOccupationRow {
+  key: 'all' | NonNullable<ReturnType<typeof activityFamily>>;
+  label: string;
+  plannedMinutes: number;
+  forecastUtilizationPercent: number;
+  utilizationPercent: number;
+}
+
+export interface SelectionOccupation {
+  availableMinutes: number;
+  machineCount: number;
+  /** Selected machines with a resolved Construction — the only ones that add demand. */
+  plannedMachineCount: number;
+  constructionLabels: string[];
+  allTask: SelectionOccupationRow;
+  activities: SelectionOccupationRow[];
+}
+
+const SELECTION_FAMILIES: { key: NonNullable<ReturnType<typeof activityFamily>>; label: string; field: keyof ProductionSetup['assignments'][number] }[] = [
+  { key: 'doffing', label: 'Doffing', field: 'doffingOperatorId' },
+  { key: 'loading', label: 'Loading', field: 'loadingOperatorId' },
+  { key: 'fractureRepairing', label: 'Fracture Repairing', field: 'fractureRepairingOperatorId' },
+  { key: 'diesChange', label: 'Dies Change', field: 'diesChangeOperatorId' },
+  { key: 'defectRepairing', label: 'Defect Repairing', field: 'defectRepairingOperatorId' },
+];
+
+/** Man occupation of one hypothetical operator handling the selected machines — "All Task" does
+ * every activity, each activity row handles only that family. Runs calculatePlannedUtilization on
+ * a setup restricted to the selection, so each machine uses its own Construction. Construction-wide
+ * events (fracture/dies/defect) are distributed by spool share, which is linear, so restricting the
+ * layout yields exactly the selected machines' share. */
+export function calculateSelectionOccupation(
+  setup: ProductionSetup,
+  resolved: Map<string, ResolvedConstruction>,
+  machineIds: string[],
+): SelectionOccupation {
+  const selected = new Set(machineIds);
+  const layout = setup.layout.filter((machine) => selected.has(machine.id));
+  const ALL = '__selection_all__';
+  const familyOperatorId = (key: string) => `__selection_${key}__`;
+  const assignments = setup.assignments
+    .filter((assignment) => selected.has(assignment.machineId))
+    .map((assignment) => ({
+      machineId: assignment.machineId,
+      constructionDetailId: assignment.constructionDetailId,
+      constructionDetailLabel: assignment.constructionDetailLabel,
+    }));
+  const scopedSetup: ProductionSetup = {
+    ...setup,
+    layout,
+    // Keep the real start point so walking is measured from where operators actually begin.
+    operatorStart: setup.operatorStart ?? (setup.layout[0] ? { x: setup.layout[0].x, y: setup.layout[0].y } : undefined),
+  };
+
+  const allTaskResult = calculatePlannedUtilization(
+    {
+      ...scopedSetup,
+      operators: [{ id: ALL, label: 'All Task' }],
+      assignments: assignments.map((assignment) => ({
+        ...assignment,
+        doffingOperatorId: ALL,
+        loadingOperatorId: ALL,
+        fractureRepairingOperatorId: ALL,
+        diesChangeOperatorId: ALL,
+        defectRepairingOperatorId: ALL,
+      })),
+    },
+    resolved,
+  );
+  const splitResult = calculatePlannedUtilization(
+    {
+      ...scopedSetup,
+      operators: SELECTION_FAMILIES.map((family) => ({ id: familyOperatorId(family.key), label: family.label })),
+      assignments: assignments.map((assignment) => ({
+        ...assignment,
+        ...Object.fromEntries(SELECTION_FAMILIES.map((family) => [family.field, familyOperatorId(family.key)])),
+      })),
+    },
+    resolved,
+  );
+
+  const toRow = (
+    key: SelectionOccupationRow['key'],
+    label: string,
+    operator: PlannedOperatorUtilization | undefined,
+  ): SelectionOccupationRow => ({
+    key,
+    label,
+    plannedMinutes: operator?.plannedMinutes ?? 0,
+    forecastUtilizationPercent: operator?.forecastUtilizationPercent ?? 0,
+    utilizationPercent: operator?.utilizationPercent ?? 0,
+  });
+  const splitById = new Map(splitResult.operators.map((operator) => [operator.operatorId, operator]));
+
+  return {
+    availableMinutes: allTaskResult.availableMinutes,
+    machineCount: layout.length,
+    plannedMachineCount: allTaskResult.machines.length,
+    constructionLabels: [...new Set(allTaskResult.machines.map((machine) => machine.constructionLabel))],
+    allTask: toRow('all', 'All Task', allTaskResult.operators[0]),
+    activities: SELECTION_FAMILIES.map((family) =>
+      toRow(family.key, family.label, splitById.get(familyOperatorId(family.key))),
+    ),
+  };
+}

@@ -136,11 +136,25 @@ function selectionPanelPlacement(anchor: Point, size: { width: number; height: n
   return style;
 }
 
-/** Small pill next to the pointer showing how many machines the select box currently covers;
- * flips to the pointer's other side near the canvas's right/bottom edge so it stays visible. */
-function SelectCountBadge({ anchor, viewSize, text }: { anchor: Point; viewSize: { width: number; height: number }; text: string }) {
-  const width = Math.max(64, text.length * 7 + 16);
-  const height = 22;
+const SELECT_BADGE_LINE_HEIGHT = 16;
+
+/** Small pill next to the pointer showing how many machines the select box currently covers (plus
+ * optional detail lines below it); flips to the pointer's other side near the canvas's right/bottom
+ * edge so it stays visible. */
+function SelectCountBadge({
+  anchor,
+  viewSize,
+  text,
+  details = [],
+}: {
+  anchor: Point;
+  viewSize: { width: number; height: number };
+  text: string;
+  details?: string[];
+}) {
+  const longest = Math.max(text.length, ...details.map((line) => line.length));
+  const width = Math.max(64, longest * 7 + 16);
+  const height = details.length === 0 ? 22 : 22 + details.length * SELECT_BADGE_LINE_HEIGHT + 4;
   const x = anchor.x + 14 + width > viewSize.width ? anchor.x - 14 - width : anchor.x + 14;
   const y = anchor.y + 14 + height > viewSize.height ? anchor.y - 14 - height : anchor.y + 14;
   return (
@@ -149,6 +163,11 @@ function SelectCountBadge({ anchor, viewSize, text }: { anchor: Point; viewSize:
       <text x={width / 2} y={15} textAnchor="middle">
         {text}
       </text>
+      {details.map((line, index) => (
+        <text key={index} className="layout-select-count-detail" x={10} y={15 + (index + 1) * SELECT_BADGE_LINE_HEIGHT}>
+          {line}
+        </text>
+      ))}
     </g>
   );
 }
@@ -162,6 +181,7 @@ export function LayoutBuilder({
   readOnly = false,
   selectMachineGroups = true,
   onSelectionChange,
+  selectBoxDetails,
   machineAppearance,
   sidePanel,
   selectionPanel,
@@ -193,6 +213,9 @@ export function LayoutBuilder({
   /** Notified whenever the selection changes — lets a parent drive a "bulk action on selection"
    * panel without owning the selection state itself. */
   onSelectionChange?: (ids: string[]) => void;
+  /** Extra lines under the live machine count while box-selecting, computed from the machines the
+   * selection would hold on release (e.g. Production Setup's realtime man occupation). */
+  selectBoxDetails?: (machineIds: string[]) => string[];
   /** Optional per-machine visual overlay — used by Production Simulation to show planning status
    * (unplanned/planned/fully assigned), a unique border color per Construction, and a hover
    * tooltip with Construction + assigned operators. Omit for plain layout editing, where machines
@@ -773,13 +796,14 @@ export function LayoutBuilder({
 
   // Live "how many machines" readout while box-selecting (right-click drag or Shift+drag). A
   // right-click box replaces the selection; a Shift box adds to it, so show the running total.
-  const selectBoxCount = (() => {
+  const selectBoxReadout = (() => {
     if (drag?.mode !== 'select') return null;
     if (Math.hypot(drag.currentVb.x - drag.startVb.x, drag.currentVb.y - drag.startVb.y) < DRAG_THRESHOLD) return null;
     const hits = machinesInSelectBox(drag.startVb, drag.currentVb);
-    if (drag.rightClick) return `${hits.size} machine${hits.size === 1 ? '' : 's'}`;
-    const total = new Set([...selectedIds, ...hits]).size;
-    return `+${hits.size} → ${total} selected`;
+    const resulting = drag.rightClick ? hits : new Set([...selectedIds, ...hits]);
+    const details = selectBoxDetails && resulting.size > 0 ? selectBoxDetails(Array.from(resulting)) : [];
+    if (drag.rightClick) return { text: `${hits.size} machine${hits.size === 1 ? '' : 's'}`, details };
+    return { text: `+${hits.size} → ${resulting.size} selected`, details };
   })();
 
   const soleSelected = selectedIds.size === 1 ? layout.find((m) => selectedIds.has(m.id)) : undefined;
@@ -1445,8 +1469,13 @@ export function LayoutBuilder({
               className="layout-select-box"
             />
           )}
-          {selectBoxCount && drag?.mode === 'select' && (
-            <SelectCountBadge anchor={drag.currentVb} viewSize={viewSize} text={selectBoxCount} />
+          {selectBoxReadout && drag?.mode === 'select' && (
+            <SelectCountBadge
+              anchor={drag.currentVb}
+              viewSize={viewSize}
+              text={selectBoxReadout.text}
+              details={selectBoxReadout.details}
+            />
           )}
         </svg>
       </div>
