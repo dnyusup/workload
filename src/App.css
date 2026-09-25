@@ -1879,7 +1879,7 @@
 
 .simulation-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
+  grid-template-columns: minmax(0, 1fr) var(--dashboard-width, 340px);
   gap: 16px;
   /* Left column's natural (unconstrained) height sets the shared row height; the dashboard
    * stretches to match it and scrolls independently within that height instead of the two
@@ -3678,4 +3678,111 @@
 
 .timeline-zoom-caption {
   margin-right: 2px;
+}
+
+/* Production Run Output cards: label | value, and for per-ton rows label | ÷Ton | ÷Ton FP. */
+.output-metrics {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  column-gap: 14px;
+  row-gap: 8px;
+  font-size: 0.85rem;
+}
+
+.output-metrics-row {
+  display: contents;
+}
+
+.output-metrics-row > span:first-child {
+  color: #cbd5e1;
+  min-width: 0;
+}
+
+.output-metrics-row > strong {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.output-metrics-span {
+  grid-column: 2 / 4;
+}
+
+.output-metrics-row.is-sub > span:first-child {
+  padding-left: 14px;
+  color: #94a3b8;
+}
+
+.output-metrics-row.is-sub > strong {
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.output-metrics-head > span {
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid #1e293b;
+  color: #64748b;
+  font-size: 0.72rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.output-metrics-fp {
+  color: #38bdf8;
+}
+
+/* Grip on the dashboard column's left edge (Production Run) for dragging its width. */
+.dashboard-resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -12px;
+  width: 10px;
+  z-index: 2;
+  cursor: ew-resize;
+  touch-action: none;
+  border-radius: 4px;
+}
+
+.dashboard-resize-handle:hover,
+.dashboard-resize-handle.active {
+  background: linear-gradient(to right, transparent 3px, rgba(56, 189, 248, 0.55) 3px, rgba(56, 189, 248, 0.55) 6px, transparent 6px);
+}
+
+@media (max-width: 900px) {
+  .dashboard-resize-handle {
+    display: none;
+  }
+}
+
+/* %Reject field — sits right above the OEE card (which is flex-ordered first in the dashboard). */
+.dashboard-reject-card {
+  order: -3;
+}
+
+.dashboard-reject-card .card-body {
+  padding: 0;
+}
+
+.reject-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.85rem;
+  color: #e2e8f0;
+}
+
+.reject-field > span:first-child {
+  font-weight: 600;
+}
+
+.reject-field .input {
+  width: 90px;
+}
+
+.reject-field-hint {
+  margin-left: auto;
+  color: #94a3b8;
+  font-size: 0.75rem;
 }

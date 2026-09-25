@@ -9,6 +9,8 @@ import { fetchAllPages } from './dataversePaging';
 export interface ResolvedConstruction {
   productId: string;
   label: string;
+  /** WL_Products SpoolType (e.g. BS40) — decides Finish Product vs Semi Finish Product tonnage. */
+  spoolType: string;
   spec: MachineSpecInput;
   activities: ActivityConfig[];
   runtimePerSpool: number;
@@ -80,6 +82,9 @@ export async function resolveConstructions(
     resolved.set(productId, {
       productId,
       label: product.mpp_constructiondetailcode ?? productId,
+      // SpoolType column first; else the Construction code's last segment
+      // (Mach-Product-LayLength-TensileGroup-SpoolType).
+      spoolType: (product.mpp_spooltype?.trim() || product.mpp_constructioncode?.split('-').pop()?.trim() || ''),
       spec,
       activities,
       runtimePerSpool: derived.runtimePerSpool > 0 ? derived.runtimePerSpool : 1,

@@ -326,6 +326,7 @@ export class ProductionSimulationEngine {
       plannedDies: [...this.fractureByConstruction.values()].reduce((sum, state) => sum + state.plannedDies, 0),
       downtimeByReason: { waiting: 0, ...Object.fromEntries([...allActivityKeys].map((k) => [k, 0])) },
       tonageKg: 0,
+      tonageKgByConstruction: {},
       producedMachineMin: 0,
       perOperator: this.operators.map((op) => ({ id: op.id, label: op.label, walkingMin: 0, servicingMin: 0, idleMin: 0 })),
     };
@@ -850,6 +851,10 @@ export class ProductionSimulationEngine {
         if (t.activity === 'diesChange') this.metrics.diesChanged += t.quantity ?? 0;
         if (t.activity === 'doffing') {
           this.metrics.tonageKg += machine.spoolWeight;
+          if (machine.constructionId) {
+            this.metrics.tonageKgByConstruction[machine.constructionId] =
+              (this.metrics.tonageKgByConstruction[machine.constructionId] ?? 0) + machine.spoolWeight;
+          }
           this.metrics.producedMachineMin += machine.runtimePerSpool;
         }
         if (this.isEffectiveStopTask(machine, index, tasks)) {
@@ -1067,6 +1072,7 @@ export class ProductionSimulationEngine {
         ...this.metrics,
         completedByActivity: { ...this.metrics.completedByActivity },
         downtimeByReason: { ...this.metrics.downtimeByReason },
+        tonageKgByConstruction: { ...this.metrics.tonageKgByConstruction },
         perOperator: this.metrics.perOperator.map((p) => ({ ...p })),
       },
       log: [...this.log],

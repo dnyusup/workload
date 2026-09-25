@@ -369,6 +369,8 @@ export interface ProductionSimMetrics {
    * runtime-per-spool (which can differ per Construction) — unlike the single-operator Simulator's
    * Output card, which only ever has one shared spec to multiply against. */
   tonageKg: number;
+  /** Same as tonageKg, split by Construction id (lets the UI separate FP from SFP tonnage). */
+  tonageKgByConstruction: Record<string, number>;
   producedMachineMin: number;
   /** Per-operator summary, for a compact utilization table without re-deriving from timelines. */
   perOperator: {

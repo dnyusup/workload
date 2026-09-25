@@ -17,6 +17,8 @@ import {
   summarizeOperatorTimelineGroups,
 } from '../simulation/timelineDisplay';
 import { buildSetupConstructionColorMap } from '../../lib/constructionColors';
+import { isFinishProductSpoolType } from '../../lib/productType';
+import { estimateProductionEvents } from '../../lib/productionEstimate';
 import { buildCanvasLegendData, type LegendHover } from '../../lib/canvasLegend';
 import { CanvasLegendPanel } from './CanvasLegendPanel';
 import { useFillToWindowBottom } from '../../hooks/useFillToWindowBottom';
@@ -51,7 +53,10 @@ function fmt(v: number) {
   return Math.round(v * 10) / 10;
 }
 
-function calculateRunningOutput(machines: ProductionSimulationState['machines']) {
+function calculateRunningOutput(
+  machines: ProductionSimulationState['machines'],
+  isFinishProductMachine: (machine: ProductionSimulationState['machines'][number]) => boolean,
+) {
   return machines.reduce(
     (summary, machine) => {
       const runningMinutes = machine.timeline.reduce((total, segment) => {
@@ -60,13 +65,15 @@ function calculateRunningOutput(machines: ProductionSimulationState['machines'])
       }, 0);
       const runtimePerSpool = machine.runtimePerSpool > 0 ? machine.runtimePerSpool : 0;
       const spools = runtimePerSpool > 0 ? runningMinutes / runtimePerSpool : 0;
+      const machineTonageKg = spools * Math.max(0, machine.spoolWeight);
       return {
         runningMinutes: summary.runningMinutes + runningMinutes,
         spools: summary.spools + spools,
-        tonageKg: summary.tonageKg + spools * Math.max(0, machine.spoolWeight),
+        tonageKg: summary.tonageKg + machineTonageKg,
+        fpTonageKg: summary.fpTonageKg + (isFinishProductMachine(machine) ? machineTonageKg : 0),
       };
     },
-    { runningMinutes: 0, spools: 0, tonageKg: 0 },
+    { runningMinutes: 0, spools: 0, tonageKg: 0, fpTonageKg: 0 },
   );
 }
 
@@ -162,6 +169,10 @@ export function ProductionRunView({
   const isAdmin = user.role === 'admin';
   const { machines, operators, metrics } = state;
   const [targetUtilization, setTargetUtilization] = useState(85);
+  // Reject % = the OEE Quality loss. Display-only (the engine is unchanged): it scales tonnage down
+  // to GOOD tonnage and multiplies into every OEE figure. Plain state — back to 0 per page visit.
+  const [rejectPercent, setRejectPercent] = useState(0);
+  const quality = 1 - Math.min(100, Math.max(0, rejectPercent)) / 100;
   // Same colors as the machine bodies on the Production Setup canvas (Construction Detail View).
   const constructionColorMap = useMemo(
     () => buildSetupConstructionColorMap(setup.assignments.map((a) => a.constructionDetailId), allProductIds),
@@ -387,6 +398,29 @@ export function ProductionRunView({
 
   // Dashboard reaches the bottom of the window even when the canvas column is shorter.
   const { ref: dashboardOuterRef, minHeight: dashboardMinHeight } = useFillToWindowBottom<HTMLDivElement>();
+  // Dashboard column width, draggable from its left edge. Plain component state, so it's back to
+  // the default every time this page is opened.
+  const [dashboardWidth, setDashboardWidth] = useState(DEFAULT_DASHBOARD_WIDTH);
+  const dashboardResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const [resizingDashboard, setResizingDashboard] = useState(false);
+  const startDashboardResize = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dashboardResizeRef.current = { startX: e.clientX, startWidth: dashboardWidth };
+    setResizingDashboard(true);
+  };
+  const moveDashboardResize = (e: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dashboardResizeRef.current;
+    if (!drag) return;
+    // Dragging the left edge leftwards widens the panel.
+    const maxWidth = Math.max(MIN_DASHBOARD_WIDTH, window.innerWidth * MAX_DASHBOARD_WIDTH_RATIO);
+    setDashboardWidth(Math.min(maxWidth, Math.max(MIN_DASHBOARD_WIDTH, drag.startWidth - (e.clientX - drag.startX))));
+  };
+  const endDashboardResize = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.currentTarget.releasePointerCapture(e.pointerId);
+    dashboardResizeRef.current = null;
+    setResizingDashboard(false);
+  };
   const highlightedMachineIds = useMemo(() => legendData.highlightFor(legendHover), [legendData, legendHover]);
 
   // Sub-activity keys are unique per WL_Activities row (loading-sub-<guid>) so they don't collide
@@ -416,6 +450,17 @@ export function ProductionRunView({
   }
 
   const completedByLabel = groupByLabel(metrics.completedByActivity).sort((a, b) => b[1] - a[1]);
+  // Theoretical full-shift estimate per activity (same formula as the Workload Simulator), grouped
+  // by label like the completed counts so both line up row for row.
+  const expectedEvents = useMemo(() => estimateProductionEvents(setup, resolved), [setup, resolved]);
+  const expectedByLabel = new Map(groupByLabel(expectedEvents));
+  const completedRows: [string, number][] = [
+    ...completedByLabel,
+    // Activities expected this shift but not done yet still get a row (0 / ~N).
+    ...[...expectedByLabel.entries()]
+      .filter(([label, expected]) => expected > 0 && !completedByLabel.some(([done]) => done === label))
+      .map(([label]): [string, number] => [label, 0]),
+  ];
 
   const downtimeEntries = groupByLabel(metrics.downtimeByReason)
     .map(([label, value], index) => ({ key: label, label, value, color: colorForDowntime(label, index) }))
@@ -446,11 +491,13 @@ export function ProductionRunView({
   // the engine as tonageKg/producedMachineMin), since a Production Setup can mix Constructions —
   // unlike the single-operator Simulator's Output card, which only ever has one shared spec.
   const totalSpools = metrics.completedByActivity.doffing ?? 0;
-  const tonage = metrics.tonageKg / 1000;
+  const grossTonage = metrics.tonageKg / 1000;
+  const tonage = grossTonage * quality;
+  const rejectTonage = grossTonage - tonage;
   const shiftHours = metrics.shiftTimeMin / 60;
   const manHourPerTon = tonage > 0 ? (displayedOperators.length * shiftHours) / tonage : 0;
   const scheduledMachineMin = metrics.assignedMachineCount * metrics.shiftTimeMin;
-  const outputOee = scheduledMachineMin > 0 ? (metrics.producedMachineMin / scheduledMachineMin) * 100 : 0;
+  const outputOee = scheduledMachineMin > 0 ? (metrics.producedMachineMin / scheduledMachineMin) * 100 * quality : 0;
   const scheduledMachineHours = metrics.assignedMachineCount * shiftHours;
   const machHoursPerTon = tonage > 0 ? scheduledMachineHours / tonage : 0;
   const totalFractureCount = Object.entries(metrics.completedByActivity)
@@ -462,10 +509,26 @@ export function ProductionRunView({
     .filter(([key]) => key === 'defectRepairing' || key.startsWith('defectRepairing-'))
     .reduce((sum, [, count]) => sum + count, 0);
   const actualDefectPerTon = tonage > 0 ? totalDefectRepairingCount / tonage : 0;
-  const runningOutput = calculateRunningOutput(machines);
-  const runningTimeTonage = runningOutput.tonageKg / 1000;
+  // Finish Product (SpoolType BS…) vs Semi Finish Product tonnage, and the per-ton figures again
+  // with FP tonnage as the divisor.
+  const isFinishProductConstruction = (constructionId: string | null | undefined) =>
+    !!constructionId && isFinishProductSpoolType(resolved.get(constructionId)?.spoolType);
+  const tonageFp =
+    (Object.entries(metrics.tonageKgByConstruction ?? {})
+      .filter(([constructionId]) => isFinishProductConstruction(constructionId))
+      .reduce((sum, [, kg]) => sum + kg, 0) /
+      1000) *
+    quality;
+  const tonageSfp = Math.max(0, tonage - tonageFp);
+  const perTonFp = (numerator: number) => (tonageFp > 0 ? numerator / tonageFp : 0);
+  const runningOutput = calculateRunningOutput(machines, (machine) =>
+    isFinishProductConstruction(assignmentByMachineId.get(machine.id)?.constructionDetailId),
+  );
+  const runningTimeGrossTonage = runningOutput.tonageKg / 1000;
+  const runningTimeTonage = runningTimeGrossTonage * quality;
+  const runningTimeRejectTonage = runningTimeGrossTonage - runningTimeTonage;
   const runningTimeOee = scheduledMachineMin > 0
-    ? (runningOutput.runningMinutes / scheduledMachineMin) * 100
+    ? (runningOutput.runningMinutes / scheduledMachineMin) * 100 * quality
     : 0;
   const runningTimeManHourPerTon = runningTimeTonage > 0
     ? (displayedOperators.length * shiftHours) / runningTimeTonage
@@ -476,11 +539,15 @@ export function ProductionRunView({
   const runningTimeFracturePerTon = runningTimeTonage > 0 ? totalFractureCount / runningTimeTonage : 0;
   const runningTimeDiesPerTon = runningTimeTonage > 0 ? metrics.diesChanged / runningTimeTonage : 0;
   const runningTimeDefectPerTon = runningTimeTonage > 0 ? totalDefectRepairingCount / runningTimeTonage : 0;
+  const runningTimeTonageFp = (runningOutput.fpTonageKg / 1000) * quality;
+  const runningTimeTonageSfp = Math.max(0, runningTimeTonage - runningTimeTonageFp);
+  const runningPerTonFp = (numerator: number) => (runningTimeTonageFp > 0 ? numerator / runningTimeTonageFp : 0);
+  const manHours = displayedOperators.length * shiftHours;
 
   const plannedProductionMin = metrics.assignedMachineCount * metrics.clockMin;
   const totalDowntimeMin = Object.values(metrics.downtimeByReason).reduce((a, b) => a + b, 0);
   const availability = plannedProductionMin > 0 ? ((plannedProductionMin - totalDowntimeMin) / plannedProductionMin) * 100 : 100;
-  const oee = Math.max(0, Math.min(100, availability));
+  const oee = Math.max(0, Math.min(100, availability * quality));
 
   const queue = machines.filter((m) => m.status === 'needs-service');
   const operatorsOnBreak = operators.filter((op) => op.phase === 'break');
@@ -660,7 +727,7 @@ export function ProductionRunView({
         </div>
       )}
 
-      <div className="simulation-body">
+      <div className="simulation-body" style={{ '--dashboard-width': `${dashboardWidth}px` } as React.CSSProperties}>
         <div className={`sim-canvas-wrap ${isFullscreen ? 'sim-canvas-fullscreen' : ''}`} ref={panelRef}>
           {isFullscreen && <div className="sim-canvas-fullscreen-controls">{renderProductionControls()}</div>}
           <div className="toolbar sim-canvas-toolbar">
@@ -944,82 +1011,77 @@ export function ProductionRunView({
         </div>
 
         <div className="dashboard-scroll-outer" ref={dashboardOuterRef} style={dashboardMinHeight ? { minHeight: dashboardMinHeight } : undefined}>
+          <div
+            className={`dashboard-resize-handle${resizingDashboard ? ' active' : ''}`}
+            onPointerDown={startDashboardResize}
+            onPointerMove={moveDashboardResize}
+            onPointerUp={endDashboardResize}
+            onPointerCancel={endDashboardResize}
+            title="Drag to resize the panel"
+            aria-hidden="true"
+          />
           <div className="dashboard">
             <Card
               title="Output (Running Time)"
               subtitle="Estimated from total machine running time; spool quantity can be decimal"
             >
-              <div className="metric-row">
-                <span>#Spool (running time)</span>
-                <strong>{fmt(runningOutput.spools)}</strong>
-              </div>
-              <div className="metric-row">
-                <span>Total running time</span>
-                <strong>{fmt(runningOutput.runningMinutes)} min</strong>
-              </div>
-              <div className="metric-row">
-                <span>Tonage</span>
-                <strong>{fmt(runningTimeTonage)} ton</strong>
-              </div>
-              <div className="metric-row">
-                <span>OEE (running time)</span>
-                <strong>{fmt(runningTimeOee)}%</strong>
-              </div>
-              <div className="metric-row">
-                <span>Manhour/ton</span>
-                <strong>{fmt(runningTimeManHourPerTon)}</strong>
-              </div>
-              <div className="metric-row">
-                <span>Machhours/ton</span>
-                <strong>{fmt(runningTimeMachHoursPerTon)}</strong>
-              </div>
-              <div className="metric-row" title="Total Fracture Repairing dibagi tonage dari running time">
-                <span>Fracture/Ton (running time)</span>
-                <strong>{fmt(runningTimeFracturePerTon)}</strong>
-              </div>
-              <div className="metric-row" title="Total Dies Change events dibagi tonage dari running time">
-                <span>Dies/Ton (running time)</span>
-                <strong>{fmt(runningTimeDiesPerTon)}</strong>
-              </div>
-              <div className="metric-row" title="Total Defect Repairing dibagi tonage dari running time">
-                <span>Defect/Ton (running time)</span>
-                <strong>{fmt(runningTimeDefectPerTon)}</strong>
-              </div>
+              <OutputMetricsTable
+                rows={[
+                  { label: '#Spool (running time)', value: fmt(runningOutput.spools) },
+                  { label: 'Total running time', value: `${fmt(runningOutput.runningMinutes)} min` },
+                  { label: rejectPercent > 0 ? 'Tonage (good)' : 'Tonage', value: `${fmt(runningTimeTonage)} ton` },
+                  ...(rejectPercent > 0
+                    ? [{ label: 'Reject', value: `${fmt(runningTimeRejectTonage)} ton (${fmt(rejectPercent)}%)`, sub: true, title: 'Gross running-time tonnage × Reject %' }]
+                    : []),
+                  { label: 'Ton FP', value: `${fmt(runningTimeTonageFp)} ton`, sub: true, title: 'Finish Product — SpoolType starts with BS' },
+                  { label: 'Ton SFP', value: `${fmt(runningTimeTonageSfp)} ton`, sub: true, title: 'Semi Finish Product — every other SpoolType' },
+                  { label: 'OEE (running time)', value: `${fmt(runningTimeOee)}%` },
+                ]}
+                perTonRows={[
+                  { label: 'Manhour/ton', value: fmt(runningTimeManHourPerTon), fpValue: fmt(runningPerTonFp(manHours)) },
+                  { label: 'Machhours/ton', value: fmt(runningTimeMachHoursPerTon), fpValue: fmt(runningPerTonFp(scheduledMachineHours)) },
+                  {
+                    label: 'Fracture/Ton',
+                    value: fmt(runningTimeFracturePerTon),
+                    fpValue: fmt(runningPerTonFp(totalFractureCount)),
+                    title: 'Total Fracture Repairing dibagi tonage dari running time',
+                  },
+                  {
+                    label: 'Dies/Ton',
+                    value: fmt(runningTimeDiesPerTon),
+                    fpValue: fmt(runningPerTonFp(metrics.diesChanged)),
+                    title: 'Total Dies Change dibagi tonage dari running time',
+                  },
+                  {
+                    label: 'Defect/Ton',
+                    value: fmt(runningTimeDefectPerTon),
+                    fpValue: fmt(runningPerTonFp(totalDefectRepairingCount)),
+                    title: 'Total Defect Repairing dibagi tonage dari running time',
+                  },
+                ]}
+              />
             </Card>
 
             <Card title="Output" subtitle="Total finished spools across all machines this shift">
-              <div className="metric-row">
-                <span>#Spool</span>
-                <strong>{totalSpools}</strong>
-              </div>
-              <div className="metric-row">
-                <span>Tonage</span>
-                <strong>{fmt(tonage)} ton</strong>
-              </div>
-              <div className="metric-row">
-                <span>OEE (finished spool)</span>
-                <strong>{fmt(outputOee)}%</strong>
-              </div>
-              <div className="metric-row">
-                <span>Manhour/ton</span>
-                <strong>{fmt(manHourPerTon)}</strong>
-              </div>
-              <div className="metric-row">
-                <span>Machhours/ton</span>
-                <strong>{fmt(machHoursPerTon)}</strong>
-              </div>
-              <div className="metric-row" title="Total Fracture Repairing ÷ Tonage">
-                <span>Fracture/Ton (actual)</span>
-                <strong>{fmt(actualFracturePerTon)}</strong>
-              </div>
-              <div className="metric-row" title="Total Dies Change events ÷ Tonage">
-                <span>Dies/Ton (actual)</span>
-                <strong>{fmt(actualDiesPerTon)}</strong>
-              </div>
-              <div className="metric-row" title="Total Defect Repairing events ÷ Tonage">
-                <span>Defect/Ton (actual)</span>
-                <strong>{fmt(actualDefectPerTon)}</strong>
-              </div>
+              <OutputMetricsTable
+                rows={[
+                  { label: '#Spool', value: String(totalSpools) },
+                  { label: rejectPercent > 0 ? 'Tonage (good)' : 'Tonage', value: `${fmt(tonage)} ton` },
+                  ...(rejectPercent > 0
+                    ? [{ label: 'Reject', value: `${fmt(rejectTonage)} ton (${fmt(rejectPercent)}%)`, sub: true, title: 'Gross tonnage × Reject %' }]
+                    : []),
+                  { label: 'Ton FP', value: `${fmt(tonageFp)} ton`, sub: true, title: 'Finish Product — SpoolType starts with BS' },
+                  { label: 'Ton SFP', value: `${fmt(tonageSfp)} ton`, sub: true, title: 'Semi Finish Product — every other SpoolType' },
+                  { label: 'OEE (finished spool)', value: `${fmt(outputOee)}%` },
+                ]}
+                perTonRows={[
+                  { label: 'Manhour/ton', value: fmt(manHourPerTon), fpValue: fmt(perTonFp(manHours)) },
+                  { label: 'Machhours/ton', value: fmt(machHoursPerTon), fpValue: fmt(perTonFp(scheduledMachineHours)) },
+                  { label: 'Fracture/Ton (actual)', value: fmt(actualFracturePerTon), fpValue: fmt(perTonFp(totalFractureCount)), title: 'Total Fracture Repairing ÷ Tonage' },
+                  { label: 'Dies/Ton (actual)', value: fmt(actualDiesPerTon), fpValue: fmt(perTonFp(metrics.diesChanged)), title: 'Total Dies Change events ÷ Tonage' },
+                  { label: 'Defect/Ton (actual)', value: fmt(actualDefectPerTon), fpValue: fmt(perTonFp(totalDefectRepairingCount)), title: 'Total Defect Repairing events ÷ Tonage' },
+                ]}
+              />
             </Card>
 
             <Card
@@ -1164,17 +1226,44 @@ export function ProductionRunView({
               )}
             </Card>
 
+            <Card className="dashboard-reject-card">
+              <label className="reject-field" title="Share of produced tonnage rejected — the OEE Quality factor (Quality = 100% − Reject%).">
+                <span>%Reject</span>
+                <input
+                  className="input"
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={0.1}
+                  value={rejectPercent}
+                  onChange={(e) => {
+                    const next = parseFloat(e.target.value);
+                    setRejectPercent(Number.isFinite(next) ? Math.min(100, Math.max(0, next)) : 0);
+                  }}
+                />
+                <span className="reject-field-hint">Quality {fmt(quality * 100)}%</span>
+              </label>
+            </Card>
+
             <Card
               title="OEE & Downtime"
               className="dashboard-oee-card"
-              subtitle="Availability across assigned machines (Performance & Quality assumed at 100%)"
+              subtitle="OEE = Availability × Quality (Quality = 100% − %Reject; Performance assumed at 100%)"
             >
               <div className="oee-gauge-row">
                 <div className="oee-gauge">
                   <span className="oee-value">{fmt(oee)}%</span>
-                  <span className="oee-caption">OEE (Availability)</span>
+                  <span className="oee-caption">OEE</span>
                 </div>
                 <div className="metric-col">
+                  <div className="metric-row small">
+                    <span>Availability</span>
+                    <span>{fmt(Math.max(0, Math.min(100, availability)))}%</span>
+                  </div>
+                  <div className="metric-row small">
+                    <span>Quality</span>
+                    <span>{fmt(quality * 100)}%</span>
+                  </div>
                   <div className="metric-row small">
                     <span>Planned production</span>
                     <span>{fmt(plannedProductionMin)} machine-minutes</span>
@@ -1204,12 +1293,15 @@ export function ProductionRunView({
               </div>
             </Card>
 
-            <Card title="Completed Activities">
-              {completedByLabel.length === 0 && <p className="empty-hint">Nothing completed yet.</p>}
-              {completedByLabel.map(([label, value]) => (
+            <Card title="Completed Activities" subtitle="vs theoretical full-shift estimate (same formula as the Workload Simulator)">
+              {completedRows.length === 0 && <p className="empty-hint">Nothing completed yet.</p>}
+              {completedRows.map(([label, value]) => (
                 <div className="metric-row" key={label}>
                   <span>{label}</span>
-                  <strong>{value}</strong>
+                  <strong>
+                    {value}
+                    {expectedByLabel.has(label) && <span className="metric-est"> / ~{expectedByLabel.get(label)}</span>}
+                  </strong>
                 </div>
               ))}
             </Card>
@@ -1357,6 +1449,40 @@ const MachinesLayer = memo(function MachinesLayer({
     </>
   );
 });
+
+type OutputRow = { label: string; value: string | number; sub?: boolean; title?: string };
+type PerTonRow = { label: string; value: string | number; fpValue: string | number; title?: string };
+
+/** Output card body: plain metrics first (Ton FP / Ton SFP indented under Tonage), then the
+ * per-ton metrics in two columns — divided by total tonnage and by Finish Product tonnage. */
+function OutputMetricsTable({ rows, perTonRows }: { rows: OutputRow[]; perTonRows: PerTonRow[] }) {
+  return (
+    <div className="output-metrics">
+      {rows.map((row) => (
+        <div key={row.label} className={`output-metrics-row${row.sub ? ' is-sub' : ''}`}>
+          <span title={row.title}>{row.label}</span>
+          <strong className="output-metrics-span">{row.value}</strong>
+        </div>
+      ))}
+      <div className="output-metrics-row output-metrics-head">
+        <span />
+        <span title="Divided by total tonnage">÷ Ton</span>
+        <span title="Divided by Finish Product tonnage (SpoolType BS…)">÷ Ton FP</span>
+      </div>
+      {perTonRows.map((row) => (
+        <div key={row.label} className="output-metrics-row">
+          <span title={row.title}>{row.label}</span>
+          <strong>{row.value}</strong>
+          <strong className="output-metrics-fp">{row.fpValue}</strong>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const DEFAULT_DASHBOARD_WIDTH = 340;
+const MIN_DASHBOARD_WIDTH = 280;
+const MAX_DASHBOARD_WIDTH_RATIO = 0.6;
 
 const PROGRESS_STEPS = 50;
 /** How often expired routes are cleared — one batched update instead of a timer per walk. */
