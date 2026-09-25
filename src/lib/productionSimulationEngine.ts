@@ -1060,9 +1060,9 @@ export class ProductionSimulationEngine {
         ...m,
         completedByActivity: { ...m.completedByActivity },
         downtimeByReason: { ...m.downtimeByReason },
-        timeline: m.timeline.map((s) => ({ ...s })),
+        timeline: snapshotTimeline(m.timeline),
       })),
-      operators: this.operators.map((op) => ({ ...op, timeline: op.timeline.map((s) => ({ ...s })) })),
+      operators: this.operators.map((op) => ({ ...op, timeline: snapshotTimeline(op.timeline) })),
       metrics: {
         ...this.metrics,
         completedByActivity: { ...this.metrics.completedByActivity },
@@ -1074,6 +1074,17 @@ export class ProductionSimulationEngine {
       warnings: [...this.warnings],
     };
   }
+}
+
+/** Snapshot of a timeline for getState(). Only the LAST segment is ever mutated afterwards (its
+ * endMin grows while the same activity continues — see recordMachineTime/recordOperatorTime);
+ * every earlier segment is final, so it's shared instead of copied. Copying every segment of
+ * every machine on each UI update was O(all segments) and grew all shift long. */
+function snapshotTimeline<T extends object>(timeline: T[]): T[] {
+  if (timeline.length === 0) return [];
+  const copy = timeline.slice();
+  copy[copy.length - 1] = { ...timeline[timeline.length - 1] };
+  return copy;
 }
 
 export function availableProductionTimeMinutes(setup: ProductionSetup): number {

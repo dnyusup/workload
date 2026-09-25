@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { MachineTimelineKind, OperatorTimelineKind, ProductionMachineAssignment, ProductionSetup, ProductionSimulationState } from '../../types';
+import type { ProductionMachineAssignment, ProductionSetup, ProductionSimulationState } from '../../types';
 import type { ResolvedConstruction } from '../../lib/productionConstructionResolver';
 import { useProductionSimulation } from '../../hooks/useProductionSimulation';
 import { useAuth } from '../../context/auth';
@@ -12,9 +12,9 @@ import {
   operatorFacing,
   ordinal,
   timelineKinds,
-  machineTimelineKinds,
   machineTimelineColor,
-  machineTimelineLabel,
+  summarizeMachineTimelineGroups,
+  summarizeOperatorTimelineGroups,
 } from '../simulation/timelineDisplay';
 import { buildSetupConstructionColorMap } from '../../lib/constructionColors';
 import { buildCanvasLegendData, type LegendHover } from '../../lib/canvasLegend';
@@ -247,37 +247,6 @@ export function ProductionRunView({
       prev.column === column ? { column, direction: prev.direction === 'asc' ? 'desc' : 'asc' } : { column, direction: 'desc' },
     );
   };
-
-  // Each operator's whole planned route is captured the moment a walk starts and held on screen
-  // for at least 5 real (wall-clock) seconds, regardless of sim speed — same trick as the
-  // single-operator Simulator (see LayoutCanvas), just tracked per operator id here.
-  const [displayedRoutes, setDisplayedRoutes] = useState<Record<string, Point[]>>({});
-  const routeKeysRef = useRef<Record<string, string>>({});
-  const holdTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-  useEffect(() => {
-    operators.forEach((op) => {
-      const route = op.plannedRoute;
-      if (!route || route.length < 2) return;
-      const key = route.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join('|');
-      if (key === routeKeysRef.current[op.id]) return;
-      routeKeysRef.current[op.id] = key;
-      setDisplayedRoutes((prev) => ({ ...prev, [op.id]: route }));
-      if (holdTimeoutsRef.current[op.id]) clearTimeout(holdTimeoutsRef.current[op.id]);
-      holdTimeoutsRef.current[op.id] = setTimeout(() => {
-        setDisplayedRoutes((prev) => {
-          const next = { ...prev };
-          delete next[op.id];
-          return next;
-        });
-      }, ROUTE_HOLD_MS);
-    });
-  }, [operators]);
-  useEffect(
-    () => () => {
-      Object.values(holdTimeoutsRef.current).forEach((t) => clearTimeout(t));
-    },
-    [],
-  );
 
   const toViewBoxPoint = (clientX: number, clientY: number): Point => {
     const svg = svgRef.current;
@@ -590,57 +559,15 @@ export function ProductionRunView({
     return (a[operatorSort.column] - b[operatorSort.column]) * dir;
   });
 
-  const allOperatorTimelineKinds = useMemo(
-    () => [
-      ...timelineKinds,
-      ...operators
-        .flatMap((op) => op.timeline)
-        .filter((segment) => !timelineKinds.some((item) => item.kind === segment.kind))
-        .reduce<{ kind: OperatorTimelineKind; label: string; color: string }[]>((items, segment) => {
-          if (!items.some((item) => item.kind === segment.kind)) {
-            items.push({ kind: segment.kind, label: segment.label.split(' — ')[0], color: '#c084fc' });
-          }
-          return items;
-        }, []),
-    ],
-    [operators],
-  );
-
   const selectedMachine = machines.find((m) => m.id === selectedMachineId) ?? null;
-  const allMachineTimelineKinds = useMemo(
-    () => [
-      ...machineTimelineKinds,
-      ...machines
-        .flatMap((machine) => machine.timeline)
-        .filter((segment) => !machineTimelineKinds.some((item) => item.kind === segment.kind))
-        .reduce<{ kind: MachineTimelineKind; label: string; color: string }[]>((items, segment) => {
-          if (!items.some((item) => item.kind === segment.kind)) {
-            items.push({ kind: segment.kind, label: machineTimelineLabel(segment.kind, segment.label), color: machineTimelineColor(segment.kind) });
-          }
-          return items;
-        }, []),
-    ],
-    [machines],
-  );
-
-  const machineSummary = useCallback(
-    (timeline: (typeof machines)[number]['timeline']) =>
-      allMachineTimelineKinds.map(({ kind }) => ({
-        kind,
-        minutes: timeline
-          .filter((segment) => segment.kind === kind)
-          .reduce((total, segment) => total + Math.max(0, Math.min(segment.endMin, timelineDuration) - segment.startMin), 0),
-      })),
-    [allMachineTimelineKinds, timelineDuration],
-  );
+  // Timeline summaries (the percentages under each timeline) — grouped by activity NAME so a
+  // sub-activity shared by many Constructions ("Doffing ScanMES", "Loading Partial1", …) is one
+  // row, and computed in a single pass over the segments.
   const totalMachineSummary = useMemo(
-    () =>
-      allMachineTimelineKinds.map(({ kind }) => ({
-        kind,
-        minutes: machines.reduce((total, machine) => total + machineSummary(machine.timeline).find((item) => item.kind === kind)!.minutes, 0),
-      })),
-    [allMachineTimelineKinds, machines, machineSummary],
+    () => summarizeMachineTimelineGroups(machines.map((m) => m.timeline), timelineDuration),
+    [machines, timelineDuration],
   );
+  const operatorTimelineSummary = summarizeOperatorTimelineGroups(displayedOperators.map((op) => op.timeline), timelineDuration);
 
   const selectedOperator = selectedOperatorHighlight ? operators.find((op) => op.id === selectedOperatorHighlight.operatorId) : null;
   const selectedOperatorRange = selectedOperator && selectedOperatorHighlight
@@ -666,6 +593,12 @@ export function ProductionRunView({
   const machineTimelineRows = (machinesForSelectedOperator ? plannedMachines.filter((m) => machinesForSelectedOperator.has(m.id)) : plannedMachines).filter(
     (m) => m.label.toLowerCase().includes(machineTimelineSearch.trim().toLowerCase()),
   );
+
+  const shownMachineSummary = selectedMachine
+    ? summarizeMachineTimelineGroups([selectedMachine.timeline], timelineDuration)
+    : machinesForSelectedOperator
+      ? summarizeMachineTimelineGroups(machineTimelineRows.map((m) => m.timeline), timelineDuration)
+      : totalMachineSummary;
 
   const operatorTimelineList = displayedOperators.filter((op) => op.label.toLowerCase().includes(operatorTimelineSearch.trim().toLowerCase()));
 
@@ -815,18 +748,7 @@ export function ProductionRunView({
                     highlightedMachineIds={highlightedMachineIds}
                   />
 
-                  {operators.map((op, index) => {
-                    const route = displayedRoutes[op.id];
-                    return route ? (
-                      <polyline
-                        key={`route-${op.id}`}
-                        points={route.map((p) => `${p.x},${p.y}`).join(' ')}
-                        className="operator-path"
-                        fill="none"
-                        style={{ stroke: operatorColor(index) }}
-                      />
-                    ) : null;
-                  })}
+                  <OperatorRoutesLayer operators={operators} />
 
                   {operators.map((op, index) => {
                     const isMovingBetween = op.phase === 'walking';
@@ -946,19 +868,12 @@ export function ProductionRunView({
             </>
           )}
           <div className="timeline-summary">
-            {allOperatorTimelineKinds.map(({ kind, label, color }) => {
-              const minutes = displayedOperators.reduce(
-                (total, op) =>
-                  total +
-                  op.timeline
-                    .filter((segment) => segment.kind === kind)
-                    .reduce((t, segment) => t + Math.max(0, Math.min(segment.endMin, timelineDuration) - segment.startMin), 0),
-                0,
-              );
+            {operatorTimelineSummary.groups.map(({ key, label, color }) => {
+              const minutes = operatorTimelineSummary.minutesByKey.get(key) ?? 0;
               const denominator = timelineDuration * (displayedOperators.length || 1);
               const percentage = denominator > 0 ? (minutes / denominator) * 100 : 0;
               return (
-                <div key={kind} className="timeline-summary-item">
+                <div key={key} className="timeline-summary-item">
                   <span className="legend-dot" style={{ background: color }} />
                   <span>{label}</span>
                   <strong>{Math.round(percentage * 10) / 10}%</strong>
@@ -1001,24 +916,17 @@ export function ProductionRunView({
                   machines={machineTimelineRows}
                   selectedMachineId={selectedMachineId}
                   onSelectMachine={onSelectMachine}
-                  allMachineTimelineKinds={allMachineTimelineKinds}
                   shiftTimeMin={metrics.shiftTimeMin}
                   selectedOperatorRange={selectedOperatorRange}
                 />
               </>
             )}
             <div className="timeline-summary machine-summary">
-              {allMachineTimelineKinds.map(({ kind, label, color }) => {
-                const aggregateSummary = machinesForSelectedOperator
-                  ? allMachineTimelineKinds.map(({ kind: k }) => ({
-                      kind: k,
-                      minutes: machineTimelineRows.reduce((total, machine) => total + machineSummary(machine.timeline).find((item) => item.kind === k)!.minutes, 0),
-                    }))
-                  : totalMachineSummary;
-                const minutes = (selectedMachine ? machineSummary(selectedMachine.timeline) : aggregateSummary).find((item) => item.kind === kind)!.minutes;
+              {totalMachineSummary.groups.map(({ key, label, color }) => {
+                const minutes = shownMachineSummary.minutesByKey.get(key) ?? 0;
                 const denominator = selectedMachine ? timelineDuration : timelineDuration * machineTimelineRows.length;
                 return (
-                  <div key={kind} className="timeline-summary-item">
+                  <div key={key} className="timeline-summary-item">
                     <span className="legend-dot" style={{ background: color }} />
                     <span>{label}</span>
                     <strong>{denominator > 0 ? Math.round((minutes / denominator) * 1000) / 10 : 0}%</strong>
@@ -1405,18 +1313,8 @@ const MachinesLayer = memo(function MachinesLayer({
           : 0;
         const servicingOperator = servicingByMachineId.get(m.id);
         const zoneColors = machineZoneColors(m, servicingOperator?.serviceTasks ?? [], servicingOperator?.targetMachineId ?? null);
-        const w = m.widthPx;
-        const h = m.heightPx;
-        const payoffY = m.orientation === 'flipped' ? h * 0.7 : 0;
-        const takeupY = m.orientation === 'flipped' ? 0 : h * 0.7;
-        const takeupProgressY = takeupY + (m.orientation === 'flipped' ? 8 : 20);
-        const payoffTextY = payoffY + h * 0.2;
-        const takeupTextY = takeupY + (m.orientation === 'flipped' ? 20 : 10);
         const assignment = assignmentByMachineId.get(m.id);
         const area = assignment?.constructionDetailId ? areaByConstructionId.get(assignment.constructionDetailId) : undefined;
-        const showSpoolLabels = !HIDDEN_SPOOL_LABEL_AREAS.has(area ?? '');
-        const borderColor = assignment?.constructionDetailId ? constructionColorMap.get(assignment.constructionDetailId) : undefined;
-        const isSelected = selectedMachineId === m.id;
         const tooltip = isDetailed
           ? [
               `Machine ${m.label}`,
@@ -1427,58 +1325,203 @@ const MachinesLayer = memo(function MachinesLayer({
             ].join('\n')
           : undefined;
         return (
-          <g
+          <MachineNode
             key={m.id}
-            transform={`translate(${m.x - w / 2}, ${m.y - h / 2})`}
-            onClick={() => onSelectMachine(m.id)}
-            style={{ cursor: 'pointer' }}
-            className={highlightedMachineIds ? (highlightedMachineIds.has(m.id) ? 'machine-highlighted' : 'machine-dimmed') : undefined}
-          >
-            {tooltip && <title>{tooltip}</title>}
-            <rect
-              width={w}
-              height={h}
-              rx={6}
-              className={`machine-box ${m.status === 'running' ? 'sim-machine-running' : m.status === 'unassigned' ? 'sim-machine-unassigned' : 'sim-machine-stopped'} ${
-                m.type === 'bfx' ? 'machine-bfx-outline' : ''
-              } ${isSelected ? 'production-machine-selected' : ''}`}
-              style={borderColor && !isSelected ? { stroke: borderColor, strokeWidth: 2.5 } : undefined}
-            />
-            {zoneColors.payoff && (
-              <rect x={1} y={payoffY} width={w - 2} height={h * 0.3 - 1} rx={4} fill={zoneColors.payoff} opacity={0.9} />
-            )}
-            {zoneColors.takeup && (
-              <rect x={1} y={takeupY} width={w - 2} height={h * 0.3 - 1} rx={4} fill={zoneColors.takeup} opacity={0.9} />
-            )}
-            {isDetailed && (
-              <>
-                <MachineZoneLabels orientation={m.orientation} pairSide={m.pairSide} width={w} height={h} />
-                {m.status !== 'unassigned' && (
-                  <g transform={`translate(${w / 2}, ${takeupProgressY})`}>
-                    <MachineDonut progress={progress} />
-                  </g>
-                )}
-              </>
-            )}
-            <text x={w / 2} y={h / 2 + 10} textAnchor="middle" className="machine-label">
-              {m.label}
-            </text>
-            {isDetailed && m.status !== 'unassigned' && (
-              <>
-                {showSpoolLabels && (
-                  <text x={w / 2} y={payoffTextY} textAnchor="middle" className="machine-sublabel">
-                    {ordinal(m.spoolsSinceLoading)} spl
-                  </text>
-                )}
-                <text x={w / 2} y={takeupTextY} textAnchor="middle" className="machine-sublabel">
-                  {m.shiftSpoolsCompleted} spl
-                </text>
-              </>
-            )}
-          </g>
+            id={m.id}
+            label={m.label}
+            x={m.x}
+            y={m.y}
+            w={m.widthPx}
+            h={m.heightPx}
+            orientation={m.orientation}
+            pairSide={m.pairSide}
+            isBfx={m.type === 'bfx'}
+            status={m.status}
+            // Rounded to 2% steps so a running machine's donut doesn't force a re-render on
+            // every single snapshot — only when the visible fill actually moves.
+            progressStep={Math.round(Math.min(1, Math.max(0, progress)) * PROGRESS_STEPS)}
+            payoffColor={zoneColors.payoff}
+            takeupColor={zoneColors.takeup}
+            isSelected={selectedMachineId === m.id}
+            borderColor={assignment?.constructionDetailId ? constructionColorMap.get(assignment.constructionDetailId) : undefined}
+            showSpoolLabels={!HIDDEN_SPOOL_LABEL_AREAS.has(area ?? '')}
+            spoolsSinceLoading={m.spoolsSinceLoading}
+            shiftSpoolsCompleted={m.shiftSpoolsCompleted}
+            tooltip={tooltip}
+            isDetailed={isDetailed}
+            highlight={highlightedMachineIds ? highlightedMachineIds.has(m.id) : null}
+            onSelect={onSelectMachine}
+          />
         );
       })}
     </>
+  );
+});
+
+const PROGRESS_STEPS = 50;
+/** How often expired routes are cleared — one batched update instead of a timer per walk. */
+const ROUTE_EXPIRY_CHECK_MS = 500;
+
+/** Walking routes on the canvas. Each operator's whole planned route is captured the moment a
+ * walk starts and held on screen for at least ROUTE_HOLD_MS of real (wall-clock) time, regardless
+ * of sim speed. Owns its own state so route changes and expiries only re-render this layer: they
+ * used to live in ProductionRunView, where every walk start and every per-walk expiry timer
+ * re-rendered the WHOLE page — at ~1300 machines / 8× that was dozens of extra full renders per
+ * second on top of the throttled snapshots. */
+const OperatorRoutesLayer = memo(function OperatorRoutesLayer({
+  operators,
+}: {
+  operators: ProductionSimulationState['operators'];
+}) {
+  const [routes, setRoutes] = useState<Record<string, { points: Point[]; expiresAt: number }>>({});
+  const routeKeysRef = useRef<Record<string, string>>({});
+
+  useEffect(() => {
+    const now = performance.now();
+    operators.forEach((op) => {
+      const route = op.plannedRoute;
+      if (!route || route.length < 2) return;
+      const key = route.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join('|');
+      if (key === routeKeysRef.current[op.id]) return;
+      routeKeysRef.current[op.id] = key;
+      setRoutes((prev) => ({ ...prev, [op.id]: { points: route, expiresAt: now + ROUTE_HOLD_MS } }));
+    });
+  }, [operators]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = performance.now();
+      setRoutes((prev) => {
+        const expired = Object.keys(prev).filter((id) => prev[id].expiresAt <= now);
+        if (expired.length === 0) return prev;
+        const next = { ...prev };
+        expired.forEach((id) => delete next[id]);
+        return next;
+      });
+    }, ROUTE_EXPIRY_CHECK_MS);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <>
+      {operators.map((op, index) => {
+        const route = routes[op.id];
+        return route ? (
+          <polyline
+            key={`route-${op.id}`}
+            points={route.points.map((p) => `${p.x},${p.y}`).join(' ')}
+            className="operator-path"
+            fill="none"
+            style={{ stroke: OPERATOR_COLORS[index % OPERATOR_COLORS.length] }}
+          />
+        ) : null;
+      })}
+    </>
+  );
+});
+
+/** One machine on the Production Run canvas. Memoized on plain values only: each UI snapshot
+ * hands every machine a fresh object, so the old single-layer render re-diffed all ~1300
+ * machines (≈10 SVG nodes each) every time; now React skips every machine whose visible state
+ * didn't change since the last snapshot. */
+const MachineNode = memo(function MachineNode({
+  id,
+  label,
+  x,
+  y,
+  w,
+  h,
+  orientation,
+  pairSide,
+  isBfx,
+  status,
+  progressStep,
+  payoffColor,
+  takeupColor,
+  isSelected,
+  borderColor,
+  showSpoolLabels,
+  spoolsSinceLoading,
+  shiftSpoolsCompleted,
+  tooltip,
+  isDetailed,
+  highlight,
+  onSelect,
+}: {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  orientation: ProductionSimulationState['machines'][number]['orientation'];
+  pairSide: ProductionSimulationState['machines'][number]['pairSide'];
+  isBfx: boolean;
+  status: ProductionSimulationState['machines'][number]['status'];
+  progressStep: number;
+  payoffColor: string | null;
+  takeupColor: string | null;
+  isSelected: boolean;
+  borderColor: string | undefined;
+  showSpoolLabels: boolean;
+  spoolsSinceLoading: number;
+  shiftSpoolsCompleted: number;
+  tooltip: string | undefined;
+  isDetailed: boolean;
+  /** true = legend-highlighted, false = dimmed, null = no legend hover. */
+  highlight: boolean | null;
+  onSelect: (id: string) => void;
+}) {
+  const payoffY = orientation === 'flipped' ? h * 0.7 : 0;
+  const takeupY = orientation === 'flipped' ? 0 : h * 0.7;
+  const takeupProgressY = takeupY + (orientation === 'flipped' ? 8 : 20);
+  const payoffTextY = payoffY + h * 0.2;
+  const takeupTextY = takeupY + (orientation === 'flipped' ? 20 : 10);
+  return (
+    <g
+      transform={`translate(${x - w / 2}, ${y - h / 2})`}
+      onClick={() => onSelect(id)}
+      style={{ cursor: 'pointer' }}
+      className={highlight === null ? undefined : highlight ? 'machine-highlighted' : 'machine-dimmed'}
+    >
+      {tooltip && <title>{tooltip}</title>}
+      <rect
+        width={w}
+        height={h}
+        rx={6}
+        className={`machine-box ${status === 'running' ? 'sim-machine-running' : status === 'unassigned' ? 'sim-machine-unassigned' : 'sim-machine-stopped'} ${
+          isBfx ? 'machine-bfx-outline' : ''
+        } ${isSelected ? 'production-machine-selected' : ''}`}
+        style={borderColor && !isSelected ? { stroke: borderColor, strokeWidth: 2.5 } : undefined}
+      />
+      {payoffColor && <rect x={1} y={payoffY} width={w - 2} height={h * 0.3 - 1} rx={4} fill={payoffColor} opacity={0.9} />}
+      {takeupColor && <rect x={1} y={takeupY} width={w - 2} height={h * 0.3 - 1} rx={4} fill={takeupColor} opacity={0.9} />}
+      {isDetailed && (
+        <>
+          <MachineZoneLabels orientation={orientation} pairSide={pairSide} width={w} height={h} />
+          {status !== 'unassigned' && (
+            <g transform={`translate(${w / 2}, ${takeupProgressY})`}>
+              <MachineDonut progress={progressStep / PROGRESS_STEPS} />
+            </g>
+          )}
+        </>
+      )}
+      <text x={w / 2} y={h / 2 + 10} textAnchor="middle" className="machine-label">
+        {label}
+      </text>
+      {isDetailed && status !== 'unassigned' && (
+        <>
+          {showSpoolLabels && (
+            <text x={w / 2} y={payoffTextY} textAnchor="middle" className="machine-sublabel">
+              {ordinal(spoolsSinceLoading)} spl
+            </text>
+          )}
+          <text x={w / 2} y={takeupTextY} textAnchor="middle" className="machine-sublabel">
+            {shiftSpoolsCompleted} spl
+          </text>
+        </>
+      )}
+    </g>
   );
 });
 
@@ -1493,7 +1536,6 @@ const MachineTimelineRows = memo(function MachineTimelineRows({
   machines,
   selectedMachineId,
   onSelectMachine,
-  allMachineTimelineKinds,
   shiftTimeMin,
   selectedOperatorRange,
 }: {
@@ -1502,7 +1544,6 @@ const MachineTimelineRows = memo(function MachineTimelineRows({
   machines: ProductionSimulationState['machines'];
   selectedMachineId: string | null;
   onSelectMachine: (id: string) => void;
-  allMachineTimelineKinds: { kind: MachineTimelineKind; label: string; color: string }[];
   shiftTimeMin: number;
   selectedOperatorRange: { startMin: number; endMin: number } | null;
 }) {
@@ -1529,14 +1570,13 @@ const MachineTimelineRows = memo(function MachineTimelineRows({
               />
             )}
             {machine.timeline.map((segment, index) => {
-              const item = allMachineTimelineKinds.find((entry) => entry.kind === segment.kind);
               const width = ((Math.min(segment.endMin, shiftTimeMin) - segment.startMin) / (shiftTimeMin || 1)) * 100;
               return (
                 <span
                   key={`${segment.startMin}-${index}`}
                   className="operator-timeline-segment"
                   title={`${segment.label}: ${Math.round((segment.endMin - segment.startMin) * 10) / 10} min`}
-                  style={{ width: `${Math.max(0, width)}%`, background: item?.color ?? machineTimelineColor(segment.kind) }}
+                  style={{ width: `${Math.max(0, width)}%`, background: machineTimelineColor(segment.kind) }}
                 />
               );
             })}
