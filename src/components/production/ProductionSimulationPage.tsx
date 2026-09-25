@@ -29,6 +29,8 @@ import { SearchableSelect } from '../ui/SearchableSelect';
 import { BlockingProgressOverlay } from '../ui/BlockingProgressOverlay';
 import { LayoutBuilder, type MachineAppearance } from '../setup/LayoutBuilder';
 import { ProductionRunView } from './ProductionRunView';
+import { CanvasLegendPanel } from './CanvasLegendPanel';
+import { buildCanvasLegendData, type LegendHover } from '../../lib/canvasLegend';
 
 const TASK_PRIORITY_OPTIONS: { value: TaskPriorityMode; label: string }[] = [
   { value: 'nearest', label: 'Nearest Task' },
@@ -60,7 +62,6 @@ function readCanvasViewMode(): CanvasViewMode {
 /** Same gray as the `.machine-plan-unplanned` body — used for anything not assigned yet. */
 const UNASSIGNED_FILL = '#334155';
 const OPERATOR_VIEW_BASE_FILL = '#0f172a';
-const LEGEND_MAX_ITEMS = 60;
 
 type OperatorSlot = { label: string; field: keyof ProductionMachineAssignment };
 const DOFFING_SLOT: OperatorSlot = { label: 'Doffing', field: 'doffingOperatorId' };
@@ -796,10 +797,35 @@ function ProductionSetupEditor({
       .filter((a) => a.constructionDetailId)
       .map((a) => [a.constructionDetailId as string, a.constructionDetailLabel ?? (a.constructionDetailId as string)]),
   );
-  const legendItems =
-    canvasView === 'operator'
-      ? setup.operators.map((o) => ({ id: o.id, label: o.label, color: operatorFillMap.get(o.id) ?? UNASSIGNED_FILL }))
-      : [...constructionFillMap].map(([id, color]) => ({ id, label: constructionLabelById.get(id) ?? id, color }));
+
+  // Legend: which machines each Construction / operator covers, so hovering an entry can
+  // highlight exactly those machines on the canvas.
+  const legendData = buildCanvasLegendData({
+    machineIds: setup.layout.map((m) => m.id),
+    assignmentByMachineId: assignmentByMachine,
+    constructionColors: constructionFillMap,
+    constructionLabel: (id) => constructionLabelById.get(id) ?? id,
+    operators: setup.operators.map((o) => ({ id: o.id, label: o.label, color: operatorFillMap.get(o.id) ?? UNASSIGNED_FILL })),
+    unassignedColor: UNASSIGNED_FILL,
+  });
+  const [legendHover, setLegendHover] = useState<LegendHover>(null);
+  const highlightedMachineIds = legendData.highlightFor(legendHover);
+  const canvasLegend = (
+    <CanvasLegendPanel
+      constructionEntries={legendData.constructionEntries}
+      operatorEntries={legendData.operatorEntries.map((entry) => {
+        const forecast = operatorUtilizationFor(entry.id)?.forecastUtilizationPercent;
+        return forecast === undefined ? entry : { ...entry, detail: `${forecast.toFixed(1)}%` };
+      })}
+      initialTab={canvasView}
+      onHover={setLegendHover}
+      hints={{
+        construction: 'Construction Detail View: body color = Construction. Hover an entry to highlight its machines.',
+        operator:
+          'Operator View: body split Doffing | Loading | Fracture Repairing | Defect Repairing (CB/BU/SP/CH/CR) or Dies Change (WW/BA/CA); gray = not assigned yet; border = Construction. Hover an entry to highlight its machines.',
+      }}
+    />
+  );
 
   const canvasViewSelect = (
     <select
@@ -1421,7 +1447,9 @@ function ProductionSetupEditor({
         onSelectionChange={setSelectedMachineIds}
         machineAppearance={machineAppearance}
         toolbarStart={canvasViewSelect}
-        sidePanel={assignSelectionCard}
+        selectionPanel={assignSelectionCard}
+        canvasOverlay={canvasLegend}
+        highlightedMachineIds={highlightedMachineIds}
         onChange={() => {}}
         operatorStart={setup.operatorStart ?? null}
       />
@@ -1446,26 +1474,6 @@ function ProductionSetupEditor({
           />
         </div>
       )}
-      <div className="legend">
-        <span className="legend-item">
-          <span className="legend-swatch machine-plan-unplanned" /> {canvasView === 'operator' ? 'Not assigned' : 'Not planned'}
-        </span>
-        {legendItems.slice(0, LEGEND_MAX_ITEMS).map((item) => (
-          <span key={item.id} className="legend-item">
-            <span className="legend-swatch" style={{ background: item.color }} /> {item.label}
-          </span>
-        ))}
-        {legendItems.length > LEGEND_MAX_ITEMS && (
-          <span className="production-legend-hint">+{legendItems.length - LEGEND_MAX_ITEMS} more</span>
-        )}
-        <span className="production-legend-hint">
-          {canvasView === 'operator'
-            ? 'Body split in order: Doffing | Loading | Fracture Repairing | Defect Repairing (CB/BU/SP/CH/CR) or Dies Change (WW/BA/CA). Gray = not assigned yet. Border = Construction. Hover a machine for details.'
-            : 'Body color = Construction Detail. Hover a machine for details.'}
-        </span>
-      </div>
-
-      {assignSelectionCard}
 
       <Card
         title="Machine Assignments"

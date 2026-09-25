@@ -3147,3 +3147,251 @@
   padding: 6px 8px;
   font-size: 0.8rem;
 }
+
+/* Floating content inside the Layout Builder canvas (selection panel, legend overlay). */
+.layout-canvas-overlay {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 8px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  /* Spans the full canvas height so its content can grow to the bottom edge, but lets clicks and
+     drags through its empty area to the canvas underneath. */
+  pointer-events: none;
+}
+
+.layout-canvas-overlay > * {
+  pointer-events: auto;
+}
+
+.layout-selection-panel {
+  position: absolute;
+  z-index: 4;
+  width: 440px;
+  overflow: auto;
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+}
+
+.layout-selection-panel .card {
+  margin: 0;
+}
+
+.layout-selection-panel-close {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  z-index: 1;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.layout-selection-panel-close:hover {
+  color: #e2e8f0;
+  background: #1e293b;
+}
+
+.machine-highlighted .machine-box {
+  /* !important: machines carry an inline Construction border color that would otherwise win. */
+  stroke: #fef08a !important;
+  stroke-width: 4px !important;
+  filter: url(#machine-selection-glow);
+}
+
+.machine-dimmed {
+  opacity: 0.22;
+}
+
+.canvas-legend {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-height: 0;
+  max-height: 100%;
+  pointer-events: none;
+}
+
+.canvas-legend > * {
+  pointer-events: auto;
+}
+
+.canvas-legend-toggle {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.92);
+  color: #e2e8f0;
+  cursor: pointer;
+}
+
+.canvas-legend-toggle:hover,
+.canvas-legend-toggle.is-open {
+  border-color: #38bdf8;
+  color: #38bdf8;
+}
+
+.canvas-legend-toggle svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.canvas-legend-panel {
+  position: relative;
+  flex: 0 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #1e293b;
+  border-radius: 12px;
+  background: rgba(17, 24, 39, 0.97);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+.canvas-legend-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.canvas-legend-tabs button {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid #1e293b;
+  border-radius: 8px;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.canvas-legend-tabs button.active {
+  border-color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  color: #e2e8f0;
+}
+
+.canvas-legend-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1 1 auto;
+  min-height: 60px;
+  overflow: auto;
+}
+
+/* .input-sm is a fixed 56px number box elsewhere — the legend search should span the panel. */
+.canvas-legend-search {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.canvas-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  color: #e2e8f0;
+  cursor: default;
+}
+
+.canvas-legend-item:hover {
+  background: #1e293b;
+}
+
+.canvas-legend-swatch {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  border-radius: 3px;
+}
+
+.canvas-legend-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.canvas-legend-count {
+  color: #94a3b8;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.canvas-legend-empty {
+  padding: 6px;
+  color: #64748b;
+  font-size: 0.78rem;
+}
+
+.canvas-legend-hint {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+
+/* Only the list gives up height when the panel is squeezed. */
+.canvas-legend-tabs,
+.canvas-legend-search,
+.canvas-legend-hint {
+  flex-shrink: 0;
+}
+
+.production-run-canvas {
+  position: relative;
+}
+
+/* Right-edge grip for widening/narrowing the legend panel. */
+.canvas-legend-resize {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: ew-resize;
+  touch-action: none;
+  z-index: 1;
+}
+
+.canvas-legend-resize:hover,
+.canvas-legend-resize:active {
+  background: linear-gradient(to left, rgba(56, 189, 248, 0.45), transparent);
+}
+
+/* LayoutBuilder's grip sits right under its canvas; the canvas itself has no bottom margin. */
+.layout-canvas-resize-handle {
+  margin: 2px 0 6px;
+}
+
+.canvas-legend-detail {
+  color: #38bdf8;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

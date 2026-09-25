@@ -3,6 +3,7 @@ import type { AppConfig, DowntimeReason, SimulationState } from '../../types';
 import { deriveMachineSpec } from '../../lib/calculations';
 import { Card } from '../ui/Card';
 import { useAuth } from '../../context/auth';
+import { useFillToWindowBottom } from '../../hooks/useFillToWindowBottom';
 
 function fmt(v: number) {
   return Math.round(v * 10) / 10;
@@ -48,6 +49,8 @@ function colorForDowntime(key: string, index: number) {
 
 export function Dashboard({ state, config }: { state: SimulationState; config: AppConfig }) {
   const { user } = useAuth();
+  // Reaches the bottom of the window even when the canvas column is shorter (e.g. zoomed out).
+  const { ref: dashboardOuterRef, minHeight: dashboardMinHeight } = useFillToWindowBottom<HTMLDivElement>();
   const { metrics, machines, log } = state;
   const isAdmin = user.role === 'admin';
   const [targetUtilization, setTargetUtilization] = useState(85);
@@ -131,7 +134,7 @@ export function Dashboard({ state, config }: { state: SimulationState; config: A
   const maxDowntime = downtimeEntries[0]?.value ?? 0;
 
   return (
-    <div className="dashboard-scroll-outer">
+    <div className="dashboard-scroll-outer" ref={dashboardOuterRef} style={dashboardMinHeight ? { minHeight: dashboardMinHeight } : undefined}>
     <div className="dashboard">
       <Card
         title="Output (Running Time)"

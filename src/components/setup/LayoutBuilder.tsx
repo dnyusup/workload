@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { LayoutMachine, MachinePairSide, OperatorStartPoint } from '../../types';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
@@ -109,6 +109,33 @@ function MachineBodySegments({ colors, width, height }: { colors: string[]; widt
   );
 }
 
+/** Matches the old fixed `.layout-canvas-wrap` height, so the canvas opens at the same size. */
+const DEFAULT_CANVAS_HEIGHT = 560;
+const MIN_CANVAS_HEIGHT = 240;
+const MAX_CANVAS_HEIGHT = 1400;
+
+const SELECTION_PANEL_OFFSET = 14;
+const SELECTION_PANEL_MARGIN = 8;
+
+/** Puts the floating selection panel beside the anchor on whichever side has more room, and caps
+ * its height to that side so it never runs off the canvas. */
+function selectionPanelPlacement(anchor: Point, size: { width: number; height: number }): CSSProperties {
+  const openLeft = anchor.x > size.width / 2;
+  const openUp = anchor.y > size.height / 2;
+  const style: CSSProperties = {
+    maxHeight: Math.max(
+      120,
+      (openUp ? anchor.y : size.height - anchor.y) - SELECTION_PANEL_OFFSET - SELECTION_PANEL_MARGIN,
+    ),
+    maxWidth: Math.max(240, size.width - SELECTION_PANEL_MARGIN * 2),
+  };
+  if (openLeft) style.right = Math.max(SELECTION_PANEL_MARGIN, size.width - anchor.x + SELECTION_PANEL_OFFSET);
+  else style.left = Math.max(SELECTION_PANEL_MARGIN, anchor.x + SELECTION_PANEL_OFFSET);
+  if (openUp) style.bottom = Math.max(SELECTION_PANEL_MARGIN, size.height - anchor.y + SELECTION_PANEL_OFFSET);
+  else style.top = Math.max(SELECTION_PANEL_MARGIN, anchor.y + SELECTION_PANEL_OFFSET);
+  return style;
+}
+
 export function LayoutBuilder({
   layout,
   machHandled,
@@ -120,6 +147,9 @@ export function LayoutBuilder({
   onSelectionChange,
   machineAppearance,
   sidePanel,
+  selectionPanel,
+  canvasOverlay,
+  highlightedMachineIds,
   toolbarStart,
   onChange,
   operatorStart,
@@ -156,6 +186,15 @@ export function LayoutBuilder({
    * element's own DOM subtree visible, so a selection-actions panel that normally lives outside
    * this component would otherwise disappear the moment fullscreen is entered. */
   sidePanel?: ReactNode;
+  /** Floating panel shown INSIDE the canvas next to where the pointer last went up, only while at
+   * least one machine is selected (e.g. Production Setup's Assign Selection card). Being inside
+   * the canvas it also stays visible in fullscreen. */
+  selectionPanel?: ReactNode;
+  /** Extra content pinned to the canvas's top-left corner (e.g. a legend toggle/panel). */
+  canvasOverlay?: ReactNode;
+  /** When set, these machines are highlighted and every other machine is dimmed (e.g. hovering
+   * a legend entry). */
+  highlightedMachineIds?: ReadonlySet<string> | null;
   /** Extra toolbar controls rendered just before the Zoom out button (e.g. a view switcher). */
   toolbarStart?: ReactNode;
   onChange: (next: LayoutMachine[]) => void;
@@ -189,6 +228,29 @@ export function LayoutBuilder({
   const [pasteType, setPasteType] = useState<'pair' | 'single'>('pair');
   const [pasteGapM, setPasteGapM] = useState(PAIR_GAP / DEFAULT_PIXELS_PER_METER);
   const [placingStart, setPlacingStart] = useState(false);
+  /** Wrapper-relative point where the pointer last went up on the canvas — selections always
+   * finish with a pointer-up (click, shift-click or box-select), so the selection panel opens
+   * right next to it. Clicking/panning empty canvas clears the selection, hiding the panel. */
+  const [selectionAnchor, setSelectionAnchor] = useState<Point | null>(null);
+  // Drag-to-resize canvas height (outside fullscreen) — same grip as the simulation canvases.
+  const [canvasHeight, setCanvasHeight] = useState(DEFAULT_CANVAS_HEIGHT);
+  const canvasResizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
+  const [resizingCanvas, setResizingCanvas] = useState(false);
+  const handleResizeHandlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    canvasResizeRef.current = { startY: e.clientY, startHeight: canvasHeight };
+    setResizingCanvas(true);
+  };
+  const handleResizeHandlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!canvasResizeRef.current) return;
+    const delta = e.clientY - canvasResizeRef.current.startY;
+    setCanvasHeight(Math.min(MAX_CANVAS_HEIGHT, Math.max(MIN_CANVAS_HEIGHT, canvasResizeRef.current.startHeight + delta)));
+  };
+  const handleResizeHandlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.currentTarget.releasePointerCapture(e.pointerId);
+    canvasResizeRef.current = null;
+    setResizingCanvas(false);
+  };
 
   useEffect(() => {
     onSelectionChange?.(Array.from(selectedIds));
@@ -325,6 +387,7 @@ export function LayoutBuilder({
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
     const handleWheel = (e: WheelEvent) => {
+      if (e.target instanceof Element && e.target.closest('[data-canvas-overlay]')) return;
       e.preventDefault();
       const vb = toViewBoxPoint(e.clientX, e.clientY);
       const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
@@ -518,7 +581,9 @@ export function LayoutBuilder({
     }
   };
 
-  const handlePointerUp = () => {
+  const handlePointerUp = (e: React.PointerEvent<SVGSVGElement>) => {
+    const wrapperRect = wrapperRef.current?.getBoundingClientRect();
+    if (wrapperRect) setSelectionAnchor({ x: e.clientX - wrapperRect.left, y: e.clientY - wrapperRect.top });
     if (drag?.mode === 'select') {
       const { startVb, currentVb } = drag;
       const rightClickId = drag.rightClickId;
@@ -1176,8 +1241,32 @@ export function LayoutBuilder({
           </Button>
         </div>
       )}
-      <div className="layout-canvas-wrap" ref={wrapperRef}>
+      <div className="layout-canvas-wrap" ref={wrapperRef} style={!isFullscreen ? { height: canvasHeight } : undefined}>
         {isFullscreen && sidePanel && <div className="layout-builder-fullscreen-sidepanel">{sidePanel}</div>}
+        {canvasOverlay && (
+          <div className="layout-canvas-overlay" data-canvas-overlay onPointerDown={(e) => e.stopPropagation()}>
+            {canvasOverlay}
+          </div>
+        )}
+        {selectionPanel && selectedIds.size > 0 && selectionAnchor && (
+          <div
+            className="layout-selection-panel"
+            data-canvas-overlay
+            style={selectionPanelPlacement(selectionAnchor, viewSize)}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="layout-selection-panel-close"
+              onClick={() => setSelectedIds(new Set())}
+              title="Clear selection"
+              aria-label="Clear selection"
+            >
+              ×
+            </button>
+            {selectionPanel}
+          </div>
+        )}
         <svg
           ref={svgRef}
           width="100%"
@@ -1206,6 +1295,11 @@ export function LayoutBuilder({
                   : true;
               const appearance = machineAppearance?.(m);
               const statusClass = appearance?.status ? `machine-plan-${appearance.status}` : '';
+              const highlightClass = highlightedMachineIds
+                ? highlightedMachineIds.has(m.id)
+                  ? 'machine-highlighted'
+                  : 'machine-dimmed'
+                : '';
               const w = machineWidthPx(m, pixelsPerMeter);
               const h = machineHeightPx(m, pixelsPerMeter);
               return (
@@ -1215,6 +1309,7 @@ export function LayoutBuilder({
                   onPointerDown={handleMachinePointerDown(m.id)}
                   onContextMenu={(e) => e.preventDefault()}
                   style={{ cursor: 'grab' }}
+                  className={highlightClass}
                 >
                   {appearance?.tooltip && <title>{appearance.tooltip}</title>}
                   <rect
@@ -1319,6 +1414,18 @@ export function LayoutBuilder({
           )}
         </svg>
       </div>
+      {!isFullscreen && (
+        <div
+          className={`production-canvas-resize-handle layout-canvas-resize-handle ${resizingCanvas ? 'active' : ''}`}
+          onPointerDown={handleResizeHandlePointerDown}
+          onPointerMove={handleResizeHandlePointerMove}
+          onPointerUp={handleResizeHandlePointerUp}
+          onPointerCancel={handleResizeHandlePointerUp}
+          title="Drag to resize the canvas height"
+        >
+          <span />
+        </div>
+      )}
       {resizeOpen && (
         <div className="modal-overlay" onClick={() => setResizeOpen(false)}>
           <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>

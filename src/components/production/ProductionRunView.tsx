@@ -17,6 +17,9 @@ import {
   machineTimelineLabel,
 } from '../simulation/timelineDisplay';
 import { buildSetupConstructionColorMap } from '../../lib/constructionColors';
+import { buildCanvasLegendData, type LegendHover } from '../../lib/canvasLegend';
+import { CanvasLegendPanel } from './CanvasLegendPanel';
+import { useFillToWindowBottom } from '../../hooks/useFillToWindowBottom';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { ShiftTimeCard } from '../simulation/ShiftTimeCard';
@@ -320,6 +323,7 @@ export function ProductionRunView({
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
     const handleWheel = (e: WheelEvent) => {
+      if (e.target instanceof Element && e.target.closest('[data-canvas-overlay]')) return;
       e.preventDefault();
       const vb = toViewBoxPoint(e.clientX, e.clientY);
       const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
@@ -381,6 +385,27 @@ export function ProductionRunView({
   };
 
   const operatorColor = (index: number) => OPERATOR_COLORS[index % OPERATOR_COLORS.length];
+
+  // Legend (top-left of the canvas): Construction tab = machine border colors, Operator tab = the
+  // operator marker colors drawn on this canvas. Built from the setup only, so it doesn't change
+  // while the simulation runs.
+  const legendData = useMemo(
+    () =>
+      buildCanvasLegendData({
+        machineIds: setup.layout.map((m) => m.id),
+        assignmentByMachineId,
+        constructionColors: constructionColorMap,
+        constructionLabel: (id) => resolved.get(id)?.label ?? setup.assignments.find((a) => a.constructionDetailId === id)?.constructionDetailLabel ?? id,
+        operators: setup.operators.map((o, index) => ({ id: o.id, label: o.label, color: OPERATOR_COLORS[index % OPERATOR_COLORS.length] })),
+        unassignedColor: '#334155',
+      }),
+    [setup.layout, setup.assignments, setup.operators, assignmentByMachineId, constructionColorMap, resolved],
+  );
+  const [legendHover, setLegendHover] = useState<LegendHover>(null);
+
+  // Dashboard reaches the bottom of the window even when the canvas column is shorter.
+  const { ref: dashboardOuterRef, minHeight: dashboardMinHeight } = useFillToWindowBottom<HTMLDivElement>();
+  const highlightedMachineIds = useMemo(() => legendData.highlightFor(legendHover), [legendData, legendHover]);
 
   // Sub-activity keys are unique per WL_Activities row (loading-sub-<guid>) so they don't collide
   // across different Constructions in the same setup — but that also means they're not human
@@ -540,6 +565,12 @@ export function ProductionRunView({
     color: colorByOperatorId.get(op.id) ?? '#94a3b8',
     ...summarizeOperatorTimelines([op], timelineDuration, activityLabel),
   }));
+  // Operator legend shows each operator's current man occupation (same value as the operator table).
+  const utilizationByOperatorId = new Map(operatorUtilRows.map((row) => [row.id, row.utilization]));
+  const legendOperatorEntries = legendData.operatorEntries.map((entry) => {
+    const utilization = utilizationByOperatorId.get(entry.id);
+    return utilization === undefined ? entry : { ...entry, detail: `${fmt(utilization)}%` };
+  });
   const sortedOperatorRows = [...operatorUtilRows].sort((a, b) => {
     const dir = operatorSort.direction === 'asc' ? 1 : -1;
     if (operatorSort.column === 'label') return a.label.localeCompare(b.label) * dir;
@@ -725,7 +756,19 @@ export function ProductionRunView({
               ⛶
             </Button>
           </div>
-          <div className="sim-svg-wrap" ref={wrapperRef} style={!isFullscreen ? { height: canvasHeight } : undefined}>
+          <div className="sim-svg-wrap production-run-canvas" ref={wrapperRef} style={!isFullscreen ? { height: canvasHeight } : undefined}>
+            <div className="layout-canvas-overlay" data-canvas-overlay onPointerDown={(e) => e.stopPropagation()}>
+              <CanvasLegendPanel
+                constructionEntries={legendData.constructionEntries}
+                operatorEntries={legendOperatorEntries}
+                initialTab="construction"
+                onHover={setLegendHover}
+                hints={{
+                  construction: 'Machine border color = Construction Detail. Hover an entry to highlight its machines.',
+                  operator: 'Operator marker colors on this canvas. Hover an entry to highlight the machines that operator is assigned to.',
+                }}
+              />
+            </div>
             <svg
               ref={svgRef}
               width="100%"
@@ -736,6 +779,12 @@ export function ProductionRunView({
               onPointerMove={handleCanvasPointerMove}
               onPointerUp={handleCanvasPointerUp}
             >
+              <defs>
+                {/* Glow for legend-hovered machines (.machine-highlighted). */}
+                <filter id="machine-selection-glow" x="-50%" y="-50%" width="200%" height="200%">
+                  <feDropShadow dx="0" dy="0" stdDeviation="3" floodColor="#fef08a" floodOpacity="0.95" />
+                </filter>
+              </defs>
               <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
                 <g transform={`translate(${LABEL_MARGIN}, ${LABEL_MARGIN})`}>
                   <MachinesLayer
@@ -749,6 +798,7 @@ export function ProductionRunView({
                     constructionColorMap={constructionColorMap}
                     operatorLabelById={operatorLabelById}
                     isDetailed={isDetailed}
+                    highlightedMachineIds={highlightedMachineIds}
                   />
 
                   {operators.map((op, index) => {
@@ -955,7 +1005,7 @@ export function ProductionRunView({
           </div>
         </div>
 
-        <div className="dashboard-scroll-outer">
+        <div className="dashboard-scroll-outer" ref={dashboardOuterRef} style={dashboardMinHeight ? { minHeight: dashboardMinHeight } : undefined}>
           <div className="dashboard">
             <Card
               title="Output (Running Time)"
@@ -1289,6 +1339,7 @@ const MachinesLayer = memo(function MachinesLayer({
   constructionColorMap,
   operatorLabelById,
   isDetailed,
+  highlightedMachineIds,
 }: {
   machines: ProductionSimulationState['machines'];
   operators: ProductionSimulationState['operators'];
@@ -1300,6 +1351,8 @@ const MachinesLayer = memo(function MachinesLayer({
   constructionColorMap: Map<string, string>;
   operatorLabelById: (id?: string) => string;
   isDetailed: boolean;
+  /** Hovered legend entry's machines — highlighted, every other machine dimmed. */
+  highlightedMachineIds: Set<string> | null;
 }) {
   // Only machines actually mid-service can have a non-trivial zoneColors/progress display, and at
   // 1300+ machines scanning `operators` per machine (O(machines × operators)) would itself be a
@@ -1349,6 +1402,7 @@ const MachinesLayer = memo(function MachinesLayer({
             transform={`translate(${m.x - w / 2}, ${m.y - h / 2})`}
             onClick={() => onSelectMachine(m.id)}
             style={{ cursor: 'pointer' }}
+            className={highlightedMachineIds ? (highlightedMachineIds.has(m.id) ? 'machine-highlighted' : 'machine-dimmed') : undefined}
           >
             {tooltip && <title>{tooltip}</title>}
             <rect
