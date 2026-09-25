@@ -698,18 +698,23 @@ function ProductionSetupEditor({
     const selectedAssignments = selectedMachineIds
       .map((id) => setup.assignments.find((a) => a.machineId === id))
       .filter((a): a is ProductionMachineAssignment => !!a);
-    const commonValue = (getter: (a: ProductionMachineAssignment) => string | undefined): string => {
-      if (selectedAssignments.length === 0) return '';
-      const values = new Set(selectedAssignments.map((a) => getter(a) ?? ''));
+    // Operators only ever land on planned machines, so unplanned ones don't count toward them.
+    const plannedAssignments = selectedAssignments.filter((a) => a.constructionDetailId);
+    const commonValue = (
+      getter: (a: ProductionMachineAssignment) => string | undefined,
+      assignments = plannedAssignments,
+    ): string => {
+      if (assignments.length === 0) return '';
+      const values = new Set(assignments.map((a) => getter(a) ?? ''));
       return values.size === 1 ? [...values][0] : '';
     };
-    const construction = commonValue((a) => a.constructionDetailId);
+    const construction = commonValue((a) => a.constructionDetailId, selectedAssignments);
     const doffing = commonValue((a) => a.doffingOperatorId);
     const loading = commonValue((a) => a.loadingOperatorId);
     const fracture = commonValue((a) => a.fractureRepairingOperatorId);
     const diesChange = commonValue((a) => a.diesChangeOperatorId);
     const defectRepairing = commonValue((a) => a.defectRepairingOperatorId);
-    const allOperatorIds = selectedAssignments.flatMap((assignment) => [
+    const allOperatorIds = plannedAssignments.flatMap((assignment) => [
       assignment.doffingOperatorId ?? '',
       assignment.loadingOperatorId ?? '',
       assignment.fractureRepairingOperatorId ?? '',
@@ -853,17 +858,21 @@ function ProductionSetupEditor({
 
   /** Applies a patch to the selected machines both locally (optimistic) and in Dataverse — every
    * bulk-assign action (Construction / per-activity operator / Unplan) goes through this. */
-  const applyBulk = async (patch: Partial<ProductionMachineAssignment>) => {
-    if (selectedMachineIds.length === 0) return;
-    const selectedSet = new Set(selectedMachineIds);
+  const applyBulk = async (patch: Partial<ProductionMachineAssignment>, { plannedOnly = false } = {}) => {
+    // Operator patches skip machines with no Construction — an operator on an unplanned machine is meaningless.
+    const targetIds = plannedOnly
+      ? selectedMachineIds.filter((id) => assignmentByMachine.get(id)?.constructionDetailId)
+      : selectedMachineIds;
+    if (targetIds.length === 0) return;
+    const targetSet = new Set(targetIds);
     onLocalChange({
-      assignments: setup.assignments.map((a) => (selectedSet.has(a.machineId) ? { ...a, ...patch } : a)),
+      assignments: setup.assignments.map((a) => (targetSet.has(a.machineId) ? { ...a, ...patch } : a)),
     });
     setActionError(null);
     try {
       await updateMachineAssignments(
         setup.id,
-        selectedMachineIds.map((machineId) => ({ machineId, patch })),
+        targetIds.map((machineId) => ({ machineId, patch })),
       );
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Failed to save assignment.');
@@ -993,7 +1002,8 @@ function ProductionSetupEditor({
       diesChangeOperatorId: operatorId || undefined,
       defectRepairingOperatorId: operatorId || undefined,
     };
-    void applyBulk(patch);
+    // Removing ('') clears every selected machine; assigning skips unplanned ones.
+    void applyBulk(patch, { plannedOnly: !!operatorId });
     setBulkMultiOperatorId(operatorId);
     setAppliedMultiOperatorId(operatorId);
   };
@@ -1335,7 +1345,7 @@ function ProductionSetupEditor({
               variant="secondary"
               className={doffingDirty ? 'btn-pending' : ''}
               onClick={() => {
-                applyBulk({ doffingOperatorId: bulkDoffingOperatorId || undefined });
+                applyBulk({ doffingOperatorId: bulkDoffingOperatorId || undefined }, { plannedOnly: true });
                 setAppliedDoffingOperatorId(bulkDoffingOperatorId);
               }}
               disabled={selectedMachineIds.length === 0}
@@ -1359,7 +1369,7 @@ function ProductionSetupEditor({
               variant="secondary"
               className={loadingDirty ? 'btn-pending' : ''}
               onClick={() => {
-                applyBulk({ loadingOperatorId: bulkLoadingOperatorId || undefined });
+                applyBulk({ loadingOperatorId: bulkLoadingOperatorId || undefined }, { plannedOnly: true });
                 setAppliedLoadingOperatorId(bulkLoadingOperatorId);
               }}
               disabled={selectedMachineIds.length === 0}
@@ -1383,7 +1393,7 @@ function ProductionSetupEditor({
               variant="secondary"
               className={fractureDirty ? 'btn-pending' : ''}
               onClick={() => {
-                applyBulk({ fractureRepairingOperatorId: bulkFractureOperatorId || undefined });
+                applyBulk({ fractureRepairingOperatorId: bulkFractureOperatorId || undefined }, { plannedOnly: true });
                 setAppliedFractureOperatorId(bulkFractureOperatorId);
               }}
               disabled={selectedMachineIds.length === 0}
@@ -1407,7 +1417,7 @@ function ProductionSetupEditor({
               variant="secondary"
               className={diesChangeDirty ? 'btn-pending' : ''}
               onClick={() => {
-                applyBulk({ diesChangeOperatorId: bulkDiesChangeOperatorId || undefined });
+                applyBulk({ diesChangeOperatorId: bulkDiesChangeOperatorId || undefined }, { plannedOnly: true });
                 setAppliedDiesChangeOperatorId(bulkDiesChangeOperatorId);
               }}
               disabled={selectedMachineIds.length === 0}
@@ -1431,7 +1441,7 @@ function ProductionSetupEditor({
               variant="secondary"
               className={defectRepairingDirty ? 'btn-pending' : ''}
               onClick={() => {
-                applyBulk({ defectRepairingOperatorId: bulkDefectRepairingOperatorId || undefined });
+                applyBulk({ defectRepairingOperatorId: bulkDefectRepairingOperatorId || undefined }, { plannedOnly: true });
                 setAppliedDefectRepairingOperatorId(bulkDefectRepairingOperatorId);
               }}
               disabled={selectedMachineIds.length === 0}
