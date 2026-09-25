@@ -2667,6 +2667,19 @@
   margin-bottom: 10px;
 }
 
+.production-assign-remove {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 8px;
+  color: #f87171;
+}
+
+.production-assign-remove:hover:not(:disabled) {
+  background: rgba(248, 113, 113, 0.12);
+}
+
 .production-assign-mode-row {
   display: grid;
   grid-template-columns: minmax(110px, auto) minmax(0, 1fr);
@@ -3170,13 +3183,51 @@
   position: absolute;
   z-index: 4;
   width: 440px;
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
   border-radius: 14px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
 }
 
+/* Scrolls inside the panel so the close button and resize edges stay put. */
+.layout-selection-panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border-radius: 14px;
+}
+
 .layout-selection-panel .card {
   margin: 0;
+}
+
+.layout-selection-panel .card-header {
+  cursor: move;
+  user-select: none;
+  touch-action: none;
+}
+
+.layout-selection-panel-resize {
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  z-index: 2;
+  width: 8px;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.layout-selection-panel-resize-left {
+  left: -4px;
+}
+
+.layout-selection-panel-resize-right {
+  right: -4px;
+}
+
+.layout-selection-panel-resize:hover {
+  background: rgba(148, 163, 184, 0.35);
+  border-radius: 4px;
 }
 
 .layout-selection-panel-close {

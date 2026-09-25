@@ -998,6 +998,30 @@ function ProductionSetupEditor({
     setAppliedMultiOperatorId(operatorId);
   };
 
+  const removeConstruction = () => {
+    void applyBulk({ constructionDetailId: undefined, constructionDetailLabel: undefined });
+    setBulkConstructionId('');
+    setAppliedConstructionId('');
+  };
+
+  /** Clears one split-task operator field on the selection and resets its row. */
+  const removeTaskOperator = (
+    field: keyof Pick<
+      ProductionMachineAssignment,
+      | 'doffingOperatorId'
+      | 'loadingOperatorId'
+      | 'fractureRepairingOperatorId'
+      | 'diesChangeOperatorId'
+      | 'defectRepairingOperatorId'
+    >,
+    setBulk: (value: string) => void,
+    setApplied: (value: string) => void,
+  ) => {
+    void applyBulk({ [field]: undefined });
+    setBulk('');
+    setApplied('');
+  };
+
   const changeOperatorAssignmentType = (value: OperatorAssignmentType) => {
     setOperatorAssignmentType(value);
     try {
@@ -1220,6 +1244,21 @@ function ProductionSetupEditor({
   const diesChangeDirty = bulkDiesChangeOperatorId !== appliedDiesChangeOperatorId;
   const defectRepairingDirty = bulkDefectRepairingOperatorId !== appliedDefectRepairingOperatorId;
 
+  const removeButton = (title: string, onClick: () => void) => (
+    <Button
+      variant="ghost"
+      className="production-assign-remove"
+      onClick={onClick}
+      disabled={selectedMachineIds.length === 0}
+      title={title}
+      aria-label={title}
+    >
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6" />
+      </svg>
+    </Button>
+  );
+
   const assignSelectionCard = (
     <Card
       title={`Assign Selection (${selectedMachineIds.length} machine(s) selected)`}
@@ -1260,6 +1299,7 @@ function ProductionSetupEditor({
         >
           Apply
         </Button>
+        {removeButton('Remove Construction Detail from selection', removeConstruction)}
       </div>
       {operatorAssignmentType === 'multi' ? (
         <div className="production-assign-row">
@@ -1279,6 +1319,7 @@ function ProductionSetupEditor({
           >
             Apply
           </Button>
+          {removeButton('Remove operator from all activities of selection', () => applyMultiTaskOperator(''))}
         </div>
       ) : (
         <>
@@ -1302,6 +1343,9 @@ function ProductionSetupEditor({
             >
               Doff
             </Button>
+            {removeButton('Remove Doffing operator from selection', () =>
+              removeTaskOperator('doffingOperatorId', setBulkDoffingOperatorId, setAppliedDoffingOperatorId),
+            )}
           </div>
           <div className="production-assign-row">
             <SearchableSelect
@@ -1323,6 +1367,9 @@ function ProductionSetupEditor({
             >
               Load
             </Button>
+            {removeButton('Remove Loading operator from selection', () =>
+              removeTaskOperator('loadingOperatorId', setBulkLoadingOperatorId, setAppliedLoadingOperatorId),
+            )}
           </div>
           <div className="production-assign-row">
             <SearchableSelect
@@ -1344,6 +1391,9 @@ function ProductionSetupEditor({
             >
               Fract
             </Button>
+            {removeButton('Remove Fracture Repairing operator from selection', () =>
+              removeTaskOperator('fractureRepairingOperatorId', setBulkFractureOperatorId, setAppliedFractureOperatorId),
+            )}
           </div>
           <div className="production-assign-row">
             <SearchableSelect
@@ -1365,6 +1415,9 @@ function ProductionSetupEditor({
             >
               Dies
             </Button>
+            {removeButton('Remove Dies Change operator from selection', () =>
+              removeTaskOperator('diesChangeOperatorId', setBulkDiesChangeOperatorId, setAppliedDiesChangeOperatorId),
+            )}
           </div>
           <div className="production-assign-row">
             <SearchableSelect
@@ -1386,6 +1439,13 @@ function ProductionSetupEditor({
             >
               Defect
             </Button>
+            {removeButton('Remove Defect Repairing operator from selection', () =>
+              removeTaskOperator(
+                'defectRepairingOperatorId',
+                setBulkDefectRepairingOperatorId,
+                setAppliedDefectRepairingOperatorId,
+              ),
+            )}
           </div>
         </>
       )}

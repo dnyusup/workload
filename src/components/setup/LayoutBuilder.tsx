@@ -136,6 +136,133 @@ function selectionPanelPlacement(anchor: Point, size: { width: number; height: n
   return style;
 }
 
+const SELECTION_PANEL_MIN_WIDTH = 320;
+/** How much of a dragged panel must stay inside the canvas at the bottom so its header stays reachable. */
+const SELECTION_PANEL_MIN_VISIBLE_HEIGHT = 48;
+
+type PanelGesture =
+  | { kind: 'move'; startX: number; startY: number; left: number; top: number }
+  | { kind: 'resize'; edge: 'left' | 'right'; startX: number; left: number; top: number; width: number };
+
+const clampNumber = (value: number, min: number, max: number) => Math.min(Math.max(value, min), Math.max(min, max));
+
+/** The floating selection panel: opens beside the anchor, can be dragged by its card header and
+ * widened from either side edge (double-click an edge to restore the default width). Its position
+ * resets every time it reopens; the width is owned by the caller so it survives reopening. */
+function FloatingSelectionPanel({
+  anchor,
+  viewSize,
+  width,
+  onWidthChange,
+  onClose,
+  children,
+}: {
+  anchor: Point;
+  viewSize: { width: number; height: number };
+  width: number | null;
+  onWidthChange: (width: number | null) => void;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const gestureRef = useRef<PanelGesture | null>(null);
+  const [position, setPosition] = useState<Point | null>(null);
+  const maxWidth = Math.max(240, viewSize.width - SELECTION_PANEL_MARGIN * 2);
+
+  const clampPosition = (left: number, top: number, panelWidth: number): Point => ({
+    x: clampNumber(left, SELECTION_PANEL_MARGIN, viewSize.width - panelWidth - SELECTION_PANEL_MARGIN),
+    y: clampNumber(top, SELECTION_PANEL_MARGIN, viewSize.height - SELECTION_PANEL_MIN_VISIBLE_HEIGHT),
+  });
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    const panel = panelRef.current;
+    if (e.button !== 0 || !panel) return;
+    const target = e.target as Element;
+    const edge = target.closest<HTMLElement>('[data-panel-resize]')?.dataset.panelResize;
+    const onHeader =
+      !!target.closest('.card-header') && !target.closest('button, input, select, textarea, a, [role="combobox"]');
+    if (!edge && !onHeader) return;
+    const box = { left: panel.offsetLeft, top: panel.offsetTop, width: panel.offsetWidth };
+    gestureRef.current =
+      edge === 'left' || edge === 'right'
+        ? { kind: 'resize', edge, startX: e.clientX, ...box }
+        : { kind: 'move', startX: e.clientX, startY: e.clientY, left: box.left, top: box.top };
+    // Switch from the anchor-relative placement to explicit left/top so every gesture works the same.
+    setPosition({ x: box.left, y: box.top });
+    e.currentTarget.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const gesture = gestureRef.current;
+    if (!gesture) return;
+    const dx = e.clientX - gesture.startX;
+    if (gesture.kind === 'move') {
+      setPosition(clampPosition(gesture.left + dx, gesture.top + e.clientY - gesture.startY, panelRef.current?.offsetWidth ?? 0));
+      return;
+    }
+    if (gesture.edge === 'right') {
+      const limit = Math.min(maxWidth, viewSize.width - gesture.left - SELECTION_PANEL_MARGIN);
+      onWidthChange(clampNumber(gesture.width + dx, SELECTION_PANEL_MIN_WIDTH, limit));
+    } else {
+      const right = gesture.left + gesture.width;
+      const next = clampNumber(gesture.width - dx, SELECTION_PANEL_MIN_WIDTH, Math.min(maxWidth, right - SELECTION_PANEL_MARGIN));
+      setPosition({ x: right - next, y: gesture.top });
+      onWidthChange(next);
+    }
+  };
+
+  const endGesture = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!gestureRef.current) return;
+    gestureRef.current = null;
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+  };
+
+  const style: CSSProperties = position
+    ? {
+        left: position.x,
+        top: position.y,
+        maxHeight: Math.max(120, viewSize.height - position.y - SELECTION_PANEL_MARGIN),
+        maxWidth,
+      }
+    : selectionPanelPlacement(anchor, viewSize);
+  if (width !== null) style.width = Math.min(width, maxWidth);
+
+  return (
+    <div
+      ref={panelRef}
+      className="layout-selection-panel"
+      data-canvas-overlay
+      style={style}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={endGesture}
+      onPointerCancel={endGesture}
+    >
+      <button
+        type="button"
+        className="layout-selection-panel-close"
+        onClick={onClose}
+        title="Clear selection"
+        aria-label="Clear selection"
+      >
+        ×
+      </button>
+      <div className="layout-selection-panel-body">{children}</div>
+      {(['left', 'right'] as const).map((edge) => (
+        <div
+          key={edge}
+          className={`layout-selection-panel-resize layout-selection-panel-resize-${edge}`}
+          data-panel-resize={edge}
+          onDoubleClick={() => onWidthChange(null)}
+          title="Drag to resize · double-click to reset width"
+        />
+      ))}
+    </div>
+  );
+}
+
 const SELECT_BADGE_LINE_HEIGHT = 16;
 
 /** Small pill next to the pointer showing how many machines the select box currently covers (plus
@@ -272,6 +399,8 @@ export function LayoutBuilder({
    * finish with a pointer-up (click, shift-click or box-select), so the selection panel opens
    * right next to it. Clicking/panning empty canvas clears the selection, hiding the panel. */
   const [selectionAnchor, setSelectionAnchor] = useState<Point | null>(null);
+  /** null = the default CSS width; kept here so a widened panel stays wide when it reopens. */
+  const [selectionPanelWidth, setSelectionPanelWidth] = useState<number | null>(null);
   // Drag-to-resize canvas height (outside fullscreen) — same grip as the simulation canvases.
   const [canvasHeight, setCanvasHeight] = useState(DEFAULT_CANVAS_HEIGHT);
   const canvasResizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
@@ -1306,23 +1435,15 @@ export function LayoutBuilder({
           </div>
         )}
         {selectionPanel && selectedIds.size > 0 && selectionAnchor && (
-          <div
-            className="layout-selection-panel"
-            data-canvas-overlay
-            style={selectionPanelPlacement(selectionAnchor, viewSize)}
-            onPointerDown={(e) => e.stopPropagation()}
+          <FloatingSelectionPanel
+            anchor={selectionAnchor}
+            viewSize={viewSize}
+            width={selectionPanelWidth}
+            onWidthChange={setSelectionPanelWidth}
+            onClose={() => setSelectedIds(new Set())}
           >
-            <button
-              type="button"
-              className="layout-selection-panel-close"
-              onClick={() => setSelectedIds(new Set())}
-              title="Clear selection"
-              aria-label="Clear selection"
-            >
-              ×
-            </button>
             {selectionPanel}
-          </div>
+          </FloatingSelectionPanel>
         )}
         <svg
           ref={svgRef}
