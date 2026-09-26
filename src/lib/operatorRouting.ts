@@ -1,5 +1,6 @@
 import { MACHINE_H, MACHINE_W } from './layoutConstants';
 import { detourAroundWalls, type WallGraph } from './wallRouting';
+import { buildMachineObstacles, detourAroundMachines, straightIsClear, type MachineObstacles } from './machineObstacles';
 
 export interface RoutePoint {
   x: number;
@@ -26,11 +27,30 @@ interface RowBand {
 export interface RoutingRowCache {
   machines: RoutePoint[] | null;
   rows: RowBand[];
+  /** Machine bodies as obstacles (built once per machine array, like `rows`). */
+  obstacles: MachineObstacles | null;
+  obstaclesFor: RoutePoint[] | null;
+  /** Finished routes by (rounded) endpoints. Operators keep walking between the same service
+   * points, and every candidate machine is re-scored on each decision, so the same routes are
+   * asked for constantly; machines and walls never move mid-run. */
+  routes: Map<string, RoutePoint[]>;
 }
 
 export function createRoutingRowCache(): RoutingRowCache {
-  return { machines: null, rows: [] };
+  return { machines: null, rows: [], obstacles: null, obstaclesFor: null, routes: new Map() };
 }
+
+const ROUTE_CACHE_LIMIT = 200_000;
+
+/** Machines closer than this (meters) are one block — you can't walk between them. */
+const BLOCK_MERGE_GAP_METERS = 0.3;
+/** Distance (meters) kept from a machine block's corner when walking around it. */
+const BLOCK_CLEARANCE_METERS = 0.3;
+/** Service points sit ~2 px inside a machine's box and walks hug machine edges: only paths deeper
+ * than this (meters) into a machine body count as going through it. */
+const EDGE_TOLERANCE_METERS = 0.2;
+/** First neighbourhood searched for a way around blocking machines (doubles until found). */
+const BLOCK_SEARCH_MARGIN_METERS = 1.5;
 
 /** Default scale (px per meter) used only if a caller doesn't have the real Movement Parameters
  * value on hand — matches the app-wide default (see layoutConstants.ts). */
@@ -143,10 +163,58 @@ export function computeWalkingWaypoints(
   rowCache?: RoutingRowCache,
   wallGraph?: WallGraph | null,
 ): RoutePoint[] {
-  const route = computeRowWaypoints(start, end, machines, pixelsPerMeter, rowCache);
-  // Walls are handled last: any leg of the aisle route that would pass through a wall is
-  // re-routed around the wall's ends (see wallRouting.ts).
-  return wallGraph ? detourAroundWalls(route, wallGraph) : route;
+  const scale = pixelsPerMeter > 0 ? pixelsPerMeter : DEFAULT_PIXELS_PER_METER;
+  let routeKey: string | null = null;
+  if (rowCache) {
+    if (rowCache.obstaclesFor !== machines) rowCache.routes.clear();
+    routeKey = `${Math.round(start.x * 2)},${Math.round(start.y * 2)}>${Math.round(end.x * 2)},${Math.round(end.y * 2)}`;
+    const cached = rowCache.routes.get(routeKey);
+    if (cached) return cached;
+  }
+  let obstacles: MachineObstacles | null = null;
+  if (machines.length > 0) {
+    if (rowCache) {
+      if (rowCache.obstaclesFor !== machines || !rowCache.obstacles) {
+        rowCache.obstacles = buildMachineObstacles(machines, MACHINE_W, MACHINE_H, BLOCK_MERGE_GAP_METERS * scale, EDGE_TOLERANCE_METERS * scale);
+        rowCache.obstaclesFor = machines;
+      }
+      obstacles = rowCache.obstacles;
+    } else {
+      obstacles = buildMachineObstacles(machines, MACHINE_W, MACHINE_H, BLOCK_MERGE_GAP_METERS * scale, EDGE_TOLERANCE_METERS * scale);
+    }
+  }
+
+  let finished: RoutePoint[];
+  if (!obstacles) {
+    finished = wallGraph ? detourAroundWalls([start, end], wallGraph) : [start, end];
+  } else if (straightIsClear(start, end, obstacles, wallGraph)) {
+    // Nothing in the way (e.g. stepping to the machine beside you) — just walk straight.
+    finished = [start, end];
+  } else {
+    // Shortest way around the machines and walls actually near the walk (see machineObstacles.ts) —
+    // works for any orientation or arrangement, e.g. horizontal machines stacked in a column.
+    const detour = detourAroundMachines(
+      start,
+      end,
+      obstacles,
+      BLOCK_CLEARANCE_METERS * scale,
+      BLOCK_SEARCH_MARGIN_METERS * scale,
+      wallGraph,
+    );
+    if (detour) {
+      finished = detour;
+    } else {
+      // Boxed in (no clear way exists): fall back to the old row-aisle heuristic so the walk still
+      // has a plausible shape and length.
+      const route = computeRowWaypoints(start, end, machines, pixelsPerMeter, rowCache);
+      finished = wallGraph ? detourAroundWalls(route, wallGraph) : route;
+    }
+  }
+  if (rowCache && routeKey) {
+    if (rowCache.routes.size >= ROUTE_CACHE_LIMIT) rowCache.routes.clear();
+    rowCache.routes.set(routeKey, finished);
+  }
+  return finished;
 }
 
 function computeRowWaypoints(

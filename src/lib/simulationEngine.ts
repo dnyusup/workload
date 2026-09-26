@@ -18,7 +18,7 @@ import type {
 import { activityCycleLength, availableTimeMinutes, deriveMachineSpec, distanceMeters, extraBreakMinutes } from './calculations';
 import { machineWidthPx, machineHeightPx } from './layoutConstants';
 import { buildServiceSegments } from './machineZones';
-import { computeWalkingWaypoints } from './operatorRouting';
+import { computeWalkingWaypoints, createRoutingRowCache, type RoutingRowCache } from './operatorRouting';
 import { buildWallGraph, type WallGraph } from './wallRouting';
 
 /** How far operators keep from a wall's end when walking around it. */
@@ -81,6 +81,8 @@ export class SimulationEngine {
   private breaks: BreakDef[];
   /** Visibility graph around the layout's walls (null when there are none). */
   private wallGraph: WallGraph | null;
+  /** Row bands + machine obstacles, built once per run instead of on every walk decision. */
+  private routeCache: RoutingRowCache = createRoutingRowCache();
   /** Timeline kind each break is recorded as (Lunch / Meeting / Other break). */
   private breakKindByLabel = new Map<string, 'lunch' | 'meeting' | 'otherBreak'>();
   /** Fracture Repairing isn't tracked per machine — it fires once the SUM of spools completed
@@ -628,7 +630,7 @@ export class SimulationEngine {
       { x: toX, y: toY },
       this.machines,
       this.config.movement.pixelsPerMeter,
-      undefined,
+      this.routeCache,
       this.wallGraph,
     );
     let total = 0;
@@ -689,7 +691,7 @@ export class SimulationEngine {
       { x: firstStop.x, y: firstStop.y },
       this.machines,
       this.config.movement.pixelsPerMeter,
-      undefined,
+      this.routeCache,
       this.wallGraph,
     );
     const [firstHop, ...remainingHops] = route.slice(1);
