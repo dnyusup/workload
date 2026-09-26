@@ -26,6 +26,8 @@ export function Controls({
   savingWlm,
   savedWlm,
   canCopyOutput,
+  onViewOutput,
+  viewingOutput = false,
   onCopyOutput,
   copyingOutput,
   copiedOutput,
@@ -55,6 +57,9 @@ export function Controls({
   savingWlm: boolean;
   savedWlm: boolean;
   canCopyOutput: boolean;
+  /** Opens the finished run's output model in the same detail popup as WL_Outputmodels. */
+  onViewOutput?: () => void;
+  viewingOutput?: boolean;
   onCopyOutput: () => void;
   copyingOutput: boolean;
   copiedOutput: boolean;
@@ -134,9 +139,40 @@ export function Controls({
           {savingWlm ? 'Saving…' : savedWlm ? 'WLM Saved' : 'Save WLM'}
         </Button>
       )}
+      {finished && canCopyOutput && onViewOutput && (
+        <Button
+          variant="secondary"
+          className="controls-icon-button"
+          onClick={onViewOutput}
+          disabled={viewingOutput}
+          title="View output details"
+          aria-label="View output details"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+        </Button>
+      )}
       {finished && canCopyOutput && (
-        <Button variant="secondary" onClick={onCopyOutput} disabled={copyingOutput}>
-          {copyingOutput ? 'Copying…' : copiedOutput ? '✓ Copied' : '📋 Copy'}
+        <Button
+          variant="secondary"
+          className="controls-icon-button"
+          onClick={onCopyOutput}
+          disabled={copyingOutput}
+          title={copiedOutput ? 'Copied' : 'Copy output (tab-separated, paste into Excel)'}
+          aria-label={copiedOutput ? 'Output copied' : 'Copy output'}
+        >
+          {copiedOutput ? (
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 12.5l4.5 4.5L19 7.5" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="9" y="9" width="11" height="11" rx="2" />
+              <path d="M5 15V6a2 2 0 0 1 2-2h9" />
+            </svg>
+          )}
         </Button>
       )}
       {!playing && !finished && inheritedConditionOptions.length > 0 && (

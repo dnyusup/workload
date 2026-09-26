@@ -4404,3 +4404,225 @@
 .field-info:hover {
   color: #38bdf8;
 }
+
+/* WL_Outputmodels: row hover (incl. the sticky first columns) + double-click detail dialog. */
+.output-models-table tbody tr.output-model-row {
+  cursor: pointer;
+}
+
+.output-models-table tbody tr.output-model-row:hover td {
+  background: #1a2744;
+}
+
+.om-detail-overlay {
+  background: rgba(2, 6, 23, 0.72);
+  padding: 16px;
+}
+
+.om-detail {
+  width: min(1180px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px 22px;
+  border: 1px solid #1e293b;
+  border-radius: 16px;
+  background: #0f172a;
+  color: #e2e8f0;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.55);
+}
+
+.om-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.om-detail-eyebrow {
+  color: #38bdf8;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.om-detail-header h3 {
+  margin: 4px 0 2px;
+  font-size: 1.15rem;
+  color: #f1f5f9;
+  overflow-wrap: anywhere;
+}
+
+.om-detail-header p {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 0.78rem;
+}
+
+.om-detail-close {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.om-detail-close:hover {
+  border-color: #38bdf8;
+  color: #38bdf8;
+}
+
+.om-detail-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+}
+
+.om-detail-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid #1e293b;
+  border-radius: 10px;
+  background: linear-gradient(160deg, rgba(57, 135, 229, 0.12), #111827 70%);
+}
+
+.om-detail-kpi span {
+  color: #94a3b8;
+  font-size: 0.68rem;
+}
+
+.om-detail-kpi strong {
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.om-detail-body {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.om-detail-sections {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.om-detail-section {
+  padding: 12px 14px;
+  border: 1px solid #1e293b;
+  border-radius: 10px;
+  background: #111827;
+  min-width: 0;
+}
+
+.om-detail-section h4 {
+  margin: 0 0 8px;
+  color: #cbd5e1;
+  font-size: 0.8rem;
+}
+
+.om-detail-section dl {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.om-detail-section dl > div,
+.om-detail-condition {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.78rem;
+}
+
+.om-detail-section dt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.om-detail-section dd {
+  margin: 0;
+  color: #e2e8f0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.om-detail-stack {
+  display: flex;
+  gap: 2px;
+  height: 12px;
+  margin-bottom: 10px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #0b1220;
+}
+
+.om-detail-stack span {
+  height: 100%;
+}
+
+.om-detail-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.om-detail-condition {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #1e293b;
+}
+
+.om-detail-condition span {
+  color: #94a3b8;
+}
+
+.om-detail-condition strong {
+  font-weight: 500;
+  text-align: right;
+}
+
+@media (max-width: 900px) {
+  .om-detail-body,
+  .om-detail-sections {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Icon-only buttons in the simulator controls bar (view output, copy). */
+.btn.controls-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 38px;
+  padding: 0;
+}
+
+.controls-icon-button svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}

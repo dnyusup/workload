@@ -18,6 +18,8 @@ import {
   type OutputModelPayload,
 } from './lib/outputModel';
 import { copyOutputModelRows } from './lib/outputModelExport';
+import type { OutputModelRecord } from './lib/outputModelColumns';
+import { OutputModelDetailDialog } from './components/data/OutputModelDetailDialog';
 import { parseMachineStartConditions, useInheritedMachineConditions } from './hooks/useInheritedMachineConditions';
 
 interface PendingOutputModelSave {
@@ -170,6 +172,24 @@ export function SimulationView({
     }
   };
 
+  // Same payload Copy/Save WLM use, shown in the WL_Outputmodels detail popup.
+  const [outputPreview, setOutputPreview] = useState<OutputModelRecord | null>(null);
+  const [viewingOutput, setViewingOutput] = useState(false);
+  const handleViewOutput = async () => {
+    if (viewingOutput) return;
+    setViewingOutput(true);
+    setCopyOutputError(null);
+    try {
+      const payload = await prepareSimulationOutputModel(config, state, user.email, { version: '0001' });
+      // Not saved: drop the save stamp so the popup reads "Not saved yet" instead of "Updated …".
+      setOutputPreview({ ...(payload as OutputModelRecord), mpp_updatedon: undefined, mpp_updatedby: undefined });
+    } catch (err) {
+      setCopyOutputError(err instanceof Error ? err.message : 'Failed to prepare the simulation output.');
+    } finally {
+      setViewingOutput(false);
+    }
+  };
+
   const handleCopyOutput = async () => {
     if (copyingOutput) return;
     setCopyingOutput(true);
@@ -266,6 +286,8 @@ export function SimulationView({
         savingWlm={savingWlm || Boolean(pendingSave)}
         savedWlm={savedWlm}
         canCopyOutput={state.finished}
+        onViewOutput={() => void handleViewOutput()}
+        viewingOutput={viewingOutput}
         onCopyOutput={() => void handleCopyOutput()}
         copyingOutput={copyingOutput}
         copiedOutput={copiedOutput}
@@ -312,6 +334,8 @@ export function SimulationView({
               savingWlm={savingWlm || Boolean(pendingSave)}
               savedWlm={savedWlm}
               canCopyOutput={state.finished}
+              onViewOutput={() => void handleViewOutput()}
+              viewingOutput={viewingOutput}
               onCopyOutput={() => void handleCopyOutput()}
               copyingOutput={copyingOutput}
               copiedOutput={copiedOutput}
@@ -327,6 +351,9 @@ export function SimulationView({
         />
         <Dashboard state={state} config={config} />
       </div>
+      {outputPreview && (
+        <OutputModelDetailDialog row={outputPreview} eyebrow="Simulation result · not saved" onClose={() => setOutputPreview(null)} />
+      )}
       {pendingSave && (
         <OutputModelSaveDialog
           existing={pendingSave.existing}
