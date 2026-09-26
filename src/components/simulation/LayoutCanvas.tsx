@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { machineLocalFrame } from '../../lib/layoutConstants';
 import type { MachineTimelineKind, OperatorTimelineKind, SimulationState } from '../../types';
 import { MachineZoneLabels } from '../ui/MachineZoneLabels';
 import { MachineDonut } from './MachineDonut';
@@ -368,10 +369,15 @@ export function LayoutCanvas({
             const zoneColors = machineZoneColors(m, operator.serviceTasks, operator.targetMachineId);
             const w = m.widthPx;
             const h = m.heightPx;
-            const payoffY = m.orientation === 'flipped' ? h * 0.7 : 0;
-            const takeupY = m.orientation === 'flipped' ? 0 : h * 0.7;
+            // Zone graphics are drawn in the machine's own vertical frame (lw × lh) and rotated into
+            // the box for a horizontal machine.
+            const frame = machineLocalFrame(m.axis, w, h);
+            const lw = frame.width;
+            const lh = frame.height;
+            const payoffY = m.orientation === 'flipped' ? lh * 0.7 : 0;
+            const takeupY = m.orientation === 'flipped' ? 0 : lh * 0.7;
             const takeupProgressY = takeupY + (m.orientation === 'flipped' ? 8 : 20);
-            const payoffTextY = payoffY + h * 0.2;
+            const payoffTextY = payoffY + lh * 0.2;
             const takeupTextY = takeupY + (m.orientation === 'flipped' ? 20 : 10);
             return (
               <g key={m.id} transform={`translate(${m.x - w / 2}, ${m.y - h / 2})`}>
@@ -383,44 +389,46 @@ export function LayoutCanvas({
                     m.type === 'bfx' ? 'machine-bfx-outline' : ''
                   }`}
                 />
-                {zoneColors.payoff && (
-                  <rect
-                    x={1}
-                    y={payoffY}
-                    width={w - 2}
-                    height={h * 0.3 - 1}
-                    rx={4}
-                    fill={zoneColors.payoff}
-                    opacity={0.9}
-                  />
-                )}
-                {zoneColors.takeup && (
-                  <rect
-                    x={1}
-                    y={takeupY}
-                    width={w - 2}
-                    height={h * 0.3 - 1}
-                    rx={4}
-                    fill={zoneColors.takeup}
-                    opacity={0.9}
-                  />
-                )}
-                <MachineZoneLabels orientation={m.orientation} pairSide={m.pairSide} width={w} height={h} />
-                {m.status !== 'unassigned' && (
-                  <g transform={`translate(${w / 2}, ${takeupProgressY})`}>
-                    <MachineDonut progress={progress} />
-                  </g>
-                )}
+                <g transform={frame.transform}>
+                  {zoneColors.payoff && (
+                    <rect
+                      x={1}
+                      y={payoffY}
+                      width={lw - 2}
+                      height={lh * 0.3 - 1}
+                      rx={4}
+                      fill={zoneColors.payoff}
+                      opacity={0.9}
+                    />
+                  )}
+                  {zoneColors.takeup && (
+                    <rect
+                      x={1}
+                      y={takeupY}
+                      width={lw - 2}
+                      height={lh * 0.3 - 1}
+                      rx={4}
+                      fill={zoneColors.takeup}
+                      opacity={0.9}
+                    />
+                  )}
+                  <MachineZoneLabels orientation={m.orientation} pairSide={m.pairSide} width={lw} height={lh} />
+                  {m.status !== 'unassigned' && (
+                    <g transform={`translate(${lw / 2}, ${takeupProgressY})`}>
+                      <MachineDonut progress={progress} />
+                    </g>
+                  )}
+                  {showSpoolLabels && (
+                    <text x={lw / 2} y={payoffTextY} textAnchor="middle" className="machine-sublabel">
+                      {ordinal(m.spoolsSinceLoading)} spl
+                    </text>
+                  )}
+                  <text x={lw / 2} y={takeupTextY} textAnchor="middle" className="machine-sublabel">
+                    {m.shiftSpoolsCompleted} spl
+                  </text>
+                </g>
                 <text x={w / 2} y={h / 2 + 10} textAnchor="middle" className="machine-label">
                   {m.label}
-                </text>
-                {showSpoolLabels && (
-                  <text x={w / 2} y={payoffTextY} textAnchor="middle" className="machine-sublabel">
-                    {ordinal(m.spoolsSinceLoading)} spl
-                  </text>
-                )}
-                <text x={w / 2} y={takeupTextY} textAnchor="middle" className="machine-sublabel">
-                  {m.shiftSpoolsCompleted} spl
                 </text>
               </g>
             );

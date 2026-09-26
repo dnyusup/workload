@@ -96,6 +96,10 @@ export type MachineZone = 'payoff' | 'cradle' | 'takeup';
 /** Two machines are typically paired side-by-side and share their Cradle access on the outer edges only. */
 export type MachinePairSide = 'single' | 'left' | 'right';
 
+/** Which way a machine's length runs on the layout: 'vertical' (Pay Off / Take Up at top and
+ * bottom — the default) or 'horizontal' (rotated 90°: Pay Off left, Take Up right). */
+export type MachineAxis = 'vertical' | 'horizontal';
+
 export interface LayoutMachine {
   id: string;
   /** Machines created as one group move and are selected together in the Layout Builder. */
@@ -106,6 +110,8 @@ export interface LayoutMachine {
   type: MachineType;
   orientation: MachineOrientation;
   pairSide: MachinePairSide;
+  /** Undefined = 'vertical' (layouts saved before this existed). */
+  axis?: MachineAxis;
   /** Machine footprint in meters — undefined means "use the default size" (see
    * DEFAULT_MACHINE_WIDTH_M/DEFAULT_MACHINE_LENGTH_M in layoutConstants.ts), which keeps every
    * layout saved before the Resize feature existed rendering/simulating exactly as before. */
@@ -174,6 +180,8 @@ export interface MachineRuntimeState {
   type: MachineType;
   orientation: MachineOrientation;
   pairSide: MachinePairSide;
+  /** Undefined = 'vertical' (layouts saved before this existed). */
+  axis?: MachineAxis;
   /** This machine's actual footprint in pixels, resolved once at simulation start from its
    * widthM/lengthM (or the default size if unset) and the run's pixelsPerMeter — used for zone
    * positioning and operator-routing clearance instead of the old fixed MACHINE_W/MACHINE_H. */

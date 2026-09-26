@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { machineLocalFrame } from '../../lib/layoutConstants';
 import type { ProductionMachineAssignment, ProductionSetup, ProductionSimulationState } from '../../types';
 import type { ResolvedConstruction } from '../../lib/productionConstructionResolver';
 import { useProductionSimulation } from '../../hooks/useProductionSimulation';
@@ -1420,6 +1421,7 @@ const MachinesLayer = memo(function MachinesLayer({
             h={m.heightPx}
             orientation={m.orientation}
             pairSide={m.pairSide}
+            axis={m.axis}
             isBfx={m.type === 'bfx'}
             status={m.status}
             // Rounded to 2% steps so a running machine's donut doesn't force a re-render on
@@ -1552,6 +1554,7 @@ const MachineNode = memo(function MachineNode({
   h,
   orientation,
   pairSide,
+  axis,
   isBfx,
   status,
   progressStep,
@@ -1575,6 +1578,7 @@ const MachineNode = memo(function MachineNode({
   h: number;
   orientation: ProductionSimulationState['machines'][number]['orientation'];
   pairSide: ProductionSimulationState['machines'][number]['pairSide'];
+  axis: ProductionSimulationState['machines'][number]['axis'];
   isBfx: boolean;
   status: ProductionSimulationState['machines'][number]['status'];
   progressStep: number;
@@ -1591,10 +1595,14 @@ const MachineNode = memo(function MachineNode({
   highlight: boolean | null;
   onSelect: (id: string) => void;
 }) {
-  const payoffY = orientation === 'flipped' ? h * 0.7 : 0;
-  const takeupY = orientation === 'flipped' ? 0 : h * 0.7;
+  // Zone graphics in the machine's own vertical frame (lw × lh), rotated in for horizontal machines.
+  const frame = machineLocalFrame(axis, w, h);
+  const lw = frame.width;
+  const lh = frame.height;
+  const payoffY = orientation === 'flipped' ? lh * 0.7 : 0;
+  const takeupY = orientation === 'flipped' ? 0 : lh * 0.7;
   const takeupProgressY = takeupY + (orientation === 'flipped' ? 8 : 20);
-  const payoffTextY = payoffY + h * 0.2;
+  const payoffTextY = payoffY + lh * 0.2;
   const takeupTextY = takeupY + (orientation === 'flipped' ? 20 : 10);
   return (
     <g
@@ -1613,33 +1621,35 @@ const MachineNode = memo(function MachineNode({
         } ${isSelected ? 'production-machine-selected' : ''}`}
         style={borderColor && !isSelected ? { stroke: borderColor, strokeWidth: 2.5 } : undefined}
       />
-      {payoffColor && <rect x={1} y={payoffY} width={w - 2} height={h * 0.3 - 1} rx={4} fill={payoffColor} opacity={0.9} />}
-      {takeupColor && <rect x={1} y={takeupY} width={w - 2} height={h * 0.3 - 1} rx={4} fill={takeupColor} opacity={0.9} />}
-      {isDetailed && (
-        <>
-          <MachineZoneLabels orientation={orientation} pairSide={pairSide} width={w} height={h} />
-          {status !== 'unassigned' && (
-            <g transform={`translate(${w / 2}, ${takeupProgressY})`}>
-              <MachineDonut progress={progressStep / PROGRESS_STEPS} />
-            </g>
-          )}
-        </>
-      )}
+      <g transform={frame.transform}>
+        {payoffColor && <rect x={1} y={payoffY} width={lw - 2} height={lh * 0.3 - 1} rx={4} fill={payoffColor} opacity={0.9} />}
+        {takeupColor && <rect x={1} y={takeupY} width={lw - 2} height={lh * 0.3 - 1} rx={4} fill={takeupColor} opacity={0.9} />}
+        {isDetailed && (
+          <>
+            <MachineZoneLabels orientation={orientation} pairSide={pairSide} width={lw} height={lh} />
+            {status !== 'unassigned' && (
+              <g transform={`translate(${lw / 2}, ${takeupProgressY})`}>
+                <MachineDonut progress={progressStep / PROGRESS_STEPS} />
+              </g>
+            )}
+          </>
+        )}
+        {isDetailed && status !== 'unassigned' && (
+          <>
+            {showSpoolLabels && (
+              <text x={lw / 2} y={payoffTextY} textAnchor="middle" className="machine-sublabel">
+                {ordinal(spoolsSinceLoading)} spl
+              </text>
+            )}
+            <text x={lw / 2} y={takeupTextY} textAnchor="middle" className="machine-sublabel">
+              {shiftSpoolsCompleted} spl
+            </text>
+          </>
+        )}
+      </g>
       <text x={w / 2} y={h / 2 + 10} textAnchor="middle" className="machine-label">
         {label}
       </text>
-      {isDetailed && status !== 'unassigned' && (
-        <>
-          {showSpoolLabels && (
-            <text x={w / 2} y={payoffTextY} textAnchor="middle" className="machine-sublabel">
-              {ordinal(spoolsSinceLoading)} spl
-            </text>
-          )}
-          <text x={w / 2} y={takeupTextY} textAnchor="middle" className="machine-sublabel">
-            {shiftSpoolsCompleted} spl
-          </text>
-        </>
-      )}
     </g>
   );
 });

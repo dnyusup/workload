@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import type { LayoutMachine, MachinePairSide, OperatorStartPoint } from '../../types';
+import type { LayoutMachine, MachineAxis, MachinePairSide, OperatorStartPoint } from '../../types';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { MachineZoneLabels } from '../ui/MachineZoneLabels';
@@ -8,8 +8,11 @@ import {
   machineHeightPx,
   DEFAULT_MACHINE_WIDTH_M,
   DEFAULT_MACHINE_LENGTH_M,
+  machineLocalFrame,
 } from '../../lib/layoutConstants';
 import { generatePairedGrid, PAIR_GAP } from '../../lib/gridLayout';
+import { shiftMachineLabel } from '../../lib/machineLabel';
+import { computeDragGuides, type Box, type DragGuides } from '../../lib/dragGuides';
 
 const PAIR_SIDE_CYCLE: Record<MachinePairSide, MachinePairSide> = {
   single: 'left',
@@ -55,6 +58,11 @@ type DragState =
  * mouse movement while clicking to select a machine nudges its position, which at 0-gap pair
  * spacing can visually swap which machine appears to sit at a given spot. */
 const DRAG_THRESHOLD = 3;
+
+/** Smart-guide snap distance, in SCREEN px (converted to world units with the current zoom). */
+const GUIDE_SNAP_SCREEN_PX = 6;
+/** Neighbour gaps longer than this aren't labelled while dragging. */
+const GUIDE_MAX_GAP_M = 15;
 
 type Measurement = { points: Point[]; done: boolean };
 
@@ -393,6 +401,7 @@ export function LayoutBuilder({
   const panelRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [renameValue, setRenameValue] = useState('');
+  const [groupRenumberStep, setGroupRenumberStep] = useState<1 | -1>(1);
   const [rowExtendStep, setRowExtendStep] = useState(1);
   const [rowExtendCount, setRowExtendCount] = useState(1);
   const [pasteType, setPasteType] = useState<'pair' | 'single'>('pair');
@@ -402,6 +411,8 @@ export function LayoutBuilder({
    * finish with a pointer-up (click, shift-click or box-select), so the selection panel opens
    * right next to it. Clicking/panning empty canvas clears the selection, hiding the panel. */
   const [selectionAnchor, setSelectionAnchor] = useState<Point | null>(null);
+  /** Alignment lines + neighbour gaps shown while dragging machines (cleared on release). */
+  const [dragGuides, setDragGuides] = useState<DragGuides | null>(null);
   /** null = the default CSS width; kept here so a widened panel stays wide when it reopens. */
   const [selectionPanelWidth, setSelectionPanelWidth] = useState<number | null>(null);
   const [assignPanelWidth, setAssignPanelWidth] = useState<number | null>(QUICK_ASSIGN_PANEL_WIDTH);
@@ -734,11 +745,40 @@ export function LayoutBuilder({
         pushHistory(drag.snapshot);
         setDrag({ ...drag, historyPushed: true });
       }
+      // Smart guides: bounding box of everything being dragged vs every other machine. Snaps onto
+      // the nearest edge/center alignment within a few screen px (hold Alt to move freely).
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      const others: Box[] = [];
+      layout.forEach((m) => {
+        const w = machineWidthPx(m, pixelsPerMeter);
+        const h = machineHeightPx(m, pixelsPerMeter);
+        const start = drag.positions.get(m.id);
+        if (start) {
+          minX = Math.min(minX, start.x + dx);
+          minY = Math.min(minY, start.y + dy);
+          maxX = Math.max(maxX, start.x + dx + w);
+          maxY = Math.max(maxY, start.y + dy + h);
+        } else {
+          others.push({ x: m.x, y: m.y, w, h });
+        }
+      });
+      const guides = computeDragGuides(
+        { x: minX, y: minY, w: maxX - minX, h: maxY - minY },
+        others,
+        e.altKey ? 0 : GUIDE_SNAP_SCREEN_PX / zoom,
+        GUIDE_MAX_GAP_M * pixelsPerMeter,
+      );
+      setDragGuides(guides);
+      const snappedDx = dx + guides.snapDx;
+      const snappedDy = dy + guides.snapDy;
       onChange(
         layout.map((m) => {
           const start = drag.positions.get(m.id);
           if (!start) return m;
-          return { ...m, x: Math.max(0, start.x + dx), y: Math.max(0, start.y + dy) };
+          return { ...m, x: Math.max(0, start.x + snappedDx), y: Math.max(0, start.y + snappedDy) };
         }),
       );
     } else if (drag.mode === 'pan') {
@@ -776,6 +816,7 @@ export function LayoutBuilder({
   };
 
   const handlePointerUp = (e: React.PointerEvent<SVGSVGElement>) => {
+    setDragGuides(null);
     const wrapperRect = wrapperRef.current?.getBoundingClientRect();
     if (wrapperRect) setSelectionAnchor({ x: e.clientX - wrapperRect.left, y: e.clientY - wrapperRect.top });
     if (drag?.mode === 'select') {
@@ -821,6 +862,7 @@ export function LayoutBuilder({
   const [groupWidthM, setGroupWidthM] = useState(String(DEFAULT_MACHINE_WIDTH_M));
   const [groupLengthM, setGroupLengthM] = useState(String(DEFAULT_MACHINE_LENGTH_M));
   const [groupCount, setGroupCount] = useState('2');
+  const [groupAxis, setGroupAxis] = useState<MachineAxis>('vertical');
 
   const addMachineGroup = () => {
     const widthM = parseFloat(groupWidthM);
@@ -832,15 +874,18 @@ export function LayoutBuilder({
     const groupId = `machine-group-${timestamp}`;
     const firstNumber = nextMachineNumber(layout);
     const widthPx = widthM * pixelsPerMeter;
+    // Machines sit side by side across their width: along x when vertical, along y when horizontal.
+    const horizontal = groupAxis === 'horizontal';
     const created = Array.from({ length: count }, (_, index): LayoutMachine => ({
       id: `m-${timestamp}-${index}`,
       groupId,
       label: String(firstNumber + index),
-      x: 40 + index * widthPx,
-      y: 40,
+      x: horizontal ? 40 : 40 + index * widthPx,
+      y: horizontal ? 40 + index * widthPx : 40,
       type: 'normal',
       orientation: 'normal',
       pairSide: 'single',
+      axis: groupAxis,
       widthM,
       lengthM,
     }));
@@ -867,6 +912,22 @@ export function LayoutBuilder({
     pushHistory(layout);
     onChange(
       layout.map((m) => (selectedIds.has(m.id) ? { ...m, orientation: m.orientation === 'flipped' ? 'normal' : 'flipped' } : m)),
+    );
+  };
+
+  /** Vertical ↔ horizontal for the selected machines, each rotated about its own center. */
+  const toggleAxis = () => {
+    if (selectedIds.size === 0) return;
+    pushHistory(layout);
+    onChange(
+      layout.map((m) => {
+        if (!selectedIds.has(m.id)) return m;
+        const w = machineWidthPx(m, pixelsPerMeter);
+        const h = machineHeightPx(m, pixelsPerMeter);
+        const axis: MachineAxis = m.axis === 'horizontal' ? 'vertical' : 'horizontal';
+        // Extents swap on rotation; keep the center where it was.
+        return { ...m, axis, x: Math.max(0, m.x + w / 2 - h / 2), y: Math.max(0, m.y + h / 2 - w / 2) };
+      }),
     );
   };
 
@@ -952,6 +1013,38 @@ export function LayoutBuilder({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [soleSelected?.id]);
 
+  // Selecting any machine of a group selects the whole group, so the single-machine rename box
+  // never showed for grouped machines. When the selection is exactly one whole group, offer one
+  // number box per member instead (ordered top-to-bottom, left-to-right).
+  const soleGroupMembers = (() => {
+    if (selectedIds.size < 2) return null;
+    const selected = layout.filter((m) => selectedIds.has(m.id));
+    const groupId = selected[0]?.groupId;
+    if (!groupId || selected.some((m) => m.groupId !== groupId)) return null;
+    const members = layout.filter((m) => m.groupId === groupId);
+    if (members.length !== selected.length) return null;
+    return [...members].sort((a, b) => a.y - b.y || a.x - b.x);
+  })();
+
+  const renameMachine = (id: string, value: string) => {
+    const label = value.trim();
+    const machine = layout.find((m) => m.id === id);
+    if (!machine || label === '' || label === machine.label) return;
+    pushHistory(layout);
+    onChange(layout.map((m) => (m.id === id ? { ...m, label } : m)));
+  };
+
+  /** Renames every member of the selected group in order, counting from the FIRST member's label:
+   * +1 → NDE01, NDE02, NDE03 …  ·  −1 → NDE05, NDE04, NDE03 … (no machines are added). */
+  const renumberGroup = () => {
+    if (!soleGroupMembers || soleGroupMembers.length < 2) return;
+    const first = soleGroupMembers[0].label;
+    const labelById = new Map(soleGroupMembers.map((m, index) => [m.id, shiftMachineLabel(first, groupRenumberStep * index)]));
+    if (soleGroupMembers.every((m) => labelById.get(m.id) === m.label)) return;
+    pushHistory(layout);
+    onChange(layout.map((m) => (labelById.has(m.id) ? { ...m, label: labelById.get(m.id)! } : m)));
+  };
+
   const commitRename = () => {
     if (!soleSelected || renameValue.trim() === '' || renameValue === soleSelected.label) return;
     pushHistory(layout);
@@ -986,11 +1079,10 @@ export function LayoutBuilder({
     if (pasteType === 'single') {
       const base = selectedMachines[0];
       const baseWidth = machineWidthPx(base, pixelsPerMeter);
-      const baseOriginalNumber = parseInt(base.label, 10);
       const step = baseWidth + pasteGapPx;
       for (let i = 1; i <= rowExtendCount; i += 1) {
         const offsetX = sign * step * i;
-        const newLabel = Number.isFinite(baseOriginalNumber) ? String(baseOriginalNumber + rowExtendStep * i) : `${base.label}-${i}`;
+        const newLabel = shiftMachineLabel(base.label, rowExtendStep * i);
         created.push({ ...base, id: `m-${timestamp}-${i}`, label: newLabel, x: base.x + offsetX, pairSide: 'single' });
       }
     } else if (selectedMachines.length === 2) {
@@ -1001,8 +1093,7 @@ export function LayoutBuilder({
       for (let i = 1; i <= rowExtendCount; i += 1) {
         const offsetX = sign * step * i;
         selectedMachines.forEach((m, idx) => {
-          const originalNumber = parseInt(m.label, 10);
-          const newLabel = Number.isFinite(originalNumber) ? String(originalNumber + rowExtendStep * i) : `${m.label}-${i}`;
+          const newLabel = shiftMachineLabel(m.label, rowExtendStep * i);
           created.push({ ...m, id: `m-${timestamp}-${i}-${idx}`, label: newLabel, x: m.x + offsetX });
         });
       }
@@ -1012,7 +1103,6 @@ export function LayoutBuilder({
       const groupWidth = Math.max(1, maxX - minX);
       const base = selectedMachines[0];
       const baseWidth = machineWidthPx(base, pixelsPerMeter);
-      const baseOriginalNumber = parseInt(base.label, 10);
       // If the source is a lone 'left' half being extended rightward (or a lone 'right' half
       // extended leftward), the very first pasted machine completes THAT pair — touching, 0
       // gap — instead of starting a brand new pair with pasteGapPx, so the row's left/right
@@ -1043,7 +1133,7 @@ export function LayoutBuilder({
           const subIndex = j % 2;
           columnOffset = freshRunStart + pairIndex * (2 * baseWidth + pasteGapPx) + subIndex * baseWidth;
         }
-        const newLabel = Number.isFinite(baseOriginalNumber) ? String(baseOriginalNumber + rowExtendStep * i) : `${base.label}-${i}`;
+        const newLabel = shiftMachineLabel(base.label, rowExtendStep * i);
         specs.push({ x: base.x + sign * columnOffset, label: newLabel, forcedPairSide });
       }
 
@@ -1156,6 +1246,20 @@ export function LayoutBuilder({
                 aria-label="Cycle pair side"
               >
                 ⟳
+              </Button>
+              <Button
+                variant="ghost"
+                className="toolbar-icon-button"
+                onClick={toggleAxis}
+                disabled={selectedIds.size === 0}
+                title={
+                  soleSelected
+                    ? `Rotate vertical ↔ horizontal (current: ${soleSelected.axis ?? 'vertical'})`
+                    : 'Rotate selected machine(s) vertical ↔ horizontal'
+                }
+                aria-label="Change orientation (vertical / horizontal)"
+              >
+                ⤾
               </Button>
               <Button
                 variant="ghost"
@@ -1366,6 +1470,48 @@ export function LayoutBuilder({
               <span className="toolbar-divider" />
             </>
           )}
+          {soleGroupMembers && (
+            <>
+              <span className="toolbar-x">Machine No.</span>
+              {soleGroupMembers.map((member, index) => (
+                <input
+                  // Re-mounts with the new label after a rename or undo, so the box never goes stale.
+                  key={`${member.id}:${member.label}`}
+                  className="input input-sm"
+                  style={{ width: 64 }}
+                  defaultValue={member.label}
+                  onBlur={(e) => renameMachine(member.id, e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                  }}
+                  title={`Machine ${index + 1} of ${soleGroupMembers.length} in this group — change its number/label`}
+                  aria-label={`Machine number for group member ${index + 1}`}
+                />
+              ))}
+              <select
+                className="input input-sm"
+                style={{ width: 64 }}
+                value={groupRenumberStep}
+                onChange={(e) => setGroupRenumberStep(Number(e.target.value) === -1 ? -1 : 1)}
+                title="Direction for renumbering the group from its first machine"
+                aria-label="Renumber direction"
+              >
+                <option value={1}>+1</option>
+                <option value={-1}>−1</option>
+              </select>
+              <Button
+                variant="secondary"
+                onClick={renumberGroup}
+                title={`Rename the other machines in order from the first one (${soleGroupMembers[0].label}, ${shiftMachineLabel(
+                  soleGroupMembers[0].label,
+                  groupRenumberStep,
+                )}, …) — no machines are added`}
+              >
+                Urutkan
+              </Button>
+              <span className="toolbar-divider" />
+            </>
+          )}
           <span className="toolbar-x">Type</span>
           <select
             className="input input-sm"
@@ -1384,7 +1530,7 @@ export function LayoutBuilder({
             style={{ width: 60 }}
             value={rowExtendStep}
             onChange={(e) => setRowExtendStep(parseInt(e.target.value, 10) || 0)}
-            title="Machine number offset per paste (can be negative, e.g. -1)"
+            title="Machine number change per pasted copy, e.g. +1: NDE01 → NDE02, NDE03 … or -1: NDE05 → NDE04, NDE03 … (the last number in the label is shifted; prefix and zero-padding are kept)"
           />
           <span className="toolbar-x">Count</span>
           <input
@@ -1527,6 +1673,7 @@ export function LayoutBuilder({
                 : '';
               const w = machineWidthPx(m, pixelsPerMeter);
               const h = machineHeightPx(m, pixelsPerMeter);
+              const frame = machineLocalFrame(m.axis, w, h);
               return (
                 <g
                   key={m.id}
@@ -1555,7 +1702,9 @@ export function LayoutBuilder({
                   {selectedIds.has(m.id) && (
                     <rect width={w} height={h} rx={6} className="machine-selection-hatch" />
                   )}
-                  <MachineZoneLabels orientation={m.orientation} pairSide={m.pairSide} width={w} height={h} />
+                  <g transform={frame.transform}>
+                    <MachineZoneLabels orientation={m.orientation} pairSide={m.pairSide} width={frame.width} height={frame.height} />
+                  </g>
                   <text x={w / 2} y={h / 2 + 4} textAnchor="middle" className="machine-label">
                     {m.label}
                   </text>
@@ -1581,6 +1730,31 @@ export function LayoutBuilder({
                 <text x={32.5} y={-28} textAnchor="middle" className="operator-start-label">
                   START
                 </text>
+              </g>
+            )}
+            {dragGuides && (
+              <g className="drag-guides" pointerEvents="none">
+                {dragGuides.lines.map((line, i) => (
+                  <line key={`guide-${i}`} {...line} className="drag-guide-line" vectorEffect="non-scaling-stroke" />
+                ))}
+                {dragGuides.gaps.map((gap, i) => {
+                  const cx = (gap.x1 + gap.x2) / 2;
+                  const cy = (gap.y1 + gap.y2) / 2;
+                  const text = `${(gap.distance / pixelsPerMeter).toFixed(2)} m`;
+                  // Label stays the same on-screen size at any zoom.
+                  const fontSize = 11 / zoom;
+                  const labelW = (text.length * 6.4 + 10) / zoom;
+                  const labelH = 16 / zoom;
+                  return (
+                    <g key={`gap-${i}`}>
+                      <line x1={gap.x1} y1={gap.y1} x2={gap.x2} y2={gap.y2} className="drag-gap-line" vectorEffect="non-scaling-stroke" />
+                      <rect x={cx - labelW / 2} y={cy - labelH / 2} width={labelW} height={labelH} rx={labelH / 2} className="drag-gap-label-bg" />
+                      <text x={cx} y={cy + fontSize * 0.35} textAnchor="middle" fontSize={fontSize} className="drag-gap-label">
+                        {text}
+                      </text>
+                    </g>
+                  );
+                })}
               </g>
             )}
             {measurement && (
@@ -1726,6 +1900,13 @@ export function LayoutBuilder({
             <div className="modal-field">
               <label htmlFor="group-count">Jumlah mesin</label>
               <input id="group-count" className="input" type="number" min={2} step={1} value={groupCount} onChange={(e) => setGroupCount(e.target.value)} />
+            </div>
+            <div className="modal-field">
+              <label htmlFor="group-axis">Orientation</label>
+              <select id="group-axis" className="input" value={groupAxis} onChange={(e) => setGroupAxis(e.target.value as MachineAxis)}>
+                <option value="vertical">Vertikal (PO atas, TU bawah)</option>
+                <option value="horizontal">Horizontal (PO kiri, TU kanan)</option>
+              </select>
             </div>
             <p className="hint-row">Mesin dalam group akan selalu dipilih dan dipindahkan bersama.</p>
             <div className="modal-actions">

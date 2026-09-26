@@ -153,6 +153,7 @@ export class SimulationEngine {
         type: m.type,
         orientation: m.orientation,
         pairSide: m.pairSide,
+        axis: m.axis,
         widthPx,
         heightPx,
         status: assigned
@@ -637,6 +638,7 @@ export class SimulationEngine {
       pxPerM,
       machine.widthPx,
       machine.heightPx,
+      machine.axis,
     );
     if (segments.length === 0) {
       return this.walkingDistanceMeters(this.operator.x, this.operator.y, machine.x, machine.y) / speed;
@@ -661,6 +663,7 @@ export class SimulationEngine {
       this.config.movement.pixelsPerMeter,
       machine.widthPx,
       machine.heightPx,
+      machine.axis,
     );
     const firstStop = segments[0] ?? { x: machine.x, y: machine.y };
     // Route the hop through inter-row aisles rather than a straight line, so it doesn't visually
@@ -991,6 +994,7 @@ export class SimulationEngine {
           this.config.movement.pixelsPerMeter,
           machine.widthPx,
           machine.heightPx,
+          machine.axis,
         )
       : [];
     if (segments.length === 0) {

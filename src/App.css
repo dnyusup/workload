@@ -4655,3 +4655,28 @@
   color: #fbbf24;
   font-size: 0.72rem;
 }
+
+/* Layout Builder smart guides while dragging machines. */
+.drag-guide-line {
+  stroke: #f472b6;
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+}
+
+.drag-gap-line {
+  stroke: #38bdf8;
+  stroke-width: 1.5;
+}
+
+.drag-gap-label-bg {
+  fill: #0f172a;
+  stroke: #38bdf8;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.drag-gap-label {
+  fill: #e2e8f0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}

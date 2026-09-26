@@ -163,6 +163,7 @@ export class ProductionSimulationEngine {
         type: m.type,
         orientation: m.orientation,
         pairSide: m.pairSide,
+        axis: m.axis,
         widthPx: machineWidthPx(m, setup.movement.pixelsPerMeter),
         heightPx: machineHeightPx(m, setup.movement.pixelsPerMeter),
         status: assigned ? 'running' : 'unassigned',
@@ -645,7 +646,7 @@ export class ProductionSimulationEngine {
   private estimateServiceEtaMin(operator: ProductionOperatorRuntimeState, machine: ProdMachine, myTasks: PendingTask[]): number {
     const speed = this.setup.movement.walkingSpeed > 0 ? this.setup.movement.walkingSpeed : 1;
     const pxPerM = this.setup.movement.pixelsPerMeter;
-    const segments = buildServiceSegments(myTasks, machine.x, machine.y, machine.orientation, machine.pairSide, this.setup.movement.walkingSpeed, pxPerM, machine.widthPx, machine.heightPx);
+    const segments = buildServiceSegments(myTasks, machine.x, machine.y, machine.orientation, machine.pairSide, this.setup.movement.walkingSpeed, pxPerM, machine.widthPx, machine.heightPx, machine.axis);
     if (segments.length === 0) return this.walkingDistanceMeters(operator.x, operator.y, machine.x, machine.y) / speed;
     let total = this.walkingDistanceMeters(operator.x, operator.y, segments[0].x, segments[0].y) / speed;
     total += segments[0].dwellMin;
@@ -700,7 +701,7 @@ export class ProductionSimulationEngine {
   private startWalkingTo(operator: ProductionOperatorRuntimeState, machine: ProdMachine) {
     machine.lockedByOperatorId = operator.id;
     const myTasks = this.tasksFor(operator.id, machine);
-    const segments = buildServiceSegments(myTasks, machine.x, machine.y, machine.orientation, machine.pairSide, this.setup.movement.walkingSpeed, this.setup.movement.pixelsPerMeter, machine.widthPx, machine.heightPx);
+    const segments = buildServiceSegments(myTasks, machine.x, machine.y, machine.orientation, machine.pairSide, this.setup.movement.walkingSpeed, this.setup.movement.pixelsPerMeter, machine.widthPx, machine.heightPx, machine.axis);
     const firstStop = segments[0] ?? { x: machine.x, y: machine.y };
     const route = computeWalkingWaypoints({ x: operator.x, y: operator.y }, { x: firstStop.x, y: firstStop.y }, this.machines, this.setup.movement.pixelsPerMeter, this.routeCache);
     const [firstHop, ...remainingHops] = route.slice(1);
@@ -810,7 +811,7 @@ export class ProductionSimulationEngine {
     }
     operator.serviceTasks = tasks;
     const segments = machine
-      ? buildServiceSegments(tasks, machine.x, machine.y, machine.orientation, machine.pairSide, this.setup.movement.walkingSpeed, this.setup.movement.pixelsPerMeter, machine.widthPx, machine.heightPx)
+      ? buildServiceSegments(tasks, machine.x, machine.y, machine.orientation, machine.pairSide, this.setup.movement.walkingSpeed, this.setup.movement.pixelsPerMeter, machine.widthPx, machine.heightPx, machine.axis)
       : [];
     if (segments.length === 0) {
       this.finishService(operator, this.metrics.clockMin);

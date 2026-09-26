@@ -1,4 +1,4 @@
-import type { ActivityKey, MachineOrientation, MachinePairSide, MachineZone, PendingTask, ServiceSegment } from '../types';
+import type { ActivityKey, MachineOrientation, MachinePairSide, MachineZone, PendingTask, ServiceSegment, MachineAxis } from '../types';
 import { MACHINE_H, MACHINE_W } from './layoutConstants';
 import { distanceMeters } from './calculations';
 
@@ -25,16 +25,26 @@ export function zonePosition(
   pairSide: MachinePairSide = 'single',
   boxWidthPx: number = MACHINE_W,
   boxHeightPx: number = MACHINE_H,
+  axis: MachineAxis = 'vertical',
 ) {
+  // Work in the machine's own (vertical) frame, then rotate for a horizontal machine — the same
+  // −90° rotation machineLocalFrame applies when drawing it: local (dx, dy) → (dy, −dx).
+  const horizontal = axis === 'horizontal';
+  const localW = horizontal ? boxHeightPx : boxWidthPx;
+  const localH = horizontal ? boxWidthPx : boxHeightPx;
   const frac = ZONE_Y_FRAC[orientation][zone];
-  const y = centerY - boxHeightPx / 2 + frac * boxHeightPx;
   const outsideOffset = 10;
+  let dx: number;
+  let dy = -localH / 2 + frac * localH;
   if (zone === 'payoff' || zone === 'takeup') {
     const direction = zone === 'takeup' ? (orientation === 'flipped' ? -1 : 1) : orientation === 'flipped' ? 1 : -1;
-    return { x: centerX, y: y + direction * outsideOffset };
+    dx = 0;
+    dy += direction * outsideOffset;
+  } else {
+    const direction = pairSide === 'left' ? -1 : 1;
+    dx = direction * (localW / 2 + outsideOffset);
   }
-  const direction = pairSide === 'left' ? -1 : 1;
-  return { x: centerX + direction * (boxWidthPx / 2 + outsideOffset), y };
+  return horizontal ? { x: centerX + dy, y: centerY - dx } : { x: centerX + dx, y: centerY + dy };
 }
 
 interface RawSegment {
@@ -87,13 +97,14 @@ export function buildServiceSegments(
   pixelsPerMeter = 20,
   boxWidthPx: number = MACHINE_W,
   boxHeightPx: number = MACHINE_H,
+  axis: MachineAxis = 'vertical',
 ): ServiceSegment[] {
   const segments: ServiceSegment[] = [];
   for (const task of tasks) {
     const raw = activityZoneSchedule(task.activity, task.timeMinutes, task.loadingPayoffOnly, task.defectTakeupOnly);
     const positioned = raw.map((seg) => ({
       ...seg,
-      pos: zonePosition(centerX, centerY, orientation, seg.zone, pairSide, boxWidthPx, boxHeightPx),
+      pos: zonePosition(centerX, centerY, orientation, seg.zone, pairSide, boxWidthPx, boxHeightPx, axis),
     }));
     const includesInternalMovement =
       (task.activity === 'loading' && !task.loadingPayoffOnly) ||
