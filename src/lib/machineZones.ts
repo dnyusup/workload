@@ -69,6 +69,22 @@ function activityZoneSchedule(activity: ActivityKey, totalTime: number, loadingP
     ];
   } else if (defectTakeupOnly) {
     raw = [{ zone: 'takeup', duration: totalTime }];
+  } else if (
+    activity === 'diesChange' ||
+    activity.startsWith('diesChange-') ||
+    activity === 'fractureRepairing' ||
+    activity.startsWith('fractureRepairing-')
+  ) {
+    // Take Up first (stop/check the line there), then the actual work at the cradle, then Take Up
+    // again to finish.
+    const checkTakeup = 20 / 60;
+    const takeup = 3;
+    const cradle = totalTime - checkTakeup - takeup;
+    raw = [
+      { zone: 'takeup', duration: checkTakeup },
+      { zone: 'cradle', duration: cradle },
+      { zone: 'takeup', duration: takeup },
+    ];
   } else {
     const takeup = 3;
     const cradle = totalTime - takeup;
@@ -82,9 +98,18 @@ function activityZoneSchedule(activity: ActivityKey, totalTime: number, loadingP
   const sum = raw.reduce((s, r) => s + Math.max(0, r.duration), 0);
   if (sum <= 0) return [{ zone: raw[raw.length - 1].zone, duration: totalTime }];
   const scale = totalTime / sum;
-  return raw
+  const scaled = raw
     .map((r) => ({ zone: r.zone, duration: Math.max(0, r.duration) * scale }))
     .filter((r) => r.duration > 1e-6);
+  // A zone that drops out (e.g. no cradle time left on a very short task) can leave the same zone
+  // twice in a row — stay put instead of "moving" in place.
+  const merged: RawSegment[] = [];
+  for (const r of scaled) {
+    const last = merged[merged.length - 1];
+    if (last && last.zone === r.zone) last.duration += r.duration;
+    else merged.push({ ...r });
+  }
+  return merged;
 }
 
 export function buildServiceSegments(
