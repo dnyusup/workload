@@ -4626,3 +4626,32 @@
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+
+/* Compact Assign / Unassign panel shown next to the pointer on the Workload Machine Layout. */
+.quick-assign-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 40px 14px 16px;
+  border: 1px solid #1e293b;
+  border-radius: 12px;
+  background: #111827;
+  color: #e2e8f0;
+  font-size: 0.85rem;
+}
+
+.quick-assign-meta {
+  color: #94a3b8;
+  font-size: 0.75rem;
+}
+
+.quick-assign-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.quick-assign-warning {
+  color: #fbbf24;
+  font-size: 0.72rem;
+}

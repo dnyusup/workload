@@ -149,6 +149,9 @@ const clampNumber = (value: number, min: number, max: number) => Math.min(Math.m
 /** The floating selection panel: opens beside the anchor, can be dragged by its card header and
  * widened from either side edge (double-click an edge to restore the default width). Its position
  * resets every time it reopens; the width is owned by the caller so it survives reopening. */
+/** Starting width of the compact Assign / Unassign panel (Workload Machine Layout). */
+const QUICK_ASSIGN_PANEL_WIDTH = 270;
+
 function FloatingSelectionPanel({
   anchor,
   viewSize,
@@ -401,6 +404,7 @@ export function LayoutBuilder({
   const [selectionAnchor, setSelectionAnchor] = useState<Point | null>(null);
   /** null = the default CSS width; kept here so a widened panel stays wide when it reopens. */
   const [selectionPanelWidth, setSelectionPanelWidth] = useState<number | null>(null);
+  const [assignPanelWidth, setAssignPanelWidth] = useState<number | null>(QUICK_ASSIGN_PANEL_WIDTH);
   // Drag-to-resize canvas height (outside fullscreen) — same grip as the simulation canvases.
   const [canvasHeight, setCanvasHeight] = useState(DEFAULT_CANVAS_HEIGHT);
   const canvasResizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
@@ -918,6 +922,8 @@ export function LayoutBuilder({
     onAssignedChange([...(assignedMachineIds ?? []), ...toAdd.map((m) => m.id)]);
   };
 
+  const selectedAssignedCount = [...selectedIds].reduce((n, id) => (assignedSet.has(id) ? n + 1 : n), 0);
+
   const unassignSelection = () => {
     if (!onAssignedChange || selectedIds.size === 0) return;
     onAssignedChange((assignedMachineIds ?? []).filter((id) => !selectedIds.has(id)));
@@ -1433,6 +1439,47 @@ export function LayoutBuilder({
           <div className="layout-canvas-overlay" data-canvas-overlay onPointerDown={(e) => e.stopPropagation()}>
             {canvasOverlay}
           </div>
+        )}
+        {/* Workload Machine Layout: Assign / Unassign right next to the pointer, like the
+            Production Setup's Assign Selection panel. */}
+        {!selectionPanel && onAssignedChange && machHandled !== undefined && selectedIds.size > 0 && selectionAnchor && (
+          <FloatingSelectionPanel
+            anchor={selectionAnchor}
+            viewSize={viewSize}
+            width={assignPanelWidth}
+            onWidthChange={(w) => setAssignPanelWidth(w ?? QUICK_ASSIGN_PANEL_WIDTH)}
+            onClose={() => setSelectedIds(new Set())}
+          >
+            <div className="quick-assign-panel">
+              <strong>
+                {selectedIds.size} machine{selectedIds.size === 1 ? '' : 's'} selected
+              </strong>
+              <span className="quick-assign-meta">
+                {selectedAssignedCount} already assigned · {assignedCount} / {machHandled} assigned in total
+              </span>
+              <div className="quick-assign-actions">
+                <Button
+                  variant="primary"
+                  onClick={assignSelection}
+                  disabled={assignCapacity <= 0 || selectedAssignedCount === selectedIds.size}
+                  title={assignCapacity <= 0 ? 'Already at the #Mach limit — unassign some first' : 'Assign the selected machine(s) to this operator'}
+                >
+                  📌 Assign
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={unassignSelection}
+                  disabled={selectedAssignedCount === 0}
+                  title="Unassign the selected machine(s) from this operator"
+                >
+                  ↩ Unassign
+                </Button>
+              </div>
+              {assignCapacity <= 0 && selectedAssignedCount < selectedIds.size && (
+                <span className="quick-assign-warning">#Mach limit reached — unassign some machines first.</span>
+              )}
+            </div>
+          </FloatingSelectionPanel>
         )}
         {selectionPanel && selectedIds.size > 0 && selectionAnchor && (
           <FloatingSelectionPanel
