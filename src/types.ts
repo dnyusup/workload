@@ -127,6 +127,16 @@ export interface OperatorStartPoint {
   y: number;
 }
 
+/** A wall drawn on the layout: a straight segment operators can't walk through, so walking routes
+ * detour around its ends. Coordinates are layout world px (same space as machine x/y). */
+export interface LayoutWall {
+  id: string;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
 export interface AppConfig {
   spec: MachineSpecInput;
   operator: OperatorConfig;
@@ -136,6 +146,8 @@ export interface AppConfig {
   /** Where the operator starts before the simulation begins. Undefined means "no start point set
    * yet" — the simulation falls back to the first machine's position. */
   operatorStart?: OperatorStartPoint;
+  /** Walls operators must walk around (see LayoutWall). */
+  walls?: LayoutWall[];
   /** Which machines in `layout` the operator actually handles — explicitly chosen in the Machine
    * Layout step (Assign/Unassign on the current selection), capped at `operator.machHandled`. The
    * simulation only ever runs these machines; the rest sit idle ('unassigned'). */
@@ -354,6 +366,8 @@ export interface ProductionSetup {
    * created before this feature existed, or if the source Layout never had one set — falls back
    * to the first machine's position in that case. */
   operatorStart?: OperatorStartPoint;
+  /** Walls operators must walk around (see LayoutWall). */
+  walls?: LayoutWall[];
   operators: ProductionOperator[];
   assignments: ProductionMachineAssignment[];
   shiftTime: number;

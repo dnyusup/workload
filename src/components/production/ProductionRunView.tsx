@@ -24,6 +24,7 @@ import { summarizeOperatorTimelines } from '../../lib/operatorOccupation';
 import { buildCanvasLegendData, type LegendHover } from '../../lib/canvasLegend';
 import { CanvasLegendPanel } from './CanvasLegendPanel';
 import { ProductionReportView } from './ProductionReportView';
+import { WallsLayer } from '../ui/WallsLayer';
 import { useFillToWindowBottom } from '../../hooks/useFillToWindowBottom';
 import { useTimelineZoomScroll } from '../../hooks/useTimelineZoom';
 import { TimelineRuler, TimelineZoomControl } from '../ui/TimelineZoom';
@@ -780,6 +781,7 @@ export function ProductionRunView({
               </defs>
               <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
                 <g transform={`translate(${LABEL_MARGIN}, ${LABEL_MARGIN})`}>
+                  <WallsLayer walls={setup.walls} />
                   <MachinesLayer
                     machines={machines}
                     operators={operators}

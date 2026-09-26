@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { machineLocalFrame } from '../../lib/layoutConstants';
-import type { MachineTimelineKind, OperatorTimelineKind, SimulationState } from '../../types';
+import type { LayoutWall, MachineTimelineKind, OperatorTimelineKind, SimulationState } from '../../types';
 import { MachineZoneLabels } from '../ui/MachineZoneLabels';
+import { WallsLayer } from '../ui/WallsLayer';
 import { MachineDonut } from './MachineDonut';
 import { Button } from '../ui/Button';
 import { TimelineRuler, TimelineZoomControl } from '../ui/TimelineZoom';
@@ -38,10 +39,13 @@ const HIDDEN_SPOOL_LABEL_AREAS = new Set(['WW', 'IS', 'IP', 'BA', 'CA']);
 export function LayoutCanvas({
   state,
   area,
+  walls,
   fullscreenControls,
 }: {
   state: SimulationState;
   area?: string;
+  /** Layout walls, drawn so it's clear why the operator walks around them. */
+  walls?: LayoutWall[];
   fullscreenControls?: ReactNode;
 }) {
   const { machines, operator, metrics } = state;
@@ -356,6 +360,7 @@ export function LayoutCanvas({
         >
         <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
         <g transform={`translate(${LABEL_MARGIN}, ${LABEL_MARGIN})`}>
+          <WallsLayer walls={walls} />
           {machines.map((m) => {
             const runtime = metrics.runtimePerSpoolMin;
             const isStopped = m.status === 'needs-service' || m.status === 'being-serviced';

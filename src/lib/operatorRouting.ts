@@ -1,4 +1,5 @@
 import { MACHINE_H, MACHINE_W } from './layoutConstants';
+import { detourAroundWalls, type WallGraph } from './wallRouting';
 
 export interface RoutePoint {
   x: number;
@@ -139,6 +140,20 @@ export function computeWalkingWaypoints(
   end: RoutePoint,
   machines: RoutePoint[],
   pixelsPerMeter: number = DEFAULT_PIXELS_PER_METER,
+  rowCache?: RoutingRowCache,
+  wallGraph?: WallGraph | null,
+): RoutePoint[] {
+  const route = computeRowWaypoints(start, end, machines, pixelsPerMeter, rowCache);
+  // Walls are handled last: any leg of the aisle route that would pass through a wall is
+  // re-routed around the wall's ends (see wallRouting.ts).
+  return wallGraph ? detourAroundWalls(route, wallGraph) : route;
+}
+
+function computeRowWaypoints(
+  start: RoutePoint,
+  end: RoutePoint,
+  machines: RoutePoint[],
+  pixelsPerMeter: number,
   rowCache?: RoutingRowCache,
 ): RoutePoint[] {
   if (machines.length === 0 || Math.abs(start.y - end.y) < SAME_Y_TOLERANCE) return [start, end];

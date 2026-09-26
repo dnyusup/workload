@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { LayoutMachine, OperatorStartPoint } from '../../types';
+import type { LayoutMachine, OperatorStartPoint, LayoutWall } from '../../types';
 import { loadSavedLayouts, type SavedLayout } from '../../lib/savedLayoutsStore';
 import { Card } from '../ui/Card';
 import { Field } from '../ui/Field';
@@ -7,7 +7,7 @@ import { Field } from '../ui/Field';
 export function LayoutSelector({
   onSelect,
 }: {
-  onSelect: (machines: LayoutMachine[], operatorStart?: OperatorStartPoint) => void;
+  onSelect: (machines: LayoutMachine[], operatorStart?: OperatorStartPoint, walls?: LayoutWall[]) => void;
 }) {
   const [layouts, setLayouts] = useState<SavedLayout[]>([]);
 
@@ -36,7 +36,7 @@ export function LayoutSelector({
           defaultValue=""
           onChange={(e) => {
             const layout = layouts.find((l) => l.id === e.target.value);
-            if (layout) onSelect(layout.machines, layout.operatorStart);
+            if (layout) onSelect(layout.machines, layout.operatorStart, layout.walls);
             e.target.value = '';
           }}
         >

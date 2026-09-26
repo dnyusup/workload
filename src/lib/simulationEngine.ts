@@ -19,6 +19,10 @@ import { activityCycleLength, availableTimeMinutes, deriveMachineSpec, distanceM
 import { machineWidthPx, machineHeightPx } from './layoutConstants';
 import { buildServiceSegments } from './machineZones';
 import { computeWalkingWaypoints } from './operatorRouting';
+import { buildWallGraph, type WallGraph } from './wallRouting';
+
+/** How far operators keep from a wall's end when walking around it. */
+const WALL_CLEARANCE_METERS = 0.5;
 
 function emptyCounts(activities: ActivityConfig[] = []): Record<ActivityKey, number> {
   return Object.fromEntries(activities.map((activity) => [activity.key, 0]));
@@ -75,6 +79,8 @@ export class SimulationEngine {
   private assignedIds: Set<string>;
   private initialMachineConditions: MachineStartCondition[];
   private breaks: BreakDef[];
+  /** Visibility graph around the layout's walls (null when there are none). */
+  private wallGraph: WallGraph | null;
   /** Timeline kind each break is recorded as (Lunch / Meeting / Other break). */
   private breakKindByLabel = new Map<string, 'lunch' | 'meeting' | 'otherBreak'>();
   /** Fracture Repairing isn't tracked per machine — it fires once the SUM of spools completed
@@ -257,6 +263,8 @@ export class SimulationEngine {
       breakRemainingMin: 0,
       timeline: [],
     };
+
+    this.wallGraph = buildWallGraph(config.walls ?? [], WALL_CLEARANCE_METERS * (config.movement.pixelsPerMeter || 20));
 
     this.breaks = [
       {
@@ -615,7 +623,14 @@ export class SimulationEngine {
    * operator will actually walk — used for target-picking so 'nearest'/'quickest' aren't fooled by
    * straight-line distance when the corridor detour makes another machine genuinely faster to reach. */
   private walkingDistanceMeters(fromX: number, fromY: number, toX: number, toY: number): number {
-    const route = computeWalkingWaypoints({ x: fromX, y: fromY }, { x: toX, y: toY }, this.machines, this.config.movement.pixelsPerMeter);
+    const route = computeWalkingWaypoints(
+      { x: fromX, y: fromY },
+      { x: toX, y: toY },
+      this.machines,
+      this.config.movement.pixelsPerMeter,
+      undefined,
+      this.wallGraph,
+    );
     let total = 0;
     for (let i = 1; i < route.length; i += 1) {
       total += distanceMeters(route[i - 1].x, route[i - 1].y, route[i].x, route[i].y, this.config.movement.pixelsPerMeter);
@@ -674,6 +689,8 @@ export class SimulationEngine {
       { x: firstStop.x, y: firstStop.y },
       this.machines,
       this.config.movement.pixelsPerMeter,
+      undefined,
+      this.wallGraph,
     );
     const [firstHop, ...remainingHops] = route.slice(1);
     const speed = this.config.movement.walkingSpeed > 0 ? this.config.movement.walkingSpeed : 1;

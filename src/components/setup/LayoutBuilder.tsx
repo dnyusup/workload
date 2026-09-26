@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import type { LayoutMachine, MachineAxis, MachinePairSide, OperatorStartPoint } from '../../types';
+import type { LayoutMachine, LayoutWall, MachineAxis, MachinePairSide, OperatorStartPoint } from '../../types';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { MachineZoneLabels } from '../ui/MachineZoneLabels';
@@ -51,6 +51,10 @@ type DragState =
   | { mode: 'pan'; startVb: Point; startPan: Point }
   | { mode: 'select'; startVb: Point; currentVb: Point; rightClick?: boolean; rightClickId?: string }
   | { mode: 'start'; startWorld: Point; startPoint: Point }
+  /** Moving a whole wall (smart guides + snapping like machines). */
+  | { mode: 'wall'; id: string; startWorld: Point; orig: LayoutWall; historyPushed: boolean }
+  /** Dragging one end of a wall — only its length changes, never its direction. */
+  | { mode: 'wallEnd'; id: string; end: 1 | 2; orig: LayoutWall; historyPushed: boolean }
   | null;
 
 /** Minimum pointer movement (world units, i.e. independent of zoom) before a machine pointerdown
@@ -59,10 +63,19 @@ type DragState =
  * spacing can visually swap which machine appears to sit at a given spot. */
 const DRAG_THRESHOLD = 3;
 
+let wallIdCounter = 0;
+/** Unique id for a newly drawn wall (walls are only ever created from pointer events). */
+function newWallId(): string {
+  wallIdCounter += 1;
+  return `wall-${Date.now().toString(36)}-${wallIdCounter}`;
+}
+
 /** Smart-guide snap distance, in SCREEN px (converted to world units with the current zoom). */
 const GUIDE_SNAP_SCREEN_PX = 6;
 /** Neighbour gaps longer than this aren't labelled while dragging. */
 const GUIDE_MAX_GAP_M = 15;
+/** Wall length changes in these steps while dragging an end (hold Alt for free length). */
+const WALL_LENGTH_STEP_M = 0.1;
 
 type Measurement = { points: Point[]; done: boolean };
 
@@ -329,6 +342,8 @@ export function LayoutBuilder({
   onChange,
   operatorStart,
   onOperatorStartChange,
+  walls,
+  onWallsChange,
 }: {
   layout: LayoutMachine[];
   /** Only relevant inside the Simulator setup flow — omit to hide the operator-assignment hint
@@ -381,6 +396,10 @@ export function LayoutBuilder({
    * Simulation canvas, which has no single-operator concept). */
   operatorStart?: OperatorStartPoint | null;
   onOperatorStartChange?: (point: OperatorStartPoint | null) => void;
+  /** Walls operators can't walk through (drawn as thick lines). Pass `onWallsChange` too to let the
+   * user draw and delete them; without it they're shown read-only. */
+  walls?: LayoutWall[];
+  onWallsChange?: (walls: LayoutWall[]) => void;
 }) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -391,8 +410,11 @@ export function LayoutBuilder({
   const [rows, setRows] = useState(2);
   const [cols, setCols] = useState(10);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [history, setHistory] = useState<LayoutMachine[][]>([]);
+  const [history, setHistory] = useState<{ machines: LayoutMachine[]; walls: LayoutWall[] | undefined }[]>([]);
   const [clipboard, setClipboard] = useState<LayoutMachine[] | null>(null);
+  const [wallClipboard, setWallClipboard] = useState<LayoutWall | null>(null);
+  const [clipboardKind, setClipboardKind] = useState<'machines' | 'wall'>('machines');
+  const [wallPasteCount, setWallPasteCount] = useState(0);
   const [pasteCount, setPasteCount] = useState(0);
   const [measureMode, setMeasureMode] = useState(false);
   const [measurement, setMeasurement] = useState<Measurement | null>(null);
@@ -445,6 +467,53 @@ export function LayoutBuilder({
     setMeasureMode((prev) => !prev);
     setMeasurement(null);
     setMeasurePreview(null);
+    setWallMode(false);
+    setWallStart(null);
+  };
+
+  // ---- Walls: click to start, click again to finish (and keep chaining from that point);
+  // Shift = straight horizontal/vertical; Esc ends the chain, Esc again leaves wall mode.
+  const [wallMode, setWallMode] = useState(false);
+  const [wallStart, setWallStart] = useState<Point | null>(null);
+  const [wallPreview, setWallPreview] = useState<Point | null>(null);
+  const [selectedWallId, setSelectedWallId] = useState<string | null>(null);
+  /** Set while the first point of a new wall is held down — a release far enough away draws the
+   * wall in one drag; a release on the spot keeps the click-click behaviour. */
+  const wallDragStartRef = useRef<Point | null>(null);
+  const selectedWall = selectedWallId ? (walls ?? []).find((w) => w.id === selectedWallId) : undefined;
+  const wallLengthM = (w: LayoutWall) => Math.hypot(w.x2 - w.x1, w.y2 - w.y1) / pixelsPerMeter;
+  /** Sets the selected wall's length (meters), keeping its start point and direction. */
+  const setSelectedWallLength = (meters: number) => {
+    if (!selectedWall || !onWallsChange || !(meters > 0)) return;
+    const len = Math.hypot(selectedWall.x2 - selectedWall.x1, selectedWall.y2 - selectedWall.y1) || 1;
+    const scale = (meters * pixelsPerMeter) / len;
+    if (Math.abs(scale - 1) < 1e-9) return;
+    pushHistory(layout);
+    onWallsChange(
+      (walls ?? []).map((w) =>
+        w.id === selectedWall.id ? { ...w, x2: w.x1 + (w.x2 - w.x1) * scale, y2: w.y1 + (w.y2 - w.y1) * scale } : w,
+      ),
+    );
+  };  const canEditWalls = !readOnly && !!onWallsChange;
+  const toggleWallMode = () => {
+    setWallMode((prev) => !prev);
+    setWallStart(null);
+    setWallPreview(null);
+    setSelectedWallId(null);
+    setMeasureMode(false);
+    setMeasurement(null);
+    setPlacingStart(false);
+  };
+  /** Shift-constrains a wall end to horizontal or vertical from its start. */
+  const wallEndPoint = (start: Point, world: Point, straight: boolean): Point => {
+    if (!straight) return world;
+    return Math.abs(world.x - start.x) >= Math.abs(world.y - start.y) ? { x: world.x, y: start.y } : { x: start.x, y: world.y };
+  };
+  const deleteSelectedWall = () => {
+    if (!selectedWallId || !onWallsChange) return;
+    pushHistory(layout);
+    onWallsChange((walls ?? []).filter((w) => w.id !== selectedWallId));
+    setSelectedWallId(null);
   };
 
   const finishMeasuring = () => {
@@ -461,26 +530,57 @@ export function LayoutBuilder({
 
   /** Snapshots the layout as it was right before a mutation, so Undo can restore it. Call this
    * with the pre-mutation `layout` — never after `onChange` has already applied the change. */
+  /** Snapshots the machines (and the walls as they are right now) before a change, for Undo. */
   const pushHistory = (snapshot: LayoutMachine[]) => {
     setHistory((prev) => {
-      const next = [...prev, snapshot];
+      const next = [...prev, { machines: snapshot, walls }];
       return next.length > MAX_HISTORY ? next.slice(next.length - MAX_HISTORY) : next;
     });
   };
 
   const undo = () => {
-    setHistory((prev) => {
-      if (prev.length === 0) return prev;
-      onChange(prev[prev.length - 1]);
-      return prev.slice(0, -1);
-    });
+    const entry = history[history.length - 1];
+    if (!entry) return;
+    setHistory((prev) => prev.slice(0, -1));
+    // Every change touches either the machines or the walls, never both — restore only the side
+    // that actually differs, so a parent persisting both (the Layouts page) never gets a second,
+    // stale write for the other one.
+    if (entry.machines !== layout) onChange(entry.machines);
+    if (onWallsChange && entry.walls !== walls) onWallsChange(entry.walls ?? []);
     setSelectedIds(new Set());
+    setSelectedWallId(null);
   };
 
   const copySelection = () => {
+    const wall = selectedWallId ? (walls ?? []).find((w) => w.id === selectedWallId) : undefined;
+    if (wall) {
+      setWallClipboard(wall);
+      setClipboardKind('wall');
+      setWallPasteCount(0);
+      return;
+    }
     if (selectedIds.size === 0) return;
     setClipboard(layout.filter((m) => selectedIds.has(m.id)));
+    setClipboardKind('machines');
     setPasteCount(0);
+  };
+
+  const pasteWall = () => {
+    if (!wallClipboard || !onWallsChange) return;
+    pushHistory(layout);
+    const nextCount = wallPasteCount + 1;
+    const offset = PASTE_OFFSET * nextCount;
+    const pasted: LayoutWall = {
+      id: newWallId(),
+      x1: wallClipboard.x1 + offset,
+      y1: wallClipboard.y1 + offset,
+      x2: wallClipboard.x2 + offset,
+      y2: wallClipboard.y2 + offset,
+    };
+    onWallsChange([...(walls ?? []), pasted]);
+    setSelectedWallId(pasted.id);
+    setSelectedIds(new Set());
+    setWallPasteCount(nextCount);
   };
 
   const pasteClipboard = () => {
@@ -612,6 +712,20 @@ export function LayoutBuilder({
     };
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isEditableTarget(e.target)) return;
+      if (e.key === 'Escape' && wallMode) {
+        if (wallStart) {
+          setWallStart(null);
+          setWallPreview(null);
+        } else {
+          setWallMode(false);
+        }
+        return;
+      }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedWallId) {
+        e.preventDefault();
+        deleteSelectedWall();
+        return;
+      }
       if (e.key === 'Escape' && measureMode) {
         toggleMeasureMode();
         return;
@@ -635,15 +749,17 @@ export function LayoutBuilder({
         copySelection();
       } else if (key === 'v') {
         e.preventDefault();
-        pasteClipboard();
+        if (clipboardKind === 'wall') pasteWall();
+        else pasteClipboard();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [layout, selectedIds, history, clipboard, pasteCount, measureMode, placingStart]);
+  }, [layout, selectedIds, history, clipboard, pasteCount, measureMode, placingStart, wallMode, wallStart, selectedWallId, walls, wallClipboard, clipboardKind, wallPasteCount]);
 
   const handleMachinePointerDown = (id: string) => (e: React.PointerEvent) => {
+    if (selectedWallId) setSelectedWallId(null);
     // Let the click bubble to the canvas handler so measuring/start-point placement works even
     // when clicking on top of a machine.
     if (measureMode || placingStart) return;
@@ -702,6 +818,29 @@ export function LayoutBuilder({
   };
 
   const handleCanvasPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (wallMode && canEditWalls) {
+      if (e.button !== 0) return;
+      const world = toWorldPoint(e.clientX, e.clientY);
+      if (!wallStart) {
+        // Either click-click (chains) or press-drag-release (one wall) — pointer-up decides.
+        (e.currentTarget as Element).setPointerCapture(e.pointerId);
+        wallDragStartRef.current = world;
+        setWallStart(world);
+        setWallPreview(world);
+        return;
+      }
+      const end = wallEndPoint(wallStart, world, e.shiftKey);
+      if (Math.hypot(end.x - wallStart.x, end.y - wallStart.y) > 2) {
+        pushHistory(layout);
+        onWallsChange!([
+          ...(walls ?? []),
+          { id: newWallId(), x1: wallStart.x, y1: wallStart.y, x2: end.x, y2: end.y },
+        ]);
+      }
+      setWallStart(end); // keep chaining from here
+      return;
+    }
+    if (selectedWallId) setSelectedWallId(null);
     if (placingStart) {
       const world = toWorldPoint(e.clientX, e.clientY);
       onOperatorStartChange?.(world);
@@ -732,10 +871,63 @@ export function LayoutBuilder({
   };
 
   const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (wallMode && wallStart) {
+      setWallPreview(wallEndPoint(wallStart, toWorldPoint(e.clientX, e.clientY), e.shiftKey));
+    }
     if (measureMode && measurement && !measurement.done) {
       setMeasurePreview(toWorldPoint(e.clientX, e.clientY));
     }
     if (!drag) return;
+    if ((drag.mode === 'wall' || drag.mode === 'wallEnd') && onWallsChange) {
+      const world = toWorldPoint(e.clientX, e.clientY);
+      const o = drag.orig;
+      if (!drag.historyPushed) {
+        const moved = drag.mode === 'wall' ? Math.hypot(world.x - drag.startWorld.x, world.y - drag.startWorld.y) : Infinity;
+        if (drag.mode === 'wall' && moved < DRAG_THRESHOLD) return;
+        pushHistory(layout);
+        setDrag({ ...drag, historyPushed: true });
+      }
+      let next: LayoutWall;
+      if (drag.mode === 'wall') {
+        const dx = world.x - drag.startWorld.x;
+        const dy = world.y - drag.startWorld.y;
+        const box = (w: { x1: number; y1: number; x2: number; y2: number }): Box => ({
+          x: Math.min(w.x1, w.x2),
+          y: Math.min(w.y1, w.y2),
+          w: Math.abs(w.x2 - w.x1),
+          h: Math.abs(w.y2 - w.y1),
+        });
+        const others: Box[] = [
+          ...layout.map((m) => ({ x: m.x, y: m.y, w: machineWidthPx(m, pixelsPerMeter), h: machineHeightPx(m, pixelsPerMeter) })),
+          ...(walls ?? []).filter((w) => w.id !== drag.id).map(box),
+        ];
+        const guides = computeDragGuides(
+          box({ x1: o.x1 + dx, y1: o.y1 + dy, x2: o.x2 + dx, y2: o.y2 + dy }),
+          others,
+          e.altKey ? 0 : GUIDE_SNAP_SCREEN_PX / zoom,
+          GUIDE_MAX_GAP_M * pixelsPerMeter,
+        );
+        setDragGuides(guides);
+        const sx = dx + guides.snapDx;
+        const sy = dy + guides.snapDy;
+        next = { ...o, x1: o.x1 + sx, y1: o.y1 + sy, x2: o.x2 + sx, y2: o.y2 + sy };
+      } else {
+        // Resize: the dragged end slides along the wall's own direction only.
+        const fixed = drag.end === 1 ? { x: o.x2, y: o.y2 } : { x: o.x1, y: o.y1 };
+        const moving = drag.end === 1 ? { x: o.x1, y: o.y1 } : { x: o.x2, y: o.y2 };
+        const len = Math.hypot(moving.x - fixed.x, moving.y - fixed.y) || 1;
+        const ux = (moving.x - fixed.x) / len;
+        const uy = (moving.y - fixed.y) / len;
+        let t = (world.x - fixed.x) * ux + (world.y - fixed.y) * uy;
+        const stepPx = WALL_LENGTH_STEP_M * pixelsPerMeter;
+        if (!e.altKey) t = Math.round(t / stepPx) * stepPx; // 0.1 m steps (Alt = free)
+        t = Math.max(stepPx, t);
+        const end = { x: fixed.x + ux * t, y: fixed.y + uy * t };
+        next = drag.end === 1 ? { ...o, x1: end.x, y1: end.y } : { ...o, x2: end.x, y2: end.y };
+      }
+      onWallsChange((walls ?? []).map((w) => (w.id === drag.id ? next : w)));
+      return;
+    }
     if (drag.mode === 'machine') {
       const world = toWorldPoint(e.clientX, e.clientY);
       const dx = world.x - drag.startWorld.x;
@@ -765,6 +957,14 @@ export function LayoutBuilder({
           others.push({ x: m.x, y: m.y, w, h });
         }
       });
+      (walls ?? []).forEach((wall) =>
+        others.push({
+          x: Math.min(wall.x1, wall.x2),
+          y: Math.min(wall.y1, wall.y2),
+          w: Math.abs(wall.x2 - wall.x1),
+          h: Math.abs(wall.y2 - wall.y1),
+        }),
+      );
       const guides = computeDragGuides(
         { x: minX, y: minY, w: maxX - minX, h: maxY - minY },
         others,
@@ -817,6 +1017,18 @@ export function LayoutBuilder({
 
   const handlePointerUp = (e: React.PointerEvent<SVGSVGElement>) => {
     setDragGuides(null);
+    const dragStart = wallDragStartRef.current;
+    wallDragStartRef.current = null;
+    if (wallMode && wallStart && dragStart && onWallsChange) {
+      const end = wallEndPoint(dragStart, toWorldPoint(e.clientX, e.clientY), e.shiftKey);
+      if (Math.hypot(end.x - dragStart.x, end.y - dragStart.y) * zoom > 6) {
+        pushHistory(layout);
+        onWallsChange([...(walls ?? []), { id: newWallId(), x1: dragStart.x, y1: dragStart.y, x2: end.x, y2: end.y }]);
+        setWallStart(null);
+        setWallPreview(null);
+      }
+      return;
+    }
     const wrapperRect = wrapperRef.current?.getBoundingClientRect();
     if (wrapperRect) setSelectionAnchor({ x: e.clientX - wrapperRect.left, y: e.clientY - wrapperRect.top });
     if (drag?.mode === 'select') {
@@ -1354,6 +1566,50 @@ export function LayoutBuilder({
             ⊡
           </Button>
           <span className="toolbar-divider" />
+          {canEditWalls && (
+            <>
+              <Button
+                variant={wallMode ? 'primary' : 'ghost'}
+                className="toolbar-icon-button"
+                onClick={toggleWallMode}
+                title="Draw walls operators must walk around: click to start, click to end (keeps chaining), Shift = straight, Esc to stop"
+                aria-label="Draw wall"
+              >
+                🧱
+              </Button>
+              {selectedWall && (
+                <>
+                  <span className="toolbar-x">Panjang (m)</span>
+                  <input
+                    key={`${selectedWall.id}:${wallLengthM(selectedWall).toFixed(2)}`}
+                    className="input input-sm"
+                    type="number"
+                    min={0.1}
+                    step={0.1}
+                    style={{ width: 72 }}
+                    defaultValue={wallLengthM(selectedWall).toFixed(2)}
+                    onBlur={(e) => setSelectedWallLength(parseFloat(e.target.value))}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                    }}
+                    title="Wall length in meters — keeps its start point and direction"
+                    aria-label="Wall length in meters"
+                  />
+                </>
+              )}
+              {selectedWallId && (
+                <Button
+                  variant="danger"
+                  className="toolbar-icon-button"
+                  onClick={deleteSelectedWall}
+                  title="Delete the selected wall (Delete key)"
+                  aria-label="Delete selected wall"
+                >
+                  🗑
+                </Button>
+              )}
+            </>
+          )}
           <Button
             variant={measureMode ? 'primary' : 'ghost'}
             className="toolbar-icon-button"
@@ -1729,6 +1985,84 @@ export function LayoutBuilder({
                 <rect x={7} y={-41} width={51} height={19} rx={9.5} className="operator-start-label-bg" />
                 <text x={32.5} y={-28} textAnchor="middle" className="operator-start-label">
                   START
+                </text>
+              </g>
+            )}
+            {(walls ?? []).map((wall) => (
+              <g key={wall.id} className={`layout-wall${selectedWallId === wall.id ? ' selected' : ''}`}>
+                <line x1={wall.x1} y1={wall.y1} x2={wall.x2} y2={wall.y2} className="layout-wall-line" vectorEffect="non-scaling-stroke" />
+                {canEditWalls && !wallMode && (
+                  // Wider invisible hit line so a thin wall is easy to click.
+                  <line
+                    x1={wall.x1}
+                    y1={wall.y1}
+                    x2={wall.x2}
+                    y2={wall.y2}
+                    className="layout-wall-hit"
+                    strokeWidth={14 / zoom}
+                    onPointerDown={(e) => {
+                      e.stopPropagation();
+                      if (e.button !== 0) return;
+                      setSelectedWallId(wall.id);
+                      setSelectedIds(new Set());
+                      (e.currentTarget as Element).setPointerCapture(e.pointerId);
+                      setDrag({ mode: 'wall', id: wall.id, startWorld: toWorldPoint(e.clientX, e.clientY), orig: wall, historyPushed: false });
+                    }}
+                  >
+                    <title>{`Wall — ${wallLengthM(wall).toFixed(2)} m (drag to move, drag an end to change length, Delete to remove)`}</title>
+                  </line>
+                )}
+                {canEditWalls && !wallMode && selectedWallId === wall.id && (
+                  <>
+                    {([1, 2] as const).map((end) => (
+                      <circle
+                        key={end}
+                        cx={end === 1 ? wall.x1 : wall.x2}
+                        cy={end === 1 ? wall.y1 : wall.y2}
+                        r={6 / zoom}
+                        className="layout-wall-handle"
+                        onPointerDown={(e) => {
+                          e.stopPropagation();
+                          if (e.button !== 0) return;
+                          (e.currentTarget as Element).setPointerCapture(e.pointerId);
+                          setDrag({ mode: 'wallEnd', id: wall.id, end, orig: wall, historyPushed: false });
+                        }}
+                      >
+                        <title>Drag to change the wall's length (0.1 m steps, Alt = free)</title>
+                      </circle>
+                    ))}
+                    <text
+                      x={(wall.x1 + wall.x2) / 2}
+                      y={(wall.y1 + wall.y2) / 2 - 10 / zoom}
+                      textAnchor="middle"
+                      fontSize={11 / zoom}
+                      className="drag-gap-label"
+                      pointerEvents="none"
+                    >
+                      {wallLengthM(wall).toFixed(2)} m
+                    </text>
+                  </>
+                )}
+              </g>
+            ))}
+            {wallMode && wallStart && wallPreview && (
+              <g pointerEvents="none">
+                <line
+                  x1={wallStart.x}
+                  y1={wallStart.y}
+                  x2={wallPreview.x}
+                  y2={wallPreview.y}
+                  className="layout-wall-line layout-wall-preview"
+                  vectorEffect="non-scaling-stroke"
+                />
+                <text
+                  x={(wallStart.x + wallPreview.x) / 2}
+                  y={(wallStart.y + wallPreview.y) / 2 - 8 / zoom}
+                  textAnchor="middle"
+                  fontSize={11 / zoom}
+                  className="drag-gap-label"
+                >
+                  {(Math.hypot(wallPreview.x - wallStart.x, wallPreview.y - wallStart.y) / pixelsPerMeter).toFixed(2)} m
                 </text>
               </g>
             )}

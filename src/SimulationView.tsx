@@ -313,6 +313,7 @@ export function SimulationView({
         <LayoutCanvas
           state={state}
           area={config.spec.area}
+          walls={config.walls}
           fullscreenControls={
             <Controls
               playing={playing}

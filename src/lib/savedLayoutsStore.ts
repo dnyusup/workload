@@ -1,4 +1,4 @@
-import type { LayoutMachine, OperatorStartPoint } from '../types';
+import type { LayoutMachine, LayoutWall, OperatorStartPoint } from '../types';
 import { Mpp_wl_layoutsesService } from '../generated/services/Mpp_wl_layoutsesService';
 import { fetchAllPages } from './dataversePaging';
 
@@ -9,6 +9,7 @@ export interface SavedLayout {
   /** Where the operator starts for this saved layout. Undefined for layouts saved before this
    * feature existed, or if the user never set one. */
   operatorStart?: OperatorStartPoint;
+  walls?: LayoutWall[];
   updatedAt: number;
   createdAt: number;
   /** Who created this layout, by email — stamped from the signed-in user at creation time
@@ -21,11 +22,15 @@ export interface SavedLayout {
   createdByName: string;
 }
 
-/** `mpp_machinesjson` stores `{ machines, operatorStart? }`. Layouts saved before the start-point
+/** `mpp_machinesjson` stores `{ machines, operatorStart?, walls? }`. Layouts saved before the start-point
  * feature existed have a bare `LayoutMachine[]` in that column instead — still parsed correctly
  * here (just with no `operatorStart`), so old rows keep working unchanged. Also reused by
  * productionSetupsStore for its own layout-snapshot column, since it's the same wrapper shape. */
-export function parseLayoutBlob(json: string | undefined): { machines: LayoutMachine[]; operatorStart?: OperatorStartPoint } {
+export function parseLayoutBlob(json: string | undefined): {
+  machines: LayoutMachine[];
+  operatorStart?: OperatorStartPoint;
+  walls?: LayoutWall[];
+} {
   if (!json) return { machines: [] };
   try {
     const parsed = JSON.parse(json);
@@ -34,7 +39,12 @@ export function parseLayoutBlob(json: string | undefined): { machines: LayoutMac
       const rawStart = parsed.operatorStart;
       const operatorStart =
         rawStart && typeof rawStart.x === 'number' && typeof rawStart.y === 'number' ? { x: rawStart.x, y: rawStart.y } : undefined;
-      return { machines: parsed.machines, operatorStart };
+      const walls = Array.isArray(parsed.walls)
+        ? (parsed.walls as LayoutWall[]).filter(
+            (w) => w && [w.x1, w.y1, w.x2, w.y2].every((v) => typeof v === 'number' && Number.isFinite(v)),
+          )
+        : undefined;
+      return { machines: parsed.machines, operatorStart, walls: walls && walls.length > 0 ? walls : undefined };
     }
     return { machines: [] };
   } catch {
@@ -42,19 +52,24 @@ export function parseLayoutBlob(json: string | undefined): { machines: LayoutMac
   }
 }
 
-export function serializeLayoutBlob(machines: LayoutMachine[], operatorStart?: OperatorStartPoint): string {
-  return JSON.stringify(operatorStart ? { machines, operatorStart } : { machines });
+export function serializeLayoutBlob(machines: LayoutMachine[], operatorStart?: OperatorStartPoint, walls?: LayoutWall[]): string {
+  return JSON.stringify({
+    machines,
+    ...(operatorStart ? { operatorStart } : {}),
+    ...(walls && walls.length > 0 ? { walls } : {}),
+  });
 }
 
 export async function loadSavedLayouts(): Promise<SavedLayout[]> {
   const rows = await fetchAllPages(Mpp_wl_layoutsesService.getAll, { orderBy: ['modifiedon desc'] });
   return rows.map((row) => {
-    const { machines, operatorStart } = parseLayoutBlob(row.mpp_machinesjson);
+    const { machines, operatorStart, walls } = parseLayoutBlob(row.mpp_machinesjson);
     return {
       id: row.mpp_wl_layoutsid,
       name: row.mpp_name,
       machines,
       operatorStart,
+      walls,
       updatedAt: row.modifiedon ? new Date(row.modifiedon).getTime() : Date.now(),
       createdAt: row.createdon ? new Date(row.createdon).getTime() : Date.now(),
       createdByEmail: row.mpp_creator_email ?? '',
@@ -68,10 +83,11 @@ export async function createSavedLayout(
   machines: LayoutMachine[],
   creatorEmail = '',
   operatorStart?: OperatorStartPoint,
+  walls?: LayoutWall[],
 ): Promise<SavedLayout> {
   const result = await Mpp_wl_layoutsesService.create({
     mpp_name: name,
-    mpp_machinesjson: serializeLayoutBlob(machines, operatorStart),
+    mpp_machinesjson: serializeLayoutBlob(machines, operatorStart, walls),
     mpp_creator_email: creatorEmail,
     statecode: 0,
   });
@@ -81,6 +97,7 @@ export async function createSavedLayout(
     name,
     machines,
     operatorStart,
+    walls,
     updatedAt: Date.now(),
     createdAt: Date.now(),
     createdByEmail: creatorEmail,
@@ -88,17 +105,17 @@ export async function createSavedLayout(
   };
 }
 
-/** `machines` and `operatorStart` share a single Dataverse column, so whenever either one changes
- * the caller must pass BOTH (the new value for the one that changed, plus the current value for
+/** `machines`, `operatorStart` and `walls` share a single Dataverse column, so whenever any one
+ * changes the caller must pass ALL of them (the new value for the one that changed, plus the current value for
  * the other) — passing only one would overwrite the other with nothing. */
 export async function updateSavedLayout(
   id: string,
-  patch: Partial<Pick<SavedLayout, 'name' | 'machines' | 'operatorStart'>>,
+  patch: Partial<Pick<SavedLayout, 'name' | 'machines' | 'operatorStart' | 'walls'>>,
 ): Promise<void> {
   const fields: { mpp_name?: string; mpp_machinesjson?: string } = {};
   if (patch.name !== undefined) fields.mpp_name = patch.name;
-  if (patch.machines !== undefined || patch.operatorStart !== undefined) {
-    fields.mpp_machinesjson = serializeLayoutBlob(patch.machines ?? [], patch.operatorStart);
+  if (patch.machines !== undefined || patch.operatorStart !== undefined || patch.walls !== undefined) {
+    fields.mpp_machinesjson = serializeLayoutBlob(patch.machines ?? [], patch.operatorStart, patch.walls);
   }
   if (Object.keys(fields).length === 0) return;
   const result = await Mpp_wl_layoutsesService.update(id, fields);

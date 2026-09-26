@@ -17,6 +17,10 @@ import { availableTimeMinutes, deriveMachineSpec, distanceMeters } from './calcu
 import { machineWidthPx, machineHeightPx } from './layoutConstants';
 import { buildServiceSegments } from './machineZones';
 import { computeWalkingWaypoints, createRoutingRowCache, type RoutingRowCache } from './operatorRouting';
+import { buildWallGraph, type WallGraph } from './wallRouting';
+
+/** How far operators keep from a wall's end when walking around it. */
+const WALL_CLEARANCE_METERS = 0.5;
 import { activityFamily, assignedOperatorIdForActivity } from './productionActivityRouting';
 import type { ResolvedConstruction } from './productionConstructionResolver';
 
@@ -102,6 +106,8 @@ export class ProductionSimulationEngine {
   private warnings: string[] = [];
   private warnedNoOperator = new Set<string>();
   private routeCache: RoutingRowCache = createRoutingRowCache();
+  /** Visibility graph around the layout's walls (null when there are none). */
+  private wallGraph: WallGraph | null = null;
   private fractureByConstruction = new Map<string, ConstructionFractureState>();
   private constructionLabelById = new Map<string, string>();
   /** Rebuilt once per tick sub-step (see tick()) — machineId → the operator currently servicing
@@ -125,6 +131,7 @@ export class ProductionSimulationEngine {
 
   constructor(setup: ProductionSetup, resolved: Map<string, ResolvedConstruction>, resolveErrors: string[] = []) {
     this.setup = setup;
+    this.wallGraph = buildWallGraph(setup.walls ?? [], WALL_CLEARANCE_METERS * (setup.movement.pixelsPerMeter || 20));
     this.warnings.push(...resolveErrors);
 
     const assignmentByMachine = new Map(setup.assignments.map((a) => [a.machineId, a]));
@@ -635,7 +642,7 @@ export class ProductionSimulationEngine {
   }
 
   private walkingDistanceMeters(fromX: number, fromY: number, toX: number, toY: number): number {
-    const route = computeWalkingWaypoints({ x: fromX, y: fromY }, { x: toX, y: toY }, this.machines, this.setup.movement.pixelsPerMeter, this.routeCache);
+    const route = computeWalkingWaypoints({ x: fromX, y: fromY }, { x: toX, y: toY }, this.machines, this.setup.movement.pixelsPerMeter, this.routeCache, this.wallGraph);
     let total = 0;
     for (let i = 1; i < route.length; i += 1) {
       total += distanceMeters(route[i - 1].x, route[i - 1].y, route[i].x, route[i].y, this.setup.movement.pixelsPerMeter);
@@ -703,7 +710,7 @@ export class ProductionSimulationEngine {
     const myTasks = this.tasksFor(operator.id, machine);
     const segments = buildServiceSegments(myTasks, machine.x, machine.y, machine.orientation, machine.pairSide, this.setup.movement.walkingSpeed, this.setup.movement.pixelsPerMeter, machine.widthPx, machine.heightPx, machine.axis);
     const firstStop = segments[0] ?? { x: machine.x, y: machine.y };
-    const route = computeWalkingWaypoints({ x: operator.x, y: operator.y }, { x: firstStop.x, y: firstStop.y }, this.machines, this.setup.movement.pixelsPerMeter, this.routeCache);
+    const route = computeWalkingWaypoints({ x: operator.x, y: operator.y }, { x: firstStop.x, y: firstStop.y }, this.machines, this.setup.movement.pixelsPerMeter, this.routeCache, this.wallGraph);
     const [firstHop, ...remainingHops] = route.slice(1);
     const speed = this.setup.movement.walkingSpeed > 0 ? this.setup.movement.walkingSpeed : 1;
     operator.phase = 'walking';

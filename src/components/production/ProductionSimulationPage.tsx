@@ -290,6 +290,7 @@ export function ProductionSimulationPage() {
         (done, total) => setCreateProgress({ done, total }),
         user.email,
         layout.operatorStart,
+        layout.walls,
       );
       setSummaries((prev) => [
         ...prev,
@@ -1591,6 +1592,7 @@ function ProductionSetupEditor({
         highlightedMachineIds={highlightedMachineIds}
         onChange={() => {}}
         operatorStart={setup.operatorStart ?? null}
+        walls={setup.walls ?? []}
       />
       {plannedUtilizationOpen && (
         <div

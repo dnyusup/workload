@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { LayoutMachine, OperatorStartPoint } from '../../types';
+import type { LayoutMachine, OperatorStartPoint, LayoutWall } from '../../types';
 import {
   loadSavedLayouts,
   createSavedLayout,
@@ -95,7 +95,7 @@ export function LayoutManagerPage() {
     setBusy(true);
     setError(null);
     try {
-      const layout = await createSavedLayout(`${source.name} Copy`, source.machines, user.email, source.operatorStart);
+      const layout = await createSavedLayout(`${source.name} Copy`, source.machines, user.email, source.operatorStart, source.walls);
       setLayouts((prev) => [...prev, layout]);
       setSelectedId(layout.id);
     } catch (err) {
@@ -136,17 +136,22 @@ export function LayoutManagerPage() {
     persistName(id, name);
   };
 
-  // `machines` and `operatorStart` share one Dataverse column, so both are always sent together —
-  // see the comment on updateSavedLayout in savedLayoutsStore.ts.
-  const persistMachines = useDebouncedCallback((id: string, machines: LayoutMachine[], operatorStart: OperatorStartPoint | undefined) => {
-    updateSavedLayout(id, { machines, operatorStart }).catch((err) => setError(err instanceof Error ? err.message : 'Failed to save layout.'));
-  }, 800);
+  // `machines`, `operatorStart` and `walls` share one Dataverse column, so all three are always sent
+  // together — see the comment on updateSavedLayout in savedLayoutsStore.ts.
+  const persistMachines = useDebouncedCallback(
+    (id: string, machines: LayoutMachine[], operatorStart: OperatorStartPoint | undefined, walls: LayoutWall[] | undefined) => {
+      updateSavedLayout(id, { machines, operatorStart, walls: walls ?? [] }).catch((err) =>
+        setError(err instanceof Error ? err.message : 'Failed to save layout.'),
+      );
+    },
+    800,
+  );
 
   const updateMachines = (id: string, machines: LayoutMachine[]) => {
     const layout = layouts.find((l) => l.id === id);
     if (!layout || !owns(layout)) return;
     setLayouts((prev) => prev.map((l) => (l.id === id ? { ...l, machines, updatedAt: Date.now() } : l)));
-    persistMachines(id, machines, layout.operatorStart);
+    persistMachines(id, machines, layout.operatorStart, layout.walls);
   };
 
   const updateOperatorStart = (id: string, operatorStart: OperatorStartPoint | null) => {
@@ -154,7 +159,14 @@ export function LayoutManagerPage() {
     if (!layout || !owns(layout)) return;
     const next = operatorStart ?? undefined;
     setLayouts((prev) => prev.map((l) => (l.id === id ? { ...l, operatorStart: next, updatedAt: Date.now() } : l)));
-    persistMachines(id, layout.machines, next);
+    persistMachines(id, layout.machines, next, layout.walls);
+  };
+
+  const updateWalls = (id: string, walls: LayoutWall[]) => {
+    const layout = layouts.find((l) => l.id === id);
+    if (!layout || !owns(layout)) return;
+    setLayouts((prev) => prev.map((l) => (l.id === id ? { ...l, walls, updatedAt: Date.now() } : l)));
+    persistMachines(id, layout.machines, layout.operatorStart, walls);
   };
 
   return (
@@ -247,6 +259,8 @@ export function LayoutManagerPage() {
               onChange={(machines) => updateMachines(selected.id, machines)}
               operatorStart={selected.operatorStart ?? null}
               onOperatorStartChange={(operatorStart) => updateOperatorStart(selected.id, operatorStart)}
+              walls={selected.walls ?? []}
+              onWallsChange={(walls) => updateWalls(selected.id, walls)}
             />
           </>
         ) : (
