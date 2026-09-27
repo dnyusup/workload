@@ -590,9 +590,18 @@ export function LayoutBuilder({
     const offset = PASTE_OFFSET * nextCount;
     const timestamp = Date.now();
     const startNumber = nextMachineNumber(layout);
+    // Each copied group becomes a NEW group of its own — keeping the original groupId would merge
+    // the copy into the group it was copied from (selecting one would select both).
+    const newGroupIds = new Map<string, string>();
+    const pastedGroupId = (groupId: string | undefined) => {
+      if (!groupId) return undefined;
+      if (!newGroupIds.has(groupId)) newGroupIds.set(groupId, `machine-group-${timestamp}-${newGroupIds.size}`);
+      return newGroupIds.get(groupId);
+    };
     const pasted = clipboard.map((m, i) => ({
       ...m,
       id: `m-${timestamp}-${i}`,
+      groupId: pastedGroupId(m.groupId),
       label: String(startNumber + i),
       x: m.x + offset,
       y: m.y + offset,
