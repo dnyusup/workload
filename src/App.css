@@ -4713,3 +4713,35 @@
 .layout-wall-hit {
   cursor: move;
 }
+
+/* Remarks: text notes on the layout (Layout Builder + simulation canvases). */
+.layout-remark-text {
+  fill: #cbd5e1;
+  font-style: italic;
+  font-weight: 500;
+  white-space: pre;
+  paint-order: stroke;
+  stroke: #05070c;
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.layout-remark-hit {
+  fill: transparent;
+  cursor: move;
+}
+
+.layout-remark-outline {
+  fill: rgba(254, 240, 138, 0.08);
+  stroke: #fef08a;
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+
+.layout-remark-input {
+  width: 180px;
+  min-height: 28px;
+  resize: vertical;
+  font-family: inherit;
+  line-height: 1.3;
+}

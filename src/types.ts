@@ -137,6 +137,17 @@ export interface LayoutWall {
   y2: number;
 }
 
+/** A free-text note on the layout. Purely visual — not an obstacle, so operators walk straight
+ * through it. `x`/`y` is the top-left of the text in layout world px; `fontSize` is world px too,
+ * so the note scales with zoom like the machines around it. */
+export interface LayoutRemark {
+  id: string;
+  x: number;
+  y: number;
+  text: string;
+  fontSize: number;
+}
+
 export interface AppConfig {
   spec: MachineSpecInput;
   operator: OperatorConfig;
@@ -148,6 +159,8 @@ export interface AppConfig {
   operatorStart?: OperatorStartPoint;
   /** Walls operators must walk around (see LayoutWall). */
   walls?: LayoutWall[];
+  /** Text notes on the layout (see LayoutRemark) — never affect walking. */
+  remarks?: LayoutRemark[];
   /** Which machines in `layout` the operator actually handles — explicitly chosen in the Machine
    * Layout step (Assign/Unassign on the current selection), capped at `operator.machHandled`. The
    * simulation only ever runs these machines; the rest sit idle ('unassigned'). */
@@ -368,6 +381,8 @@ export interface ProductionSetup {
   operatorStart?: OperatorStartPoint;
   /** Walls operators must walk around (see LayoutWall). */
   walls?: LayoutWall[];
+  /** Text notes on the layout (see LayoutRemark) — never affect walking. */
+  remarks?: LayoutRemark[];
   operators: ProductionOperator[];
   assignments: ProductionMachineAssignment[];
   shiftTime: number;

@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { machineLocalFrame } from '../../lib/layoutConstants';
-import type { LayoutWall, MachineTimelineKind, OperatorTimelineKind, SimulationState } from '../../types';
+import type { LayoutRemark, LayoutWall, MachineTimelineKind, OperatorTimelineKind, SimulationState } from '../../types';
 import { MachineZoneLabels } from '../ui/MachineZoneLabels';
 import { WallsLayer } from '../ui/WallsLayer';
+import { RemarksLayer } from '../ui/RemarksLayer';
+import { machineLabelFontSize } from '../../lib/machineLabel';
 import { MachineDonut } from './MachineDonut';
 import { Button } from '../ui/Button';
 import { TimelineRuler, TimelineZoomControl } from '../ui/TimelineZoom';
@@ -40,12 +42,15 @@ export function LayoutCanvas({
   state,
   area,
   walls,
+  remarks,
   fullscreenControls,
 }: {
   state: SimulationState;
   area?: string;
   /** Layout walls, drawn so it's clear why the operator walks around them. */
   walls?: LayoutWall[];
+  /** Layout text notes — visual only, the operator walks through them. */
+  remarks?: LayoutRemark[];
   fullscreenControls?: ReactNode;
 }) {
   const { machines, operator, metrics } = state;
@@ -432,12 +437,19 @@ export function LayoutCanvas({
                     {m.shiftSpoolsCompleted} spl
                   </text>
                 </g>
-                <text x={w / 2} y={h / 2 + 10} textAnchor="middle" className="machine-label">
+                <text
+                  x={w / 2}
+                  y={h / 2 + 10}
+                  textAnchor="middle"
+                  className="machine-label"
+                  style={{ fontSize: machineLabelFontSize(m.label, w) }}
+                >
                   {m.label}
                 </text>
               </g>
             );
           })}
+          <RemarksLayer remarks={remarks} />
 
           {displayedRoute && (
             <polyline points={displayedRoute.map((p) => `${p.x},${p.y}`).join(' ')} className="operator-path" fill="none" />

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import type { LayoutMachine, LayoutWall, MachineAxis, MachinePairSide, OperatorStartPoint } from '../../types';
+import type { LayoutMachine, LayoutRemark, LayoutWall, MachineAxis, MachinePairSide, OperatorStartPoint } from '../../types';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { MachineZoneLabels } from '../ui/MachineZoneLabels';
+import { RemarkText } from '../ui/RemarksLayer';
 import {
   machineWidthPx,
   machineHeightPx,
@@ -11,8 +12,9 @@ import {
   machineLocalFrame,
 } from '../../lib/layoutConstants';
 import { generatePairedGrid, PAIR_GAP } from '../../lib/gridLayout';
-import { shiftMachineLabel } from '../../lib/machineLabel';
+import { machineLabelFontSize, shiftMachineLabel } from '../../lib/machineLabel';
 import { computeDragGuides, type Box, type DragGuides } from '../../lib/dragGuides';
+import { DEFAULT_REMARK_FONT_SIZE, remarkBounds } from '../../lib/layoutRemarks';
 
 const PAIR_SIDE_CYCLE: Record<MachinePairSide, MachinePairSide> = {
   single: 'left',
@@ -55,6 +57,8 @@ type DragState =
   | { mode: 'wall'; id: string; startWorld: Point; orig: LayoutWall; historyPushed: boolean }
   /** Dragging one end of a wall — only its length changes, never its direction. */
   | { mode: 'wallEnd'; id: string; end: 1 | 2; orig: LayoutWall; historyPushed: boolean }
+  /** Moving a text remark (free placement, no snapping). */
+  | { mode: 'remark'; id: string; startWorld: Point; orig: LayoutRemark; historyPushed: boolean }
   | null;
 
 /** Minimum pointer movement (world units, i.e. independent of zoom) before a machine pointerdown
@@ -68,6 +72,18 @@ let wallIdCounter = 0;
 function newWallId(): string {
   wallIdCounter += 1;
   return `wall-${Date.now().toString(36)}-${wallIdCounter}`;
+}
+
+let remarkIdCounter = 0;
+function newRemarkId(): string {
+  remarkIdCounter += 1;
+  return `remark-${Date.now().toString(36)}-${remarkIdCounter}`;
+}
+
+/** Undo compares each side by reference; an absent list and an empty one are the same thing (callers
+ * often pass a fresh `[]` every render), so they must not count as a change. */
+function sameList<T>(a: T[] | undefined, b: T[] | undefined): boolean {
+  return a === b || ((a?.length ?? 0) === 0 && (b?.length ?? 0) === 0);
 }
 
 /** Smart-guide snap distance, in SCREEN px (converted to world units with the current zoom). */
@@ -344,6 +360,8 @@ export function LayoutBuilder({
   onOperatorStartChange,
   walls,
   onWallsChange,
+  remarks,
+  onRemarksChange,
 }: {
   layout: LayoutMachine[];
   /** Only relevant inside the Simulator setup flow — omit to hide the operator-assignment hint
@@ -400,6 +418,10 @@ export function LayoutBuilder({
    * user draw and delete them; without it they're shown read-only. */
   walls?: LayoutWall[];
   onWallsChange?: (walls: LayoutWall[]) => void;
+  /** Text notes on the layout — purely visual, operators walk straight through them. Pass
+   * `onRemarksChange` too to let the user add, edit, move and delete them. */
+  remarks?: LayoutRemark[];
+  onRemarksChange?: (remarks: LayoutRemark[]) => void;
 }) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -410,7 +432,7 @@ export function LayoutBuilder({
   const [rows, setRows] = useState(2);
   const [cols, setCols] = useState(10);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [history, setHistory] = useState<{ machines: LayoutMachine[]; walls: LayoutWall[] | undefined }[]>([]);
+  const [history, setHistory] = useState<{ machines: LayoutMachine[]; walls: LayoutWall[] | undefined; remarks: LayoutRemark[] | undefined }[]>([]);
   const [clipboard, setClipboard] = useState<LayoutMachine[] | null>(null);
   const [wallClipboard, setWallClipboard] = useState<LayoutWall | null>(null);
   const [clipboardKind, setClipboardKind] = useState<'machines' | 'wall'>('machines');
@@ -469,6 +491,7 @@ export function LayoutBuilder({
     setMeasurePreview(null);
     setWallMode(false);
     setWallStart(null);
+    setRemarkMode(false);
   };
 
   // ---- Walls: click to start, click again to finish (and keep chaining from that point);
@@ -503,6 +526,7 @@ export function LayoutBuilder({
     setMeasureMode(false);
     setMeasurement(null);
     setPlacingStart(false);
+    setRemarkMode(false);
   };
   /** Shift-constrains a wall end to horizontal or vertical from its start. */
   const wallEndPoint = (start: Point, world: Point, straight: boolean): Point => {
@@ -515,6 +539,67 @@ export function LayoutBuilder({
     onWallsChange((walls ?? []).filter((w) => w.id !== selectedWallId));
     setSelectedWallId(null);
   };
+
+  // ---- Remarks: free text notes. Not obstacles — operators walk straight through them.
+  const [remarkMode, setRemarkMode] = useState(false);
+  const [selectedRemarkId, setSelectedRemarkId] = useState<string | null>(null);
+  const remarkInputRef = useRef<HTMLTextAreaElement>(null);
+  /** Set when the text box should grab focus as soon as it shows (new remark, double-click). */
+  const focusRemarkInputRef = useRef(false);
+  const canEditRemarks = !readOnly && !!onRemarksChange;
+  const selectedRemark = selectedRemarkId ? (remarks ?? []).find((r) => r.id === selectedRemarkId) : undefined;
+  const toggleRemarkMode = () => {
+    setRemarkMode((prev) => !prev);
+    setWallMode(false);
+    setWallStart(null);
+    setWallPreview(null);
+    setMeasureMode(false);
+    setMeasurement(null);
+    setPlacingStart(false);
+  };
+  const updateSelectedRemark = (patch: Partial<Pick<LayoutRemark, 'text' | 'fontSize'>>, recordHistory = true) => {
+    if (!selectedRemark || !onRemarksChange) return;
+    const next = { ...selectedRemark, ...patch };
+    if (next.text === selectedRemark.text && next.fontSize === selectedRemark.fontSize) return;
+    if (recordHistory) pushHistory(layout);
+    onRemarksChange((remarks ?? []).map((r) => (r.id === selectedRemark.id ? next : r)));
+  };
+  /** Typing updates the remark live (so nothing is lost if the canvas is clicked right after); one
+   * undo step per focus of the text box, not one per keystroke. */
+  const remarkEditHistoryPushedRef = useRef(false);
+  const editSelectedRemarkText = (text: string) => {
+    updateSelectedRemark({ text }, !remarkEditHistoryPushedRef.current);
+    remarkEditHistoryPushedRef.current = true;
+  };
+  /** A remark whose text was cleared is removed (folded into the same undo step as the edit). */
+  const removeSelectedRemarkIfEmpty = () => {
+    if (!selectedRemark || !onRemarksChange || selectedRemark.text.trim() !== '') return;
+    onRemarksChange((remarks ?? []).filter((r) => r.id !== selectedRemark.id));
+    setSelectedRemarkId(null);
+  };
+  const deleteSelectedRemark = () => {
+    if (!selectedRemarkId || !onRemarksChange) return;
+    pushHistory(layout);
+    onRemarksChange((remarks ?? []).filter((r) => r.id !== selectedRemarkId));
+    setSelectedRemarkId(null);
+  };
+  // Leaving a remark whose text was cleared removes it — the text box can unmount (selection moved
+  // on) without ever firing its blur.
+  const prevSelectedRemarkIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const prevId = prevSelectedRemarkIdRef.current;
+    prevSelectedRemarkIdRef.current = selectedRemarkId;
+    if (!prevId || prevId === selectedRemarkId || !onRemarksChange) return;
+    const prev = (remarks ?? []).find((r) => r.id === prevId);
+    if (prev && prev.text.trim() === '') onRemarksChange((remarks ?? []).filter((r) => r.id !== prevId));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRemarkId]);
+  useEffect(() => {
+    if (!selectedRemarkId || !focusRemarkInputRef.current) return;
+    focusRemarkInputRef.current = false;
+    remarkInputRef.current?.focus();
+    remarkInputRef.current?.select();
+  }, [selectedRemarkId]);
 
   const finishMeasuring = () => {
     setMeasurement((prev) => (prev && !prev.done ? { ...prev, done: true } : prev));
@@ -530,10 +615,10 @@ export function LayoutBuilder({
 
   /** Snapshots the layout as it was right before a mutation, so Undo can restore it. Call this
    * with the pre-mutation `layout` — never after `onChange` has already applied the change. */
-  /** Snapshots the machines (and the walls as they are right now) before a change, for Undo. */
+  /** Snapshots the machines (and the walls/remarks as they are right now) before a change, for Undo. */
   const pushHistory = (snapshot: LayoutMachine[]) => {
     setHistory((prev) => {
-      const next = [...prev, { machines: snapshot, walls }];
+      const next = [...prev, { machines: snapshot, walls, remarks }];
       return next.length > MAX_HISTORY ? next.slice(next.length - MAX_HISTORY) : next;
     });
   };
@@ -542,13 +627,15 @@ export function LayoutBuilder({
     const entry = history[history.length - 1];
     if (!entry) return;
     setHistory((prev) => prev.slice(0, -1));
-    // Every change touches either the machines or the walls, never both — restore only the side
-    // that actually differs, so a parent persisting both (the Layouts page) never gets a second,
-    // stale write for the other one.
+    // Every change touches only one of machines / walls / remarks — restore only the side that
+    // actually differs, so a parent persisting them together (the Layouts page) never gets a
+    // second, stale write for another one.
     if (entry.machines !== layout) onChange(entry.machines);
-    if (onWallsChange && entry.walls !== walls) onWallsChange(entry.walls ?? []);
+    if (onWallsChange && !sameList(entry.walls, walls)) onWallsChange(entry.walls ?? []);
+    if (onRemarksChange && !sameList(entry.remarks, remarks)) onRemarksChange(entry.remarks ?? []);
     setSelectedIds(new Set());
     setSelectedWallId(null);
+    setSelectedRemarkId(null);
   };
 
   const copySelection = () => {
@@ -735,6 +822,15 @@ export function LayoutBuilder({
         deleteSelectedWall();
         return;
       }
+      if (e.key === 'Escape' && remarkMode) {
+        setRemarkMode(false);
+        return;
+      }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedRemarkId && canEditRemarks) {
+        e.preventDefault();
+        deleteSelectedRemark();
+        return;
+      }
       if (e.key === 'Escape' && measureMode) {
         toggleMeasureMode();
         return;
@@ -765,10 +861,13 @@ export function LayoutBuilder({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [layout, selectedIds, history, clipboard, pasteCount, measureMode, placingStart, wallMode, wallStart, selectedWallId, walls, wallClipboard, clipboardKind, wallPasteCount]);
+  }, [layout, selectedIds, history, clipboard, pasteCount, measureMode, placingStart, wallMode, wallStart, selectedWallId, walls, wallClipboard, clipboardKind, wallPasteCount, remarkMode, selectedRemarkId, remarks]);
 
   const handleMachinePointerDown = (id: string) => (e: React.PointerEvent) => {
     if (selectedWallId) setSelectedWallId(null);
+    if (selectedRemarkId) setSelectedRemarkId(null);
+    // Placing a remark on top of a machine: let the canvas handler take it.
+    if (remarkMode && canEditRemarks) return;
     // Let the click bubble to the canvas handler so measuring/start-point placement works even
     // when clicking on top of a machine.
     if (measureMode || placingStart) return;
@@ -849,7 +948,21 @@ export function LayoutBuilder({
       setWallStart(end); // keep chaining from here
       return;
     }
+    if (remarkMode && onRemarksChange && !readOnly) {
+      if (e.button !== 0) return;
+      const world = toWorldPoint(e.clientX, e.clientY);
+      pushHistory(layout);
+      const remark: LayoutRemark = { id: newRemarkId(), x: world.x, y: world.y, text: 'Remark', fontSize: DEFAULT_REMARK_FONT_SIZE };
+      onRemarksChange([...(remarks ?? []), remark]);
+      focusRemarkInputRef.current = true;
+      setSelectedRemarkId(remark.id);
+      setSelectedIds(new Set());
+      setSelectedWallId(null);
+      setRemarkMode(false);
+      return;
+    }
     if (selectedWallId) setSelectedWallId(null);
+    if (selectedRemarkId) setSelectedRemarkId(null);
     if (placingStart) {
       const world = toWorldPoint(e.clientX, e.clientY);
       onOperatorStartChange?.(world);
@@ -887,6 +1000,18 @@ export function LayoutBuilder({
       setMeasurePreview(toWorldPoint(e.clientX, e.clientY));
     }
     if (!drag) return;
+    if (drag.mode === 'remark' && onRemarksChange) {
+      const world = toWorldPoint(e.clientX, e.clientY);
+      const dx = world.x - drag.startWorld.x;
+      const dy = world.y - drag.startWorld.y;
+      if (!drag.historyPushed) {
+        if (Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+        pushHistory(layout);
+        setDrag({ ...drag, historyPushed: true });
+      }
+      onRemarksChange((remarks ?? []).map((r) => (r.id === drag.id ? { ...r, x: drag.orig.x + dx, y: drag.orig.y + dy } : r)));
+      return;
+    }
     if ((drag.mode === 'wall' || drag.mode === 'wallEnd') && onWallsChange) {
       const world = toWorldPoint(e.clientX, e.clientY);
       const o = drag.orig;
@@ -1619,6 +1744,71 @@ export function LayoutBuilder({
               )}
             </>
           )}
+          {canEditRemarks && (
+            <>
+              <Button
+                variant={remarkMode ? 'primary' : 'ghost'}
+                className="toolbar-icon-button"
+                onClick={toggleRemarkMode}
+                title="Add a text remark: click on the canvas where it should go (Esc to cancel). Remarks are notes only — operators walk through them."
+                aria-label="Add remark"
+              >
+                📝
+              </Button>
+              {selectedRemark && (
+                <>
+                  <textarea
+                    key={selectedRemark.id}
+                    ref={remarkInputRef}
+                    className="input input-sm layout-remark-input"
+                    rows={1}
+                    defaultValue={selectedRemark.text}
+                    onFocus={() => {
+                      remarkEditHistoryPushedRef.current = false;
+                    }}
+                    onChange={(e) => editSelectedRemarkText(e.target.value)}
+                    onBlur={removeSelectedRemarkIfEmpty}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        (e.target as HTMLTextAreaElement).blur();
+                      }
+                    }}
+                    title="Remark text — Enter to apply, Shift+Enter for a new line; clear it to remove the remark"
+                    aria-label="Remark text"
+                  />
+                  <span className="toolbar-x">Size</span>
+                  <input
+                    key={selectedRemark.id}
+                    className="input input-sm"
+                    type="number"
+                    min={4}
+                    step={1}
+                    style={{ width: 60 }}
+                    defaultValue={selectedRemark.fontSize}
+                    onChange={(e) => {
+                      const size = parseFloat(e.target.value);
+                      if (size >= 4) updateSelectedRemark({ fontSize: size });
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                    }}
+                    title="Text size (scales with zoom, like the machines)"
+                    aria-label="Remark text size"
+                  />
+                  <Button
+                    variant="danger"
+                    className="toolbar-icon-button"
+                    onClick={deleteSelectedRemark}
+                    title="Delete the selected remark (Delete key)"
+                    aria-label="Delete selected remark"
+                  >
+                    🗑
+                  </Button>
+                </>
+              )}
+            </>
+          )}
           <Button
             variant={measureMode ? 'primary' : 'ghost'}
             className="toolbar-icon-button"
@@ -1908,7 +2098,7 @@ export function LayoutBuilder({
           width="100%"
           height="100%"
           viewBox={`0 0 ${viewSize.width} ${viewSize.height}`}
-          className={`layout-svg ${drag?.mode === 'pan' ? 'layout-svg-panning' : ''} ${measureMode || placingStart ? 'layout-svg-measuring' : ''}`}
+          className={`layout-svg ${drag?.mode === 'pan' ? 'layout-svg-panning' : ''} ${measureMode || placingStart || remarkMode ? 'layout-svg-measuring' : ''}`}
           onPointerDown={handleCanvasPointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
@@ -1939,6 +2129,7 @@ export function LayoutBuilder({
               const w = machineWidthPx(m, pixelsPerMeter);
               const h = machineHeightPx(m, pixelsPerMeter);
               const frame = machineLocalFrame(m.axis, w, h);
+              const labelFontSize = machineLabelFontSize(m.label, w);
               return (
                 <g
                   key={m.id}
@@ -1970,7 +2161,13 @@ export function LayoutBuilder({
                   <g transform={frame.transform}>
                     <MachineZoneLabels orientation={m.orientation} pairSide={m.pairSide} width={frame.width} height={frame.height} />
                   </g>
-                  <text x={w / 2} y={h / 2 + 4} textAnchor="middle" className="machine-label">
+                  <text
+                    x={w / 2}
+                    y={h / 2 + labelFontSize * 0.36}
+                    textAnchor="middle"
+                    className="machine-label"
+                    style={{ fontSize: labelFontSize }}
+                  >
                     {m.label}
                   </text>
                 </g>
@@ -2000,7 +2197,7 @@ export function LayoutBuilder({
             {(walls ?? []).map((wall) => (
               <g key={wall.id} className={`layout-wall${selectedWallId === wall.id ? ' selected' : ''}`}>
                 <line x1={wall.x1} y1={wall.y1} x2={wall.x2} y2={wall.y2} className="layout-wall-line" vectorEffect="non-scaling-stroke" />
-                {canEditWalls && !wallMode && (
+                {canEditWalls && !wallMode && !remarkMode && (
                   // Wider invisible hit line so a thin wall is easy to click.
                   <line
                     x1={wall.x1}
@@ -2013,6 +2210,7 @@ export function LayoutBuilder({
                       e.stopPropagation();
                       if (e.button !== 0) return;
                       setSelectedWallId(wall.id);
+                      setSelectedRemarkId(null);
                       setSelectedIds(new Set());
                       (e.currentTarget as Element).setPointerCapture(e.pointerId);
                       setDrag({ mode: 'wall', id: wall.id, startWorld: toWorldPoint(e.clientX, e.clientY), orig: wall, historyPushed: false });
@@ -2054,6 +2252,52 @@ export function LayoutBuilder({
                 )}
               </g>
             ))}
+            {(remarks ?? []).map((remark) => {
+              const bounds = remarkBounds(remark);
+              const pad = 3 / zoom;
+              const interactive = canEditRemarks && !wallMode && !remarkMode && !measureMode && !placingStart;
+              return (
+                <g key={remark.id} className={`layout-remark${selectedRemarkId === remark.id ? ' selected' : ''}`}>
+                  {interactive && (
+                    <rect
+                      x={remark.x - pad}
+                      y={remark.y - pad}
+                      width={bounds.width + pad * 2}
+                      height={bounds.height + pad * 2}
+                      className="layout-remark-hit"
+                      onPointerDown={(e) => {
+                        e.stopPropagation();
+                        if (e.button !== 0) return;
+                        setSelectedRemarkId(remark.id);
+                        setSelectedWallId(null);
+                        setSelectedIds(new Set());
+                        (e.currentTarget as Element).setPointerCapture(e.pointerId);
+                        setDrag({ mode: 'remark', id: remark.id, startWorld: toWorldPoint(e.clientX, e.clientY), orig: remark, historyPushed: false });
+                      }}
+                      onDoubleClick={() => {
+                        remarkInputRef.current?.focus();
+                        remarkInputRef.current?.select();
+                      }}
+                    >
+                      <title>Remark — drag to move, double-click to edit text, Delete to remove</title>
+                    </rect>
+                  )}
+                  {selectedRemarkId === remark.id && (
+                    <rect
+                      x={remark.x - pad}
+                      y={remark.y - pad}
+                      width={bounds.width + pad * 2}
+                      height={bounds.height + pad * 2}
+                      rx={3 / zoom}
+                      className="layout-remark-outline"
+                      vectorEffect="non-scaling-stroke"
+                      pointerEvents="none"
+                    />
+                  )}
+                  <RemarkText remark={remark} />
+                </g>
+              );
+            })}
             {wallMode && wallStart && wallPreview && (
               <g pointerEvents="none">
                 <line

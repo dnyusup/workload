@@ -25,6 +25,8 @@ import { buildCanvasLegendData, type LegendHover } from '../../lib/canvasLegend'
 import { CanvasLegendPanel } from './CanvasLegendPanel';
 import { ProductionReportView } from './ProductionReportView';
 import { WallsLayer } from '../ui/WallsLayer';
+import { RemarksLayer } from '../ui/RemarksLayer';
+import { machineLabelFontSize } from '../../lib/machineLabel';
 import { useFillToWindowBottom } from '../../hooks/useFillToWindowBottom';
 import { useTimelineZoomScroll } from '../../hooks/useTimelineZoom';
 import { TimelineRuler, TimelineZoomControl } from '../ui/TimelineZoom';
@@ -795,6 +797,7 @@ export function ProductionRunView({
                     isDetailed={isDetailed}
                     highlightedMachineIds={highlightedMachineIds}
                   />
+                  <RemarksLayer remarks={setup.remarks} />
 
                   <OperatorRoutesLayer operators={operators} />
 
@@ -1649,7 +1652,7 @@ const MachineNode = memo(function MachineNode({
           </>
         )}
       </g>
-      <text x={w / 2} y={h / 2 + 10} textAnchor="middle" className="machine-label">
+      <text x={w / 2} y={h / 2 + 10} textAnchor="middle" className="machine-label" style={{ fontSize: machineLabelFontSize(label, w) }}>
         {label}
       </text>
     </g>

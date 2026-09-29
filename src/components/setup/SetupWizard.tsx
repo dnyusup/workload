@@ -152,7 +152,9 @@ export function SetupWizard({ onStart }: { onStart: () => void }) {
         {step === 1 && (
           <>
             <LayoutSelector
-              onSelect={(layout, operatorStart, walls) => setConfig((prev) => ({ ...prev, layout, operatorStart, walls }))}
+              onSelect={(layout, operatorStart, walls, remarks) =>
+                setConfig((prev) => ({ ...prev, layout, operatorStart, walls, remarks }))
+              }
             />
             <LayoutBuilder
               layout={config.layout}
@@ -168,6 +170,8 @@ export function SetupWizard({ onStart }: { onStart: () => void }) {
               }
               walls={config.walls ?? []}
               onWallsChange={(walls) => setConfig((prev) => ({ ...prev, walls }))}
+              remarks={config.remarks ?? []}
+              onRemarksChange={(remarks) => setConfig((prev) => ({ ...prev, remarks }))}
             />
           </>
         )}

@@ -314,6 +314,7 @@ export function SimulationView({
           state={state}
           area={config.spec.area}
           walls={config.walls}
+          remarks={config.remarks}
           fullscreenControls={
             <Controls
               playing={playing}

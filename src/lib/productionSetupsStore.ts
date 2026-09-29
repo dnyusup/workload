@@ -1,4 +1,4 @@
-import type { LayoutMachine, OperatorStartPoint, ProductionMachineAssignment, ProductionOperator, ProductionSetup, TaskPriorityMode, LayoutWall } from '../types';
+import type { LayoutMachine, OperatorStartPoint, ProductionMachineAssignment, ProductionOperator, ProductionSetup, TaskPriorityMode, LayoutWall, LayoutRemark } from '../types';
 import { Mpp_wl_productionsetupsesService } from '../generated/services/Mpp_wl_productionsetupsesService';
 import { Mpp_wl_productionsetupoperatorsesService } from '../generated/services/Mpp_wl_productionsetupoperatorsesService';
 import { Mpp_wl_productionsetupmachinesesService } from '../generated/services/Mpp_wl_productionsetupmachinesesService';
@@ -101,7 +101,7 @@ export async function loadProductionSetup(id: string, constructionLabelById: Map
   machineRows.forEach((row) => rowIdByMachineId.set(row.mpp_machineid, row.mpp_wl_productionsetupmachinesid));
   machineRowIdCache.set(id, rowIdByMachineId);
 
-  const { machines: layout, operatorStart, walls } = parseLayoutBlob(header.mpp_layoutsnapshotjson);
+  const { machines: layout, operatorStart, walls, remarks } = parseLayoutBlob(header.mpp_layoutsnapshotjson);
   const operators: ProductionOperator[] = operatorRows.map((row) => ({ id: row.mpp_wl_productionsetupoperatorsid, label: row.mpp_name }));
   const assignmentByMachineId = new Map(machineRows.map((row) => [row.mpp_machineid, machineRowToAssignment(row, constructionLabelById)]));
   // Every machine in the layout snapshot gets an assignment entry even if its Dataverse row
@@ -114,6 +114,7 @@ export async function loadProductionSetup(id: string, constructionLabelById: Map
     layout,
     operatorStart,
     walls,
+    remarks,
     operators,
     assignments,
     shiftTime: header.mpp_shifttime ?? 480,
@@ -138,10 +139,11 @@ export async function createProductionSetup(
   creatorEmail = '',
   operatorStart?: OperatorStartPoint,
   walls?: LayoutWall[],
+  remarks?: LayoutRemark[],
 ): Promise<ProductionSetup> {
   const headerResult = await Mpp_wl_productionsetupsesService.create({
     mpp_name: name,
-    mpp_layoutsnapshotjson: serializeLayoutBlob(layout, operatorStart, walls),
+    mpp_layoutsnapshotjson: serializeLayoutBlob(layout, operatorStart, walls, remarks),
     mpp_creator_email: creatorEmail,
     mpp_shifttime: 480,
     mpp_lunchtime: 30,
@@ -179,6 +181,8 @@ export async function createProductionSetup(
     name,
     layout,
     operatorStart,
+    walls,
+    remarks,
     operators: [],
     assignments: layout.map((m) => ({ machineId: m.id })),
     shiftTime: 480,

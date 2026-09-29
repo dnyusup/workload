@@ -291,6 +291,7 @@ export function ProductionSimulationPage() {
         user.email,
         layout.operatorStart,
         layout.walls,
+        layout.remarks,
       );
       setSummaries((prev) => [
         ...prev,
@@ -1593,6 +1594,7 @@ function ProductionSetupEditor({
         onChange={() => {}}
         operatorStart={setup.operatorStart ?? null}
         walls={setup.walls ?? []}
+        remarks={setup.remarks ?? []}
       />
       {plannedUtilizationOpen && (
         <div
