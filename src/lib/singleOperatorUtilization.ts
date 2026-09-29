@@ -1,8 +1,16 @@
-import type { ActivityConfig, AppConfig } from '../types';
+import type { ActivityConfig, AppConfig, LayoutMachine } from '../types';
 import { activityCycleLength, availableTimeMinutes, deriveMachineSpec, distanceMeters, extraBreakMinutes } from './calculations';
+import { generatePairedGrid, PAIR_GAP } from './gridLayout';
+import { machineWidthPx } from './layoutConstants';
 
 const AVERAGE_DIES_PER_CHANGE_EVENT = (7 + 26) / 2;
 const GLOBAL_EVENT_ACTIVITIES = new Set(['fractureRepairing', 'diesChange', 'defectRepairing']);
+/** Columns of the stand-in grid used for machines the layout doesn't have yet (Generate Grid's default). */
+const PLACEHOLDER_GRID_COLS = 10;
+/** Upper bound for Optimize's search now that it isn't capped by the layout's machine count. */
+const MAX_RECOMMENDED_MACHINES = 300;
+/** Optimize stops once this many counts in a row all leave a backlog. */
+const OPTIMIZE_BACKLOG_STREAK = 5;
 
 export interface ForecastActivityContribution {
   key: string;
@@ -76,9 +84,13 @@ export function calculateSingleOperatorForecast(config: AppConfig): SingleOperat
   // completing the Assign action in the Machine Layout step.
   const layoutById = new Map(config.layout.map((machine) => [machine.id, machine]));
   const assignedPreviewIds = previewAssignedMachineIds(config, handled);
-  const assignedMachines = assignedPreviewIds
+  const layoutMachines = assignedPreviewIds
     .map((id) => layoutById.get(id))
     .filter((machine): machine is NonNullable<typeof machine> => !!machine);
+  // The count is independent of the layout: machines the layout doesn't have (yet) still count,
+  // placed on a stand-in paired grid right of the layout so walking can be estimated. The Machine
+  // Layout step is where the layout has to match the count before the simulation can start.
+  const assignedMachines = [...layoutMachines, ...placeholderMachines(config, handled - layoutMachines.length)];
   const derived = deriveMachineSpec(config.spec);
   const runtimePerSpool = positiveFinite(derived.runtimePerSpool);
   const expectedSpools = runtimePerSpool > 0 ? config.operator.shiftTime / runtimePerSpool : 0;
@@ -206,18 +218,37 @@ export function calculateSingleOperatorForecast(config: AppConfig): SingleOperat
   };
 }
 
-/** Finds the largest available machine count that still leaves no forecast backlog. */
-export function recommendedMachineCountForForecast(config: AppConfig): number {
-  if (config.layout.length === 0) return 0;
+/** Stand-in machines for the part of the count the layout can't supply: a paired grid (default
+ * machine size) starting just right of the layout, so their walking distances stay realistic. */
+function placeholderMachines(config: AppConfig, count: number): LayoutMachine[] {
+  if (count <= 0) return [];
+  const pixelsPerMeter = config.movement.pixelsPerMeter || 20;
+  const layoutRight = config.layout.reduce((max, m) => Math.max(max, m.x + machineWidthPx(m, pixelsPerMeter)), -Infinity);
+  const startX = Number.isFinite(layoutRight) ? layoutRight + PAIR_GAP : 40;
+  const startY = config.layout.length > 0 ? Math.min(...config.layout.map((m) => m.y)) : 40;
+  const cols = Math.min(PLACEHOLDER_GRID_COLS, count);
+  return generatePairedGrid(Math.ceil(count / cols), cols, startX, startY)
+    .slice(0, count)
+    .map((machine) => ({ ...machine, id: `placeholder-${machine.id}` }));
+}
 
+/** Finds the largest machine count that still leaves no forecast backlog — not limited to the
+ * machines in the layout (the Machine Layout step enforces that the layout matches the count). */
+export function recommendedMachineCountForForecast(config: AppConfig): number {
   let recommended = 0;
-  for (let machineCount = 1; machineCount <= config.layout.length; machineCount += 1) {
+  let backlogStreak = 0;
+  for (let machineCount = 1; machineCount <= MAX_RECOMMENDED_MACHINES; machineCount += 1) {
     const forecast = calculateSingleOperatorForecast({
       ...config,
       operator: { ...config.operator, machHandled: machineCount },
     });
+    // No handling work at all (spec/activities not filled in yet) would never produce a backlog.
+    if (machineCount === 1 && forecast.plannedMinutes <= 0) return 0;
     if (forecast.forecastWaitingMinutes <= 0.0001) {
       recommended = machineCount;
+      backlogStreak = 0;
+    } else if (++backlogStreak >= OPTIMIZE_BACKLOG_STREAK) {
+      break;
     }
   }
 
