@@ -4,7 +4,7 @@ import { Mpp_wl_outputmodelsesService } from '../generated/services/Mpp_wl_outpu
 import { Mpp_wl_productsesService } from '../generated/services/Mpp_wl_productsesService';
 import { calculateSingleOperatorForecast } from './singleOperatorUtilization';
 import { deriveMachineSpec } from './calculations';
-import type { AppConfig, SimulationState } from '../types';
+import type { AppConfig, InheritedSimulationSnapshot, SimulationState } from '../types';
 import type { Mpp_wl_outputmodelsesBase } from '../generated/models/Mpp_wl_outputmodelsesModel';
 import { escapeODataString, fetchAllPages } from './dataversePaging';
 
@@ -208,7 +208,14 @@ export function buildOutputModelPayload(
     mpp_updatedon: updatedOn,
     mpp_version: metadata.version,
     mpp_versionremark: metadata.versionRemark?.trim() || undefined,
-    mpp_startmachcondition: JSON.stringify(state.initialMachineConditions),
+    mpp_startmachcondition: JSON.stringify({
+      seed: state.seed,
+      layout: config.layout,
+      walls: config.walls,
+      remarks: config.remarks,
+      operatorStart: config.operatorStart,
+      conditions: state.initialMachineConditions,
+    } satisfies InheritedSimulationSnapshot),
     statecode: 0,
   };
 }

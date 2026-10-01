@@ -4,6 +4,9 @@ import { createPortal } from 'react-dom';
 export interface SearchableSelectOption {
   value: string;
   label: string;
+  /** Shows a small action icon (e.g. an eye) at the right edge of this option's row — see
+   * `onOptionIndicatorClick` on SearchableSelect. */
+  hasIndicator?: boolean;
 }
 
 interface PanelPosition {
@@ -49,6 +52,8 @@ export function SearchableSelect({
   searchPlaceholder = 'Cari…',
   disabled = false,
   className = '',
+  onOptionIndicatorClick,
+  indicatorTitle = 'View details',
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -57,6 +62,11 @@ export function SearchableSelect({
   searchPlaceholder?: string;
   disabled?: boolean;
   className?: string;
+  /** Called instead of `onChange` when an option's indicator icon (see `hasIndicator`) is clicked —
+   * the option isn't selected, and the dropdown closes (e.g. so whatever this opens, like a detail
+   * popup, isn't stuck underneath the panel's own very high z-index). */
+  onOptionIndicatorClick?: (value: string) => void;
+  indicatorTitle?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -217,17 +227,39 @@ export function SearchableSelect({
               </button>
               {filtered.length === 0 && <div className="searchable-select-empty">Tidak ada hasil</div>}
               {filtered.map((o) => (
-                <button
-                  key={o.value}
-                  type="button"
-                  className={`searchable-select-option ${o.value === value ? 'active' : ''}`}
-                  onClick={() => {
-                    onChange(o.value);
-                    setOpen(false);
-                  }}
-                >
-                  {o.label}
-                </button>
+                <div key={o.value} className="searchable-select-option-row">
+                  <button
+                    type="button"
+                    className={`searchable-select-option ${o.value === value ? 'active' : ''}`}
+                    onClick={() => {
+                      onChange(o.value);
+                      setOpen(false);
+                    }}
+                  >
+                    {o.label}
+                  </button>
+                  {o.hasIndicator && onOptionIndicatorClick && (
+                    <button
+                      type="button"
+                      className="searchable-select-option-indicator"
+                      title={indicatorTitle}
+                      aria-label={indicatorTitle}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOptionIndicatorClick(o.value);
+                        // Close the panel instead of leaving it open above whatever the indicator
+                        // triggers (e.g. a detail popup) — its very high z-index would otherwise
+                        // sit on top of that popup.
+                        setOpen(false);
+                      }}
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M1.5 12S5 5 12 5s10.5 7 10.5 7-3.5 7-10.5 7S1.5 12 1.5 12Z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
               ))}
             </div>
           </div>,

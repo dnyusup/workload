@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Mpp_wl_productsesService } from '../../generated/services/Mpp_wl_productsesService';
 import { Mpp_wl_activitiesService } from '../../generated/services/Mpp_wl_activitiesService';
+import { Mpp_wl_outputmodelsesService } from '../../generated/services/Mpp_wl_outputmodelsesService';
 import type { Mpp_wl_activities } from '../../generated/models/Mpp_wl_activitiesModel';
 import type { Mpp_wl_productses } from '../../generated/models/Mpp_wl_productsesModel';
+import type { Mpp_wl_outputmodelses } from '../../generated/models/Mpp_wl_outputmodelsesModel';
 import { useAppConfig } from '../../context/appConfig';
 import { fetchAllPages } from '../../lib/dataversePaging';
 import { buildActivitiesFromRows, isLoadingTaskRow, mapProductToSpec } from '../../lib/productCatalog';
@@ -14,6 +16,7 @@ import {
 import type { AppConfig } from '../../types';
 import { Card } from '../ui/Card';
 import { SearchableSelect } from '../ui/SearchableSelect';
+import { OutputModelDetailDialog } from '../data/OutputModelDetailDialog';
 
 function escapeODataString(value: string): string {
   return value.replace(/'/g, "''");
@@ -39,6 +42,8 @@ export function ConstructionDetailSelector({
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [applying, setApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [outputModelRows, setOutputModelRows] = useState<Mpp_wl_outputmodelses[]>([]);
+  const [detailRow, setDetailRow] = useState<Mpp_wl_outputmodelses | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -56,6 +61,41 @@ export function ConstructionDetailSelector({
       cancelled = true;
     };
   }, []);
+
+  // Powers the "has a saved output model" eye icon on each Construction Detail option — not
+  // critical to the page working, so a failure here is swallowed rather than shown as an error.
+  useEffect(() => {
+    let cancelled = false;
+    fetchAllPages(Mpp_wl_outputmodelsesService.getAll, { orderBy: ['mpp_updatedon desc'] })
+      .then((data) => {
+        if (!cancelled) setOutputModelRows(data);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Keyed by trimmed/lower-cased Construction Detail code; each list is already sorted newest
+  // first (the fetch orders by mpp_updatedon desc), so [0] is the one shown in the detail popup.
+  const outputModelsByConstruction = useMemo(() => {
+    const map = new Map<string, Mpp_wl_outputmodelses[]>();
+    for (const row of outputModelRows) {
+      const code = row.mpp_constructiondetailcode?.trim().toLowerCase();
+      if (!code) continue;
+      const list = map.get(code);
+      if (list) list.push(row);
+      else map.set(code, [row]);
+    }
+    return map;
+  }, [outputModelRows]);
+
+  const handleViewOutputModel = (productId: string) => {
+    const product = products.find((p) => p.mpp_wl_productsid === productId);
+    const code = product?.mpp_constructiondetailcode?.trim().toLowerCase();
+    const rows = code ? outputModelsByConstruction.get(code) : undefined;
+    if (rows && rows.length > 0) setDetailRow(rows[0]);
+  };
 
   const selectedProduct = useMemo(
     () => products.find((p) => p.mpp_wl_productsid === config.selectedProductId) ?? null,
@@ -86,9 +126,10 @@ export function ConstructionDetailSelector({
     const constructionOptions = visible.map((p) => ({
       value: p.mpp_wl_productsid,
       label: p.mpp_constructiondetailcode ?? p.mpp_wl_productsid,
+      hasIndicator: outputModelsByConstruction.has((p.mpp_constructiondetailcode ?? '').trim().toLowerCase()),
     }));
     return { filterOptions, constructionOptions };
-  }, [products, filters, selectedProduct]);
+  }, [products, filters, selectedProduct, outputModelsByConstruction]);
 
   const handleSelect = async (productId: string) => {
     const product = products.find((p) => p.mpp_wl_productsid === productId);
@@ -185,6 +226,8 @@ export function ConstructionDetailSelector({
             placeholder={loadingProducts ? 'Loading products…' : `Select Construction Detail (${constructionOptions.length})`}
             searchPlaceholder="Cari Construction Detail…"
             options={constructionOptions}
+            onOptionIndicatorClick={handleViewOutputModel}
+            indicatorTitle="Lihat output model tersimpan"
           />
         </div>
         {selectedProduct && (
@@ -200,6 +243,7 @@ export function ConstructionDetailSelector({
         {applying && <span className="construction-selector-status">Applying…</span>}
       </div>
       {error && <p className="construction-selector-error">{error}</p>}
+      {detailRow && <OutputModelDetailDialog row={detailRow} onClose={() => setDetailRow(null)} />}
     </Card>
   );
 }

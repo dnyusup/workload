@@ -135,6 +135,40 @@
   overflow-x: auto;
 }
 
+/* Pinned to the viewport bottom so a wide table can be scrolled sideways without first scrolling
+   all the way down to reach its own native scrollbar. A custom track/thumb (not a second native
+   overflow:auto element) driven directly from the real table's scrollLeft — see
+   FloatingScrollbar.tsx for why: syncing two native scroll containers via scroll events was
+   visibly laggier than letting the browser scroll the table natively and just mirroring its
+   position. */
+.floating-scrollbar {
+  position: fixed;
+  bottom: 0;
+  height: 14px;
+  z-index: 30;
+  background: #0b1220;
+  border-top: 1px solid #1e293b;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.floating-scrollbar-thumb {
+  height: 100%;
+  border-radius: 6px;
+  background: #334155;
+  cursor: grab;
+  touch-action: none;
+}
+
+.floating-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+.floating-scrollbar-thumb:active {
+  cursor: grabbing;
+  background: #475569;
+}
+
 .output-models-table {
   min-width: 3000px;
   --output-construction-width: 280px;
@@ -2920,6 +2954,46 @@
 .searchable-select-option.active {
   background: rgba(56, 189, 248, 0.2);
   color: #38bdf8;
+}
+
+.searchable-select-option-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.searchable-select-option-row .searchable-select-option {
+  flex: 1;
+  min-width: 0;
+}
+
+.searchable-select-option-indicator {
+  appearance: none;
+  background: none;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.searchable-select-option-indicator svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.searchable-select-option-indicator:hover {
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
 }
 
 .searchable-select-empty {

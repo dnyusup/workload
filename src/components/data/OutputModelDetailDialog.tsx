@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { percentageForDisplay } from '../../lib/outputModel';
 import {
   formatOutputModelValue,
@@ -73,6 +74,16 @@ export function OutputModelDetailDialog({
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  // Block the page behind the dialog from scrolling while it's open — a `position: fixed` overlay
+  // only looks pinned in place, it doesn't by itself stop wheel/keyboard scroll underneath it.
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
+
   const value = (key: OutputModelKey) => formatOutputModelValue(row[key], key);
   const occupation = OCCUPATION_PARTS.map((part) => ({
     ...part,
@@ -80,8 +91,9 @@ export function OutputModelDetailDialog({
     percent: typeof row[part.key] === 'number' ? Math.max(0, percentageForDisplay(row[part.key] as number)) : 0,
   }));
   const occupationTotal = occupation.reduce((sum, part) => sum + part.percent, 0) || 1;
+  const portalTarget = document.fullscreenElement ?? document.body;
 
-  return (
+  return createPortal(
     <div className="modal-overlay om-detail-overlay" onClick={onClose}>
       <div
         className="om-detail"
@@ -161,6 +173,7 @@ export function OutputModelDetailDialog({
           </section>
         </div>
       </div>
-    </div>
+    </div>,
+    portalTarget,
   );
 }

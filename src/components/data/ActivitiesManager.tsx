@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Mpp_wl_activitiesService } from '../../generated/services/Mpp_wl_activitiesService';
 import {
   Mpp_wl_activitiesmpp_taskname,
@@ -9,6 +9,7 @@ import { Mpp_wl_productsesService } from '../../generated/services/Mpp_wl_produc
 import { fetchAllPages } from '../../lib/dataversePaging';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
+import { FloatingScrollbar } from '../ui/FloatingScrollbar';
 import { SearchableSelect } from '../ui/SearchableSelect';
 import { CustomSortControl, type CustomSortLevel } from './CustomSortControl';
 
@@ -109,6 +110,7 @@ export function ActivitiesManager({
   // Construction (mpp_constructioncode) -> Area, sourced from WL_Products, used only to decide
   // whether DiesChange should appear in the Task dropdown for a given row (see DIES_CHANGE_AREAS).
   const [areaByConstruction, setAreaByConstruction] = useState<Map<string, string>>(new Map());
+  const tableWrapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (initialConstructionFilter) setConstructionFilter(initialConstructionFilter);
@@ -353,7 +355,7 @@ export function ActivitiesManager({
               searchPlaceholder="Search Construction…"
             />
           </div>
-          <div className="data-table-wrap">
+          <div className="data-table-wrap" ref={tableWrapRef}>
           <table className="table activities-table">
             <thead>
               <tr>
@@ -525,6 +527,7 @@ export function ActivitiesManager({
             </tbody>
           </table>
           </div>
+          <FloatingScrollbar targetRef={tableWrapRef} />
         </>
       )}
     </Card>

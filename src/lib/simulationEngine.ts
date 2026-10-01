@@ -19,6 +19,7 @@ import { activityCycleLength, availableTimeMinutes, deriveMachineSpec, distanceM
 import { machineWidthPx, machineHeightPx } from './layoutConstants';
 import { buildServiceSegments } from './machineZones';
 import { computeWalkingWaypoints, createRoutingRowCache, type RoutingRowCache } from './operatorRouting';
+import { createRng, randomSeed } from './rng';
 import { buildWallGraph, type WallGraph } from './wallRouting';
 
 /** How far operators keep from a wall's end when walking around it. */
@@ -78,6 +79,8 @@ export class SimulationEngine {
   private logIdCounter = 0;
   private assignedIds: Set<string>;
   private initialMachineConditions: MachineStartCondition[];
+  private seed: number;
+  private rng: () => number;
   private breaks: BreakDef[];
   /** Visibility graph around the layout's walls (null when there are none). */
   private wallGraph: WallGraph | null;
@@ -95,6 +98,8 @@ export class SimulationEngine {
 
   constructor(config: AppConfig) {
     this.config = config;
+    this.seed = config.seed ?? randomSeed();
+    this.rng = createRng(this.seed);
     const derived = deriveMachineSpec(config.spec);
     this.runtimePerSpool = derived.runtimePerSpool > 0 ? derived.runtimePerSpool : 1;
 
@@ -140,7 +145,7 @@ export class SimulationEngine {
       const startSpools = assigned
         ? savedCondition
           ? Math.max(0, Math.floor(savedCondition.spoolsCompleted))
-          : Math.floor(Math.random() * startPhaseRange)
+          : Math.floor(this.rng() * startPhaseRange)
         : 0;
       // Per-machine cycle catch-up only applies to Doffing/Loading — Fracture Repairing is global.
       const completedByActivity = savedCondition
@@ -177,11 +182,11 @@ export class SimulationEngine {
           if (loading?.loadingInterrupt && Number.isFinite(loadingCycle) && loadingCycle > 0) {
             // Weight-based Loading has its own production phase. Randomize it across the full
             // cycle instead of deriving it from startSpools, which is capped at one shift.
-            return Math.random() * loadingCycle;
+            return this.rng() * loadingCycle;
           }
           return Number.isFinite(loadingCycle) && loadingCycle > 0 ? startSpools % loadingCycle : startSpools;
         })(),
-        nextCompletionAt: savedCondition?.nextCompletionAt ?? (assigned ? Math.random() * this.runtimePerSpool : this.runtimePerSpool),
+        nextCompletionAt: savedCondition?.nextCompletionAt ?? (assigned ? this.rng() * this.runtimePerSpool : this.runtimePerSpool),
         pendingTasks: savedCondition?.pendingTasks.map((task) => ({ ...task })) ?? [],
         queuedSince: savedCondition?.queuedSince ?? null,
         totalServiced: 0,
@@ -196,7 +201,7 @@ export class SimulationEngine {
       // Simulate a realistic shift start: some machines are already stopped waiting on
       // unfinished work (e.g. left over from the previous operator), so the new operator
       // has something to do immediately instead of everyone idling for the first completion.
-      if (assigned && !savedCondition && Math.random() < INITIAL_BACKLOG_CHANCE) {
+      if (assigned && !savedCondition && this.rng() < INITIAL_BACKLOG_CHANCE) {
         machine.spoolsCompleted += 1;
         this.queueTasksForMachine(machine, 0);
         machine.nextCompletionAt = this.runtimePerSpool;
@@ -479,11 +484,11 @@ export class SimulationEngine {
   private injectGlobalActivityTask(activityKey: ActivityKey, atMin: number): boolean {
     const candidates = this.machines.filter((m) => m.status === 'running');
     if (candidates.length === 0) return false;
-    const target = candidates[Math.floor(Math.random() * candidates.length)];
+    const target = candidates[Math.floor(this.rng() * candidates.length)];
     if (target.pendingTasks.some((t) => t.activity === activityKey)) return false;
     const activity = this.findActivity(activityKey);
     const remainingDies = Math.max(0, Math.ceil(this.plannedDies - this.scheduledDies));
-    const requestedQuantity = Math.random() < 0.5 ? 7 : 26;
+    const requestedQuantity = this.rng() < 0.5 ? 7 : 26;
     const quantity =
       activityKey === 'diesChange'
         ? requestedQuantity <= remainingDies
@@ -1106,6 +1111,7 @@ export class SimulationEngine {
         pendingTasks: condition.pendingTasks.map((task) => ({ ...task })),
         completedByActivity: { ...condition.completedByActivity },
       })),
+      seed: this.seed,
       operator: { ...this.operator, timeline: this.operator.timeline.map((segment) => ({ ...segment })) },
       metrics: {
         ...this.metrics,

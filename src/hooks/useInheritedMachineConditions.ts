@@ -1,14 +1,33 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Mpp_wl_outputmodelses } from '../generated/models/Mpp_wl_outputmodelsesModel';
 import { findOutputModelsForConstruction, outputModelVersionNumber } from '../lib/outputModel';
-import type { MachineStartCondition } from '../types';
+import { randomSeed } from '../lib/rng';
+import type { InheritedSimulationSnapshot } from '../types';
 
-export function parseMachineStartConditions(value: string | undefined): MachineStartCondition[] {
-  const conditions = JSON.parse(value ?? '') as MachineStartCondition[];
-  if (!Array.isArray(conditions) || conditions.some((condition) => !condition.machineId)) {
+/** Parses mpp_startmachcondition. Newer rows store an InheritedSimulationSnapshot (seed, layout,
+ * walls, remarks, operatorStart, conditions); rows saved before that snapshot existed store a bare
+ * MachineStartCondition[] — those fall back to no layout override and a fresh random seed, same as
+ * the old inherited-conditions-only behavior. */
+export function parseMachineStartConditions(value: string | undefined): InheritedSimulationSnapshot {
+  const parsed = JSON.parse(value ?? '') as unknown;
+  const conditions = Array.isArray(parsed)
+    ? parsed
+    : (parsed as InheritedSimulationSnapshot | null)?.conditions;
+  if (!Array.isArray(conditions) || conditions.some((condition) => !condition?.machineId)) {
     throw new Error('The selected inherited machine condition is invalid.');
   }
-  return conditions;
+  if (Array.isArray(parsed)) {
+    return { seed: randomSeed(), layout: [], conditions };
+  }
+  const snapshot = parsed as InheritedSimulationSnapshot;
+  return {
+    seed: typeof snapshot.seed === 'number' ? snapshot.seed : randomSeed(),
+    layout: Array.isArray(snapshot.layout) ? snapshot.layout : [],
+    walls: Array.isArray(snapshot.walls) ? snapshot.walls : undefined,
+    remarks: Array.isArray(snapshot.remarks) ? snapshot.remarks : undefined,
+    operatorStart: snapshot.operatorStart,
+    conditions,
+  };
 }
 
 export function useInheritedMachineConditions(constructionDetail?: string) {

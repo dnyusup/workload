@@ -210,8 +210,26 @@ export function SimulationView({
     const selectedRow = selectedInheritedConditionRow;
     if (!selectedRow) return;
     try {
-      const conditions = parseMachineStartConditions(selectedRow.mpp_startmachcondition);
-      setConfig((prev) => ({ ...prev, initialMachineConditions: conditions }));
+      const { seed, layout, walls, remarks, operatorStart, conditions } = parseMachineStartConditions(
+        selectedRow.mpp_startmachcondition,
+      );
+      const willReplaceLayout = layout.length > 0;
+      if (
+        willReplaceLayout &&
+        !window.confirm(
+          `Loading this inherited condition will replace the current machine layout with the one saved in version ${selectedRow.mpp_version ?? '0001'} (${layout.length} machines). Continue?`,
+        )
+      ) {
+        return;
+      }
+      setConfig((prev) => ({
+        ...prev,
+        // A pure swap, not a merge — walls/remarks/operatorStart left over from whatever layout
+        // was active before are replaced (or cleared) to match the inherited layout exactly.
+        ...(willReplaceLayout ? { layout, walls, remarks, operatorStart } : {}),
+        initialMachineConditions: conditions,
+        seed,
+      }));
       setInheritedSelectionError(null);
       const stoppedCount = conditions.filter((condition) => condition.status !== 'running').length;
       const pendingTaskCount = conditions.reduce((total, condition) => total + condition.pendingTasks.length, 0);
@@ -258,7 +276,9 @@ export function SimulationView({
     setPendingSave(null);
     setDialogError(null);
     if (config.initialMachineConditions && config.initialMachineConditions.length > 0) {
-      setConfig((prev) => ({ ...prev, initialMachineConditions: undefined }));
+      // Also drop the inherited seed — otherwise the engine keeps replaying the exact same
+      // "random" sequence it was seeded with, instead of drawing a fresh one each reset.
+      setConfig((prev) => ({ ...prev, initialMachineConditions: undefined, seed: undefined }));
     } else {
       controls.reset();
     }

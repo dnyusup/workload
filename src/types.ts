@@ -176,6 +176,10 @@ export interface AppConfig {
   loadingActivityRows?: Mpp_wl_activities[];
   /** Optional inherited machine state loaded from a saved WL_Outputmodels record. */
   initialMachineConditions?: MachineStartCondition[];
+  /** PRNG seed for this run. Set when replaying an inherited snapshot so random events (which
+   * machine gets a fracture/dies-change event, dies-change batch size, etc.) repeat exactly;
+   * left undefined for a fresh run, which draws a new seed each time it's simulated. */
+  seed?: number;
 }
 
 export type MachineStatus = 'running' | 'needs-service' | 'being-serviced' | 'unassigned';
@@ -339,10 +343,27 @@ export interface SimMetrics {
 export interface SimulationState {
   machines: MachineRuntimeState[];
   initialMachineConditions: MachineStartCondition[];
+  /** Seed this run's PRNG was initialized with — saved alongside initialMachineConditions so a
+   * later "inherited" load can replay the same sequence of random events. */
+  seed: number;
   operator: OperatorRuntimeState;
   metrics: SimMetrics;
   log: EventLogEntry[];
   finished: boolean;
+}
+
+/** What gets saved to/loaded from WL_Outputmodels.mpp_startmachcondition so a simulation can be
+ * replayed exactly: the whole layout (machines, walls, remarks, operator start point) it ran on,
+ * the machine conditions it started from, and the PRNG seed that drove its random events. Loading
+ * this is a pure swap of the layout, not a merge — walls/remarks/operatorStart from whatever
+ * layout was active before are replaced (or cleared, if the saved layout had none), never kept. */
+export interface InheritedSimulationSnapshot {
+  seed: number;
+  layout: LayoutMachine[];
+  walls?: LayoutWall[];
+  remarks?: LayoutRemark[];
+  operatorStart?: OperatorStartPoint;
+  conditions: MachineStartCondition[];
 }
 
 // --- Production Simulation (multi-operator, multi-Construction) -----------------------------

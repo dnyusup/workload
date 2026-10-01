@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Mpp_wl_productsesService } from '../../generated/services/Mpp_wl_productsesService';
 import { fetchAllPages } from '../../lib/dataversePaging';
 import type { Mpp_wl_productses, Mpp_wl_productsesBase } from '../../generated/models/Mpp_wl_productsesModel';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
+import { FloatingScrollbar } from '../ui/FloatingScrollbar';
 import { PRODUCT_AREAS } from '../../types';
 import { CustomSortControl, type CustomSortLevel } from './CustomSortControl';
 
@@ -148,6 +149,7 @@ export function ProductsManager({
   const [areaFilter, setAreaFilter] = useState('');
   const [machineFilter, setMachineFilter] = useState('');
   const [sortLevels, setSortLevels] = useState<CustomSortLevel[]>([]);
+  const tableWrapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -339,7 +341,7 @@ export function ProductsManager({
               ))}
             </select>
           </div>
-          <div className="data-table-wrap">
+          <div className="data-table-wrap" ref={tableWrapRef}>
             <table className="table products-table">
               <thead>
                 <tr>
@@ -434,6 +436,7 @@ export function ProductsManager({
               </tbody>
             </table>
           </div>
+          <FloatingScrollbar targetRef={tableWrapRef} />
         </>
       )}
     </Card>

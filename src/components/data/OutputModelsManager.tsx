@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Mpp_wl_outputmodelsesService } from '../../generated/services/Mpp_wl_outputmodelsesService';
 import type { Mpp_wl_outputmodelses } from '../../generated/models/Mpp_wl_outputmodelsesModel';
 import { fetchAllPages } from '../../lib/dataversePaging';
@@ -8,9 +8,11 @@ import { OutputModelDetailDialog } from './OutputModelDetailDialog';
 import { downloadOutputModelRows } from '../../lib/outputModelExport';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
+import { FloatingScrollbar } from '../ui/FloatingScrollbar';
 import { SearchableSelect, type SearchableSelectOption } from '../ui/SearchableSelect';
 import { CustomSortControl, type CustomSortLevel } from './CustomSortControl';
-import type { MachineStartCondition } from '../../types';
+import { parseMachineStartConditions } from '../../hooks/useInheritedMachineConditions';
+import type { InheritedSimulationSnapshot } from '../../types';
 
 type OutputModelFilterKey = 'area' | 'machine' | 'construction' | 'spoolType';
 
@@ -79,7 +81,7 @@ function filterOptions(
 export function OutputModelsManager({
   onUseStartCondition,
 }: {
-  onUseStartCondition?: (row: Mpp_wl_outputmodelses, conditions: MachineStartCondition[]) => void;
+  onUseStartCondition?: (row: Mpp_wl_outputmodelses, snapshot: InheritedSimulationSnapshot) => void;
 }) {
   const [rows, setRows] = useState<Mpp_wl_outputmodelses[]>([]);
   const [loading, setLoading] = useState(true);
@@ -93,6 +95,7 @@ export function OutputModelsManager({
   const [machineFilter, setMachineFilter] = useState('');
   const [constructionFilter, setConstructionFilter] = useState('');
   const [spoolTypeFilter, setSpoolTypeFilter] = useState('');
+  const tableWrapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -119,11 +122,8 @@ export function OutputModelsManager({
 
   const loadStartCondition = (row: Mpp_wl_outputmodelses) => {
     try {
-      const parsed = JSON.parse(row.mpp_startmachcondition ?? '') as MachineStartCondition[];
-      if (!Array.isArray(parsed) || parsed.some((condition) => !condition.machineId)) {
-        throw new Error('The saved start condition is invalid.');
-      }
-      onUseStartCondition?.(row, parsed);
+      const snapshot = parseMachineStartConditions(row.mpp_startmachcondition);
+      onUseStartCondition?.(row, snapshot);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : 'The saved start condition is invalid.');
     }
@@ -325,7 +325,7 @@ export function OutputModelsManager({
               <span aria-hidden="true">✕</span> Clear filters
             </Button>
           </div>
-          <div className="data-table-wrap">
+          <div className="data-table-wrap" ref={tableWrapRef}>
             <table className="table output-models-table">
               <thead>
                 <tr>
@@ -381,6 +381,7 @@ export function OutputModelsManager({
               </tbody>
             </table>
           </div>
+          <FloatingScrollbar targetRef={tableWrapRef} />
         </>
       )}
       {detailRow && <OutputModelDetailDialog row={detailRow} onClose={() => setDetailRow(null)} />}
