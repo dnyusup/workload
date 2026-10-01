@@ -354,15 +354,20 @@ export interface SimulationState {
 
 /** What gets saved to/loaded from WL_Outputmodels.mpp_startmachcondition so a simulation can be
  * replayed exactly: the whole layout (machines, walls, remarks, operator start point) it ran on,
- * the machine conditions it started from, and the PRNG seed that drove its random events. Loading
- * this is a pure swap of the layout, not a merge — walls/remarks/operatorStart from whatever
- * layout was active before are replaced (or cleared, if the saved layout had none), never kept. */
+ * the operator/shift settings and assigned machines, the machine conditions it started from, and
+ * the PRNG seed that drove its random events. Loading this is a pure swap, not a merge — whatever
+ * layout/operator settings were active before are replaced (or cleared, if the saved snapshot had
+ * none), never kept. assignedMachineIds travels with operator because the engine re-derives which
+ * machines are "assigned" from assignedMachineIds + operator.machHandled, not from the saved
+ * conditions' own status — a stale value here would silently reshuffle which machines run. */
 export interface InheritedSimulationSnapshot {
   seed: number;
   layout: LayoutMachine[];
   walls?: LayoutWall[];
   remarks?: LayoutRemark[];
   operatorStart?: OperatorStartPoint;
+  operator?: OperatorConfig;
+  assignedMachineIds?: string[];
   conditions: MachineStartCondition[];
 }
 

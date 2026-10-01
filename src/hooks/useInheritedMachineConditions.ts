@@ -5,9 +5,9 @@ import { randomSeed } from '../lib/rng';
 import type { InheritedSimulationSnapshot } from '../types';
 
 /** Parses mpp_startmachcondition. Newer rows store an InheritedSimulationSnapshot (seed, layout,
- * walls, remarks, operatorStart, conditions); rows saved before that snapshot existed store a bare
- * MachineStartCondition[] — those fall back to no layout override and a fresh random seed, same as
- * the old inherited-conditions-only behavior. */
+ * walls, remarks, operatorStart, operator, assignedMachineIds, conditions); rows saved before that
+ * snapshot existed store a bare MachineStartCondition[] — those fall back to no layout/operator
+ * override and a fresh random seed, same as the old inherited-conditions-only behavior. */
 export function parseMachineStartConditions(value: string | undefined): InheritedSimulationSnapshot {
   const parsed = JSON.parse(value ?? '') as unknown;
   const conditions = Array.isArray(parsed)
@@ -26,6 +26,8 @@ export function parseMachineStartConditions(value: string | undefined): Inherite
     walls: Array.isArray(snapshot.walls) ? snapshot.walls : undefined,
     remarks: Array.isArray(snapshot.remarks) ? snapshot.remarks : undefined,
     operatorStart: snapshot.operatorStart,
+    operator: snapshot.operator,
+    assignedMachineIds: Array.isArray(snapshot.assignedMachineIds) ? snapshot.assignedMachineIds : undefined,
     conditions,
   };
 }

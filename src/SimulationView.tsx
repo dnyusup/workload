@@ -210,23 +210,24 @@ export function SimulationView({
     const selectedRow = selectedInheritedConditionRow;
     if (!selectedRow) return;
     try {
-      const { seed, layout, walls, remarks, operatorStart, conditions } = parseMachineStartConditions(
-        selectedRow.mpp_startmachcondition,
-      );
+      const { seed, layout, walls, remarks, operatorStart, operator, assignedMachineIds, conditions } =
+        parseMachineStartConditions(selectedRow.mpp_startmachcondition);
       const willReplaceLayout = layout.length > 0;
       if (
         willReplaceLayout &&
         !window.confirm(
-          `Loading this inherited condition will replace the current machine layout with the one saved in version ${selectedRow.mpp_version ?? '0001'} (${layout.length} machines). Continue?`,
+          `Loading this inherited condition will replace the current machine layout and operator settings (shift/lunch/meeting times, task priority, assigned machines) with the ones saved in version ${selectedRow.mpp_version ?? '0001'} (${layout.length} machines). Continue?`,
         )
       ) {
         return;
       }
       setConfig((prev) => ({
         ...prev,
-        // A pure swap, not a merge — walls/remarks/operatorStart left over from whatever layout
-        // was active before are replaced (or cleared) to match the inherited layout exactly.
-        ...(willReplaceLayout ? { layout, walls, remarks, operatorStart } : {}),
+        // A pure swap, not a merge — walls/remarks/operatorStart/operator settings left over from
+        // whatever was active before are replaced (or cleared) to match the inherited run exactly.
+        ...(willReplaceLayout
+          ? { layout, walls, remarks, operatorStart, assignedMachineIds, ...(operator ? { operator } : {}) }
+          : {}),
         initialMachineConditions: conditions,
         seed,
       }));

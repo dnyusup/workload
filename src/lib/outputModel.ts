@@ -214,6 +214,8 @@ export function buildOutputModelPayload(
       walls: config.walls,
       remarks: config.remarks,
       operatorStart: config.operatorStart,
+      operator: config.operator,
+      assignedMachineIds: config.assignedMachineIds,
       conditions: state.initialMachineConditions,
     } satisfies InheritedSimulationSnapshot),
     statecode: 0,
