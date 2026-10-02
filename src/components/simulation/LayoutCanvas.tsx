@@ -19,6 +19,8 @@ import {
   machineTimelineLabel,
   RPC_COLOR,
   RPC_LABEL,
+  RUNNING_RPC_LABEL,
+  timelineLegendKey,
 } from './timelineDisplay';
 
 const LABEL_MARGIN = 24;
@@ -254,10 +256,11 @@ export function LayoutCanvas({
       ...operator.timeline
         .filter((segment) => !timelineKinds.some((item) => item.kind === segment.kind))
         .reduce<{ kind: OperatorTimelineKind; label: string; color: string }[]>((items, segment) => {
-          if (!items.some((item) => item.kind === segment.kind)) {
-            const isRpc = segment.kind.startsWith('rpc:');
+          const kind = timelineLegendKey(segment.kind);
+          if (!items.some((item) => item.kind === kind)) {
+            const isRpc = kind === 'rpc';
             items.push({
-              kind: segment.kind,
+              kind,
               label: isRpc ? RPC_LABEL : segment.label.split(' — ')[0],
               color: isRpc ? RPC_COLOR : '#c084fc',
             });
@@ -270,7 +273,7 @@ export function LayoutCanvas({
   const timelineTotals = allOperatorTimelineKinds.map(({ kind }) => ({
     kind,
     minutes: operator.timeline
-      .filter((segment) => segment.kind === kind)
+      .filter((segment) => timelineLegendKey(segment.kind) === kind)
       .reduce((total, segment) => total + Math.max(0, Math.min(segment.endMin, timelineDuration) - segment.startMin), 0),
   }));
   const selectedMachine = machines.find((machine) => machine.id === selectedMachineId) ?? null;
@@ -284,8 +287,10 @@ export function LayoutCanvas({
         .flatMap((machine) => machine.timeline)
         .filter((segment) => !machineTimelineKinds.some((item) => item.kind === segment.kind))
         .reduce<{ kind: MachineTimelineKind; label: string; color: string }[]>((items, segment) => {
-          if (!items.some((item) => item.kind === segment.kind)) {
-            items.push({ kind: segment.kind, label: machineTimelineLabel(segment.kind, segment.label), color: machineTimelineColor(segment.kind) });
+          const kind = timelineLegendKey(segment.kind);
+          if (!items.some((item) => item.kind === kind)) {
+            const label = kind === 'rpc' ? RPC_LABEL : kind === 'running:rpc' ? RUNNING_RPC_LABEL : machineTimelineLabel(segment.kind, segment.label);
+            items.push({ kind, label, color: machineTimelineColor(segment.kind) });
           }
           return items;
         }, []),
@@ -299,7 +304,7 @@ export function LayoutCanvas({
       allMachineTimelineKinds.map(({ kind }) => ({
         kind,
         minutes: timeline
-          .filter((segment) => segment.kind === kind)
+          .filter((segment) => timelineLegendKey(segment.kind) === kind)
           .reduce((total, segment) => total + Math.max(0, Math.min(segment.endMin, timelineDuration) - segment.startMin), 0),
       })),
     [allMachineTimelineKinds, timelineDuration],
@@ -519,7 +524,7 @@ export function LayoutCanvas({
         <div className="operator-timeline-track">
           {operator.timeline.map((segment, index) => {
             const width = ((Math.min(segment.endMin, metrics.shiftTimeMin) - segment.startMin) / (metrics.shiftTimeMin || 1)) * 100;
-            const item = timelineKinds.find((entry) => entry.kind === segment.kind);
+            const item = allOperatorTimelineKinds.find((entry) => entry.kind === timelineLegendKey(segment.kind));
             return (
               <button
                 key={`${segment.startMin}-${index}`}
@@ -580,7 +585,7 @@ export function LayoutCanvas({
                 />
               )}
               {machine.timeline.map((segment, index) => {
-                const item = allMachineTimelineKinds.find((entry) => entry.kind === segment.kind);
+                const item = allMachineTimelineKinds.find((entry) => entry.kind === timelineLegendKey(segment.kind));
                 const width = ((Math.min(segment.endMin, metrics.shiftTimeMin) - segment.startMin) / (metrics.shiftTimeMin || 1)) * 100;
                 return (
                   <span

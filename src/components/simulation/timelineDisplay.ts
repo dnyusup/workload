@@ -11,7 +11,17 @@ export const ZONE_COLORS = {
 /** Rest & Personal Care allowance time, kept visually distinct from the activity it's tacked onto
  * (see buildServiceSegments) wherever it shows up in a timeline — operator or machine. */
 export const RPC_COLOR = '#2dd4bf';
-export const RPC_LABEL = 'RPC (Rest & Personal Care)';
+export const RPC_LABEL = 'RPC';
+export const RUNNING_RPC_LABEL = 'Running + RPC';
+
+/** Legend entry a timeline segment belongs to. RPC is recorded per activity (`rpc:doffing`,
+ * `rpc:loading`, …) so the bar can follow its activity, but the legend shows it once — or once as
+ * "Running + RPC" when the machine kept producing through it. */
+export function timelineLegendKey(kind: string): string {
+  if (kind.startsWith('rpc:')) return 'rpc';
+  if (kind.startsWith('running:rpc:')) return 'running:rpc';
+  return kind;
+}
 
 /** Colors a machine's Pay Off / Take Up zone rectangles based on which activities are pending on
  * it — `activeTasks` are extra tasks currently being serviced (only relevant for the one machine
@@ -163,8 +173,9 @@ function operatorSegmentGroup(segment: TimelineSegment): TimelineSummaryGroup {
  * variants, whose labels are Construction-independent too). */
 function machineSegmentGroup(segment: TimelineSegment): TimelineSummaryGroup {
   if (machineBaseKinds.has(segment.kind)) return MACHINE_BASE_GROUPS.find((g) => g.key === segment.kind)!;
-  if (segment.kind.startsWith('rpc:') || segment.kind.startsWith('running:rpc:')) {
-    return { key: 'rpc', label: RPC_LABEL, color: RPC_COLOR };
+  if (segment.kind.startsWith('rpc:')) return { key: 'rpc', label: RPC_LABEL, color: RPC_COLOR };
+  if (segment.kind.startsWith('running:rpc:')) {
+    return { key: 'running:rpc', label: RUNNING_RPC_LABEL, color: machineTimelineColor(segment.kind) };
   }
   const label = machineTimelineLabel(segment.kind, segment.label);
   return { key: `label:${label}`, label, color: machineTimelineColor(segment.kind) };
