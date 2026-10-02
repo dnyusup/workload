@@ -1,6 +1,6 @@
 import type { ActivityKey, ProductionSetup } from '../types';
 import { availableTimeMinutes, distanceMeters } from './calculations';
-import { activityFamily, assignedOperatorIdForActivity } from './productionActivityRouting';
+import { activityFamily, assignedOperatorIdForActivity, operatorSharesForActivity } from './productionActivityRouting';
 import type { ResolvedConstruction } from './productionConstructionResolver';
 
 const AVERAGE_DIES_PER_CHANGE_EVENT = (7 + 26) / 2;
@@ -125,6 +125,45 @@ export function calculatePlannedUtilization(
   >();
   const unresolvedMachineIds: string[] = [];
   let unassignedMinutes = 0;
+  const groupMode = setup.planningType === 'MachinesGroup';
+
+  /** Books a contribution onto whoever handles it — split equally across a MachinesGroup
+   * machine's operators — or onto unassigned demand when nobody does. */
+  const bookContribution = (
+    contribution: PlannedActivityContribution,
+    assignment: ProductionSetup['assignments'][number] | undefined,
+    visits: number,
+    forecastScale: number,
+  ) => {
+    const shares = operatorSharesForActivity(setup.planningType, assignment, contribution.activityKey).filter(({ operatorId }) =>
+      operatorById.has(operatorId),
+    );
+    if (shares.length === 0) {
+      unassignedMinutes += contribution.plannedMinutes;
+      return;
+    }
+    shares.forEach(({ operatorId, share }) => {
+      const operator = operatorByIdForLoad.get(operatorId);
+      if (!operator) return;
+      const minutes = contribution.plannedMinutes * share;
+      operator.plannedMinutes += minutes;
+      operator.forecastServiceMinutes += minutes * forecastScale;
+      operator.contributions.push(
+        share === 1
+          ? contribution
+          : {
+              ...contribution,
+              operatorId,
+              plannedMinutes: minutes,
+              expectedOccurrences: contribution.expectedOccurrences * share,
+              ...(contribution.expectedQuantity !== undefined ? { expectedQuantity: contribution.expectedQuantity * share } : {}),
+            },
+      );
+      const visitsByMachine = operatorVisits.get(operatorId) ?? new Map<string, number>();
+      visitsByMachine.set(contribution.machineId, Math.max(visitsByMachine.get(contribution.machineId) ?? 0, visits * share));
+      operatorVisits.set(operatorId, visitsByMachine);
+    });
+  };
 
   setup.layout.forEach((machine) => {
     const assignment = assignmentByMachine.get(machine.id);
@@ -172,7 +211,6 @@ export function calculatePlannedUtilization(
         : eventCount * Math.max(0, activity.timeMinutes);
       if (plannedMinutes <= 0) return;
 
-      const operatorId = assignedOperatorIdForActivity(assignment, activity.key);
       const contribution: PlannedActivityContribution = {
         activityKey: activity.key,
         activityLabel: activity.label,
@@ -180,28 +218,13 @@ export function calculatePlannedUtilization(
         machineId: machine.id,
         machineLabel: machine.label,
         constructionLabel: construction.label,
-        operatorId,
+        operatorId: groupMode ? undefined : assignedOperatorIdForActivity(assignment, activity.key),
         expectedOccurrences: eventCount,
         ...(quantityBased ? { expectedQuantity } : {}),
         plannedMinutes,
       };
       machineContributions.push(contribution);
-      if (operatorId && operatorById.has(operatorId)) {
-        const operator = operatorByIdForLoad.get(operatorId);
-        if (operator) {
-          operator.plannedMinutes += plannedMinutes;
-          operator.forecastServiceMinutes += plannedMinutes * forecastScale;
-          operator.contributions.push(contribution);
-          const visitsByMachine = operatorVisits.get(operatorId) ?? new Map<string, number>();
-          visitsByMachine.set(
-            machine.id,
-            Math.max(visitsByMachine.get(machine.id) ?? 0, expectedOccurrences * forecastScale),
-          );
-          operatorVisits.set(operatorId, visitsByMachine);
-        }
-      } else {
-        unassignedMinutes += plannedMinutes;
-      }
+      bookContribution(contribution, assignment, expectedOccurrences * forecastScale, forecastScale);
     });
 
     machines.push({
@@ -247,7 +270,6 @@ export function calculatePlannedUtilization(
           : machineEventCount * Math.max(0, activity.timeMinutes);
         if (plannedMinutes <= 0) return;
 
-        const operatorId = assignedOperatorIdForActivity(assignment, activity.key);
         const contribution: PlannedActivityContribution = {
           activityKey: activity.key,
           activityLabel: activity.label,
@@ -255,28 +277,13 @@ export function calculatePlannedUtilization(
           machineId: machine.machineId,
           machineLabel: machine.machineLabel,
           constructionLabel: machine.constructionLabel,
-          operatorId,
+          operatorId: groupMode ? undefined : assignedOperatorIdForActivity(assignment, activity.key),
           expectedOccurrences: machineEventCount,
           ...(quantityBased ? { expectedQuantity: machineExpectedQuantity } : {}),
           plannedMinutes,
         };
         machine.contributions.push(contribution);
-        if (operatorId && operatorById.has(operatorId)) {
-          const operator = operatorByIdForLoad.get(operatorId);
-          if (operator) {
-            operator.plannedMinutes += plannedMinutes;
-            operator.forecastServiceMinutes += plannedMinutes * forecastScale;
-            operator.contributions.push(contribution);
-            const visitsByMachine = operatorVisits.get(operatorId) ?? new Map<string, number>();
-            visitsByMachine.set(
-              machine.machineId,
-              Math.max(visitsByMachine.get(machine.machineId) ?? 0, machineEventCount * forecastScale),
-            );
-            operatorVisits.set(operatorId, visitsByMachine);
-          }
-        } else {
-          unassignedMinutes += plannedMinutes;
-        }
+        bookContribution(contribution, assignment, machineEventCount * forecastScale, forecastScale);
       });
     });
   });
@@ -395,6 +402,8 @@ export function calculateSelectionOccupation(
     }));
   const scopedSetup: ProductionSetup = {
     ...setup,
+    // The hypothetical operators below are wired through the per-activity slots.
+    planningType: 'DedicatedMachines',
     layout,
     // Keep the real start point so walking is measured from where operators actually begin.
     operatorStart: setup.operatorStart ?? (setup.layout[0] ? { x: setup.layout[0].x, y: setup.layout[0].y } : undefined),

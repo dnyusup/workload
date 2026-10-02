@@ -1,4 +1,5 @@
 import type { ProductionMachineAssignment } from '../types';
+import { machineOperatorIds } from './productionActivityRouting';
 
 export type LegendTab = 'construction' | 'operator';
 
@@ -57,12 +58,8 @@ export function buildCanvasLegendData({
     const a = assignmentByMachineId.get(machineId);
     if (a?.constructionDetailId) push(byConstruction, a.constructionDetailId, machineId);
     else unplanned.push(machineId);
-    const operatorIds = new Set(
-      [a?.doffingOperatorId, a?.loadingOperatorId, a?.fractureRepairingOperatorId, a?.diesChangeOperatorId, a?.defectRepairingOperatorId].filter(
-        (id): id is string => !!id,
-      ),
-    );
-    if (operatorIds.size === 0) noOperator.push(machineId);
+    const operatorIds = machineOperatorIds(a);
+    if (operatorIds.length === 0) noOperator.push(machineId);
     operatorIds.forEach((id) => push(byOperator, id, machineId));
   });
 

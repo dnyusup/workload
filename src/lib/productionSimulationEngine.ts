@@ -128,9 +128,15 @@ export class ProductionSimulationEngine {
   private machinesByOperator = new Map<string, ProdMachine[]>();
   private machineById = new Map<string, ProdMachine>();
   private assignmentByMachineId = new Map<string, ProductionMachineAssignment>();
+  /** MachinesGroup planning: tasks carry no assignedOperatorId — any operator in the machine's
+   * pool takes all of its pending work, and the machine lock keeps two of them from servicing it at
+   * once. DedicatedMachines keeps the per-activity routing. */
+  private readonly groupMode: boolean;
+  private operatorPoolByMachineId = new Map<string, Set<string>>();
 
   constructor(setup: ProductionSetup, resolved: Map<string, ResolvedConstruction>, resolveErrors: string[] = []) {
     this.setup = setup;
+    this.groupMode = setup.planningType === 'MachinesGroup';
     this.wallGraph = buildWallGraph(setup.walls ?? [], WALL_CLEARANCE_METERS * (setup.movement.pixelsPerMeter || 20));
     this.warnings.push(...resolveErrors);
 
@@ -209,19 +215,23 @@ export class ProductionSimulationEngine {
     setup.assignments.forEach((a) => {
       if (!this.assignmentByMachineId.has(a.machineId)) this.assignmentByMachineId.set(a.machineId, a);
     });
+    const knownOperatorIds = new Set(setup.operators.map((op) => op.id));
     this.machines.forEach((m) => {
       this.machineById.set(m.id, m);
       const assignment = this.assignmentByMachineId.get(m.id);
       if (!assignment) return;
-      const operatorIds = new Set(
-        [
-          assignment.doffingOperatorId,
-          assignment.loadingOperatorId,
-          assignment.fractureRepairingOperatorId,
-          assignment.diesChangeOperatorId,
-          assignment.defectRepairingOperatorId,
-        ].filter((id): id is string => !!id),
-      );
+      const operatorIds = this.groupMode
+        ? new Set((assignment.assignedOperatorIds ?? []).filter((id) => knownOperatorIds.has(id)))
+        : new Set(
+            [
+              assignment.doffingOperatorId,
+              assignment.loadingOperatorId,
+              assignment.fractureRepairingOperatorId,
+              assignment.diesChangeOperatorId,
+              assignment.defectRepairingOperatorId,
+            ].filter((id): id is string => !!id),
+          );
+      if (this.groupMode) this.operatorPoolByMachineId.set(m.id, operatorIds);
       operatorIds.forEach((id) => {
         const list = this.machinesByOperator.get(id);
         if (list) list.push(m);
@@ -351,7 +361,15 @@ export class ProductionSimulationEngine {
   }
 
   private operatorIdForTask(machineAssignment: ProdMachine, activity: ActivityKey): string | undefined {
+    if (this.groupMode) return undefined;
     return assignedOperatorIdForActivity(this.assignmentByMachineId.get(machineAssignment.id), activity);
+  }
+
+  /** Whether anyone will ever pick this task up — its own operator, or (MachinesGroup) anyone in
+   * the machine's pool. */
+  private hasHandler(machine: ProdMachine, assignedOperatorId: string | undefined): boolean {
+    if (this.groupMode) return (this.operatorPoolByMachineId.get(machine.id)?.size ?? 0) > 0;
+    return !!assignedOperatorId;
   }
 
   /** If both Loading Partial1 and Partial2 just came due together on the same machine, the
@@ -402,7 +420,7 @@ export class ProductionSimulationEngine {
         const altersWithParent = parent?.key === 'loading';
         if (!altersWithParent || !parentDue) {
           const assignedOperatorId = this.operatorIdForTask(machine, key);
-          if (!assignedOperatorId) {
+          if (!this.hasHandler(machine, assignedOperatorId)) {
             const warnKey = `${machine.id}:${key}`;
             if (!this.warnedNoOperator.has(warnKey)) {
               this.warnedNoOperator.add(warnKey);
@@ -518,7 +536,7 @@ export class ProductionSimulationEngine {
     if (target.pendingTasks.some((t) => t.activity === 'fractureRepairing')) return false;
     const activity = findActivity(target.activities, 'fractureRepairing');
     const assignedOperatorId = this.operatorIdForTask(target, 'fractureRepairing');
-    if (!assignedOperatorId) {
+    if (!this.hasHandler(target, assignedOperatorId)) {
       const warnKey = `${target.id}:fractureRepairing`;
       if (!this.warnedNoOperator.has(warnKey)) {
         this.warnedNoOperator.add(warnKey);
@@ -563,7 +581,7 @@ export class ProductionSimulationEngine {
         : undefined;
     if (activityKey === 'diesChange' && (!quantity || quantity <= 0)) return false;
     const assignedOperatorId = this.operatorIdForTask(target, activityKey);
-    if (!assignedOperatorId) {
+    if (!this.hasHandler(target, assignedOperatorId)) {
       const warnKey = `${target.id}:${activityKey}`;
       if (!this.warnedNoOperator.has(warnKey)) {
         this.warnedNoOperator.add(warnKey);
@@ -679,6 +697,11 @@ export class ProductionSimulationEngine {
   }
 
   private tasksFor(operatorId: string, machine: ProdMachine): PendingTask[] {
+    if (this.groupMode) {
+      // One operator does every task in one visit, so Doffing-before-Loading ordering is already
+      // natural and isTaskReady's cross-operator wait doesn't apply.
+      return this.operatorPoolByMachineId.get(machine.id)?.has(operatorId) ? [...machine.pendingTasks] : [];
+    }
     return machine.pendingTasks.filter((t) => t.assignedOperatorId === operatorId && this.isTaskReady(machine, t));
   }
 
@@ -775,11 +798,25 @@ export class ProductionSimulationEngine {
     return this.nextTaskIsStop(machine, index, tasks);
   }
 
-  /** Whether the task right after `index` (if any) is a Stop-condition activity — the lookahead
-   * half of isEffectiveStopTask. */
+  /** Whether what comes right after `index` is a Stop-condition activity — the next task of this
+   * visit, or, for the visit's last task, any Stop task left on the machine for later (e.g. a
+   * Loading waiting for its own operator once this Doffing visit ends: the machine stays stopped
+   * for it anyway, so letting it run in between would only stop it again). */
   private nextTaskIsStop(machine: ProdMachine, index: number, tasks: PendingTask[]): boolean {
     const next = tasks[index + 1];
-    return next ? isStopActivity(machine.activities, next.activity) : false;
+    return next ? isStopActivity(machine.activities, next.activity) : this.stopTaskLeftOnMachine(machine);
+  }
+
+  /** Same as nextTaskIsStop, but judging the next task by its own EFFECTIVE stop status — used by a
+   * task's RPC tail, which behaves like a Run activity sitting just before that next task. */
+  private nextIsEffectiveStop(machine: ProdMachine, index: number, tasks: PendingTask[]): boolean {
+    return index + 1 < tasks.length ? this.isEffectiveStopTask(machine, index + 1, tasks) : this.stopTaskLeftOnMachine(machine);
+  }
+
+  /** machine.pendingTasks no longer holds this visit's own tasks (finishWalk takes them off), so
+   * anything Stop still on it is work the machine will have to wait for after this visit. */
+  private stopTaskLeftOnMachine(machine: ProdMachine): boolean {
+    return machine.pendingTasks.some((t) => isStopActivity(machine.activities, t.activity));
   }
 
   /** Same RPC-tail handling as simulationEngine.ts's syncMachineRunStateForCurrentTask: a task's
@@ -798,7 +835,7 @@ export class ProductionSimulationEngine {
     const isRpcZone = operator.currentZoneLabel?.endsWith(' — RPC') ?? false;
     const index = operator.serviceTasks.indexOf(task);
     const shouldStop = isRpcZone
-      ? index + 1 < operator.serviceTasks.length && this.isEffectiveStopTask(machine, index + 1, operator.serviceTasks)
+      ? index >= 0 && this.nextIsEffectiveStop(machine, index, operator.serviceTasks)
       : index >= 0
         ? this.isEffectiveStopTask(machine, index, operator.serviceTasks)
         : isStopActivity(machine.activities, task.activity);
@@ -833,7 +870,11 @@ export class ProductionSimulationEngine {
     let tasks: PendingTask[] = [];
     if (machine) {
       tasks = this.tasksFor(operator.id, machine);
-      machine.pendingTasks = machine.pendingTasks.filter((t) => t.assignedOperatorId !== operator.id);
+      // Only what this visit actually takes — a task tasksFor held back (e.g. a Loading still
+      // waiting on another operator's Doffing) must stay queued, or it's silently lost for good:
+      // its cycle is already marked handled, so it's never re-queued.
+      const taken = new Set(tasks);
+      machine.pendingTasks = machine.pendingTasks.filter((t) => !taken.has(t));
     }
     operator.serviceTasks = tasks;
     const segments = machine
@@ -894,7 +935,7 @@ export class ProductionSimulationEngine {
         // the machine stopped (because the NEXT task is itself effectively a stop), that RPC time
         // counts as downtime too, filed under this task's own activity rather than a separate RPC
         // bucket.
-        if (index + 1 < tasks.length && this.isEffectiveStopTask(machine, index + 1, tasks)) {
+        if (this.nextIsEffectiveStop(machine, index, tasks)) {
           const rpcMinutes = applyRpc(t.timeMinutes, this.setup.rpc) - t.timeMinutes;
           if (rpcMinutes > 1e-9) {
             this.metrics.downtimeByReason[t.activity] = (this.metrics.downtimeByReason[t.activity] ?? 0) + rpcMinutes;

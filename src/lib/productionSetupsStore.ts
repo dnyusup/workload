@@ -1,4 +1,4 @@
-import type { LayoutMachine, OperatorStartPoint, ProductionMachineAssignment, ProductionOperator, ProductionSetup, TaskPriorityMode, LayoutWall, LayoutRemark } from '../types';
+import type { LayoutMachine, OperatorStartPoint, PlanningType, ProductionMachineAssignment, ProductionOperator, ProductionSetup, TaskPriorityMode, LayoutWall, LayoutRemark } from '../types';
 import { Mpp_wl_productionsetupsesService } from '../generated/services/Mpp_wl_productionsetupsesService';
 import { Mpp_wl_productionsetupoperatorsesService } from '../generated/services/Mpp_wl_productionsetupoperatorsesService';
 import { Mpp_wl_productionsetupmachinesesService } from '../generated/services/Mpp_wl_productionsetupmachinesesService';
@@ -18,6 +18,7 @@ export interface ProductionSetupSummary {
   machineCount: number;
   updatedAt: number;
   createdAt: number;
+  planningType: PlanningType;
   /** Who created this setup, by email — stamped from the signed-in user at creation time
    * (mpp_creator_email). Primary ownership key (Contribute only sees/deletes their own); falls
    * back to `createdByName` for setups created before this column existed. */
@@ -33,7 +34,18 @@ export interface ProductionSetupSummary {
  * routine assignment edits never have to re-query Dataverse just to find the row to update. */
 const machineRowIdCache = new Map<string, Map<string, string>>();
 
-function machineRowToAssignment(row: Mpp_wl_productionsetupmachineses, constructionLabelById: Map<string, string>): ProductionMachineAssignment {
+const ASSIGNED_OPERATOR_SEPARATOR = ';';
+
+function parseAssignedOperators(value: string | undefined | null): string[] | undefined {
+  const ids = (value ?? '').split(ASSIGNED_OPERATOR_SEPARATOR).map((id) => id.trim()).filter(Boolean);
+  return ids.length > 0 ? ids : undefined;
+}
+
+function parsePlanningType(value: string | undefined | null): PlanningType {
+  return value === 'MachinesGroup' ? 'MachinesGroup' : 'DedicatedMachines';
+}
+
+function machineRowToAssignment(row: Mpp_wl_productionsetupmachineses,constructionLabelById: Map<string, string>): ProductionMachineAssignment {
   return {
     machineId: row.mpp_machineid,
     constructionDetailId: row.mpp_constructiondetailid ?? undefined,
@@ -43,6 +55,8 @@ function machineRowToAssignment(row: Mpp_wl_productionsetupmachineses, construct
     fractureRepairingOperatorId: row.mpp_fracturerepairingoperatorid ?? undefined,
     diesChangeOperatorId: row.mpp_dieschangeoperatorid ?? undefined,
     defectRepairingOperatorId: row.mpp_defectrepairingoperatorid ?? undefined,
+    groupName: row.mpp_groupname?.trim() || undefined,
+    assignedOperatorIds: parseAssignedOperators(row.mpp_assignedopr),
   };
 }
 
@@ -76,6 +90,7 @@ export async function listProductionSetupSummaries(): Promise<ProductionSetupSum
     machineCount: machineCounts.get(row.mpp_wl_productionsetupsid) ?? 0,
     updatedAt: row.modifiedon ? new Date(row.modifiedon).getTime() : Date.now(),
     createdAt: row.createdon ? new Date(row.createdon).getTime() : Date.now(),
+    planningType: parsePlanningType(row.mpp_planningtype),
     createdByEmail: row.mpp_creator_email ?? '',
     createdByName: row.createdbyname ?? '',
   }));
@@ -117,6 +132,7 @@ export async function loadProductionSetup(id: string, constructionLabelById: Map
     remarks,
     operators,
     assignments,
+    planningType: parsePlanningType(header.mpp_planningtype),
     shiftTime: header.mpp_shifttime ?? 480,
     lunchTime: header.mpp_lunchtime ?? 30,
     lunchStartAt: header.mpp_lunchstartat ?? 240,
@@ -141,9 +157,11 @@ export async function createProductionSetup(
   operatorStart?: OperatorStartPoint,
   walls?: LayoutWall[],
   remarks?: LayoutRemark[],
+  planningType: PlanningType = 'DedicatedMachines',
 ): Promise<ProductionSetup> {
   const headerResult = await Mpp_wl_productionsetupsesService.create({
     mpp_name: name,
+    mpp_planningtype: planningType,
     mpp_layoutsnapshotjson: serializeLayoutBlob(layout, operatorStart, walls, remarks),
     mpp_creator_email: creatorEmail,
     mpp_shifttime: 480,
@@ -187,6 +205,7 @@ export async function createProductionSetup(
     remarks,
     operators: [],
     assignments: layout.map((m) => ({ machineId: m.id })),
+    planningType,
     shiftTime: 480,
     lunchTime: 30,
     lunchStartAt: 240,
@@ -280,16 +299,23 @@ export async function renameProductionOperator(operatorId: string, label: string
  * a lookup left pointing at a deleted record is exactly the kind of dangling reference Dataverse
  * relationships are meant to prevent, so this clears first and deletes the operator row second. */
 export async function removeProductionOperator(setupId: string, operatorId: string): Promise<void> {
+  const id = escapeODataString(operatorId);
   const machineRows = await fetchAllPages(Mpp_wl_productionsetupmachinesesService.getAll, {
-    filter: `mpp_productionsetupid eq '${escapeODataString(setupId)}' and (mpp_doffingoperatorid eq '${escapeODataString(operatorId)}' or mpp_loadingoperatorid eq '${escapeODataString(operatorId)}' or mpp_fracturerepairingoperatorid eq '${escapeODataString(operatorId)}')`,
+    filter: `mpp_productionsetupid eq '${escapeODataString(setupId)}' and (mpp_doffingoperatorid eq '${id}' or mpp_loadingoperatorid eq '${id}' or mpp_fracturerepairingoperatorid eq '${id}' or contains(mpp_assignedopr, '${id}'))`,
   });
   await runWithConcurrency(
     machineRows,
     async (row) => {
-      const fields: Record<string, null> = {};
+      const fields: Record<string, string | null> = {};
       if (row.mpp_doffingoperatorid === operatorId) fields.mpp_doffingoperatorid = null;
       if (row.mpp_loadingoperatorid === operatorId) fields.mpp_loadingoperatorid = null;
       if (row.mpp_fracturerepairingoperatorid === operatorId) fields.mpp_fracturerepairingoperatorid = null;
+      const pool = parseAssignedOperators(row.mpp_assignedopr);
+      if (pool?.includes(operatorId)) {
+        const remaining = pool.filter((poolId) => poolId !== operatorId);
+        fields.mpp_assignedopr = remaining.length > 0 ? remaining.join(ASSIGNED_OPERATOR_SEPARATOR) : null;
+      }
+      if (Object.keys(fields).length === 0) return;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await Mpp_wl_productionsetupmachinesesService.update(row.mpp_wl_productionsetupmachinesid, fields as any);
     },
@@ -319,6 +345,10 @@ export async function updateMachineAssignments(
       if ('fractureRepairingOperatorId' in patch) fields.mpp_fracturerepairingoperatorid = patch.fractureRepairingOperatorId ?? null;
       if ('diesChangeOperatorId' in patch) fields.mpp_dieschangeoperatorid = patch.diesChangeOperatorId ?? null;
       if ('defectRepairingOperatorId' in patch) fields.mpp_defectrepairingoperatorid = patch.defectRepairingOperatorId ?? null;
+      if ('groupName' in patch) fields.mpp_groupname = patch.groupName?.trim() || null;
+      if ('assignedOperatorIds' in patch) {
+        fields.mpp_assignedopr = patch.assignedOperatorIds?.length ? patch.assignedOperatorIds.join(ASSIGNED_OPERATOR_SEPARATOR) : null;
+      }
       if (Object.keys(fields).length === 0) return;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await Mpp_wl_productionsetupmachinesesService.update(rowId, fields as any);

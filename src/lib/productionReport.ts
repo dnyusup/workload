@@ -1,7 +1,8 @@
-import type { ProductionMachineAssignment, ProductionSetup, ProductionSimulationState } from '../types';
+import type { ProductionSetup, ProductionSimulationState } from '../types';
 import type { ConstructionAttributes, ResolvedConstruction } from './productionConstructionResolver';
 import { isFinishProductSpoolType } from './productType';
 import { summarizeOperatorTimelines } from './operatorOccupation';
+import { machineOperatorIds } from './productionActivityRouting';
 
 /** Production Report data layer: per-machine and per-operator facts derived from one simulation
  * snapshot, and their roll-up by any WL_Products column. Pure functions — no React. */
@@ -135,11 +136,6 @@ function attributesFor(construction: ResolvedConstruction | undefined): Construc
   };
 }
 
-function operatorIdsOf(a: ProductionMachineAssignment | undefined): string[] {
-  if (!a) return [];
-  return [...new Set([a.doffingOperatorId, a.loadingOperatorId, a.fractureRepairingOperatorId, a.diesChangeOperatorId, a.defectRepairingOperatorId].filter((id): id is string => !!id))];
-}
-
 /** One fact row per machine that has a Construction assigned (unplanned machines never produce). */
 export function buildMachineFacts(
   state: ProductionSimulationState,
@@ -178,7 +174,7 @@ export function buildMachineFacts(
       downtimeByReason,
       spools: m.shiftSpoolsCompleted,
       grossTonKg: m.shiftSpoolsCompleted * Math.max(0, m.spoolWeight),
-      operatorIds: operatorIdsOf(assignment),
+      operatorIds: machineOperatorIds(assignment),
     });
   });
   return facts;
@@ -193,7 +189,7 @@ export function buildOperatorFacts(
   const machinesByOperator = new Map<string, string[]>();
   setup.assignments.forEach((a) => {
     if (!a.constructionDetailId) return;
-    operatorIdsOf(a).forEach((id) => {
+    machineOperatorIds(a).forEach((id) => {
       const list = machinesByOperator.get(id) ?? [];
       list.push(a.machineId);
       machinesByOperator.set(id, list);

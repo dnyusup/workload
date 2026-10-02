@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { LayoutMachine, ProductionMachineAssignment, ProductionSetup, TaskPriorityMode } from '../../types';
+import type { LayoutMachine, PlanningType, ProductionMachineAssignment, ProductionSetup, TaskPriorityMode } from '../../types';
 import { loadSavedLayouts, type SavedLayout } from '../../lib/savedLayoutsStore';
 import {
   listProductionSetupSummaries,
@@ -41,6 +41,22 @@ const TASK_PRIORITY_OPTIONS: { value: TaskPriorityMode; label: string }[] = [
   { value: 'nearest', label: 'Nearest Task' },
   { value: 'quickest', label: 'Quickest Task' },
 ];
+
+const PLANNING_TYPE_OPTIONS: { value: PlanningType; label: string }[] = [
+  { value: 'DedicatedMachines', label: 'Dedicated Machines' },
+  { value: 'MachinesGroup', label: 'Machines Group' },
+];
+
+const planningTypeLabel = (value: PlanningType) =>
+  PLANNING_TYPE_OPTIONS.find((option) => option.value === value)?.label ?? value;
+
+/** Order-insensitive key for comparing two operator-id lists (e.g. pending vs applied). */
+const operatorSetKey = (ids: string[] | undefined) => [...new Set(ids ?? [])].sort().join(';');
+
+function withoutOperator(ids: string[] | undefined, operatorId: string): string[] | undefined {
+  const remaining = ids?.filter((id) => id !== operatorId);
+  return remaining && remaining.length > 0 ? remaining : undefined;
+}
 
 type OperatorAssignmentType = 'multi' | 'split';
 const OPERATOR_ASSIGNMENT_TYPE_STORAGE_KEY = 'workload-production-operator-assignment-type';
@@ -163,6 +179,7 @@ export function ProductionSimulationPage() {
 
   const [savedLayouts, setSavedLayouts] = useState<SavedLayout[]>([]);
   const [creatingFromLayoutId, setCreatingFromLayoutId] = useState('');
+  const [newPlanningType, setNewPlanningType] = useState<PlanningType>('DedicatedMachines');
   const [newSetupName, setNewSetupName] = useState('');
   const [creatingSetup, setCreatingSetup] = useState(false);
   const [createProgress, setCreateProgress] = useState<{ done: number; total: number } | null>(null);
@@ -292,6 +309,7 @@ export function ProductionSimulationPage() {
         layout.operatorStart,
         layout.walls,
         layout.remarks,
+        newPlanningType,
       );
       setSummaries((prev) => [
         ...prev,
@@ -302,6 +320,7 @@ export function ProductionSimulationPage() {
           machineCount: setup.layout.length,
           updatedAt: setup.updatedAt,
           createdAt: setup.updatedAt,
+          planningType: setup.planningType,
           createdByEmail: user.email,
           createdByName: user.displayName,
         },
@@ -310,6 +329,7 @@ export function ProductionSimulationPage() {
       setSelectedId(setup.id);
       setNewSetupName('');
       setCreatingFromLayoutId('');
+      setNewPlanningType('DedicatedMachines');
     } catch (err) {
       setSummariesError(err instanceof Error ? err.message : 'Failed to create Production Setup.');
     } finally {
@@ -482,6 +502,20 @@ export function ProductionSimulationPage() {
                   </option>
                 ))}
               </select>
+              <select
+                className="input"
+                value={newPlanningType}
+                onChange={(e) => setNewPlanningType(e.target.value as PlanningType)}
+                disabled={creatingSetup}
+                title="DedicatedMachines: each activity on a machine has its own operator. MachinesGroup: a machine's operators share all of its work."
+                aria-label="Planning type"
+              >
+                {PLANNING_TYPE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
               <input
                 className="input"
                 placeholder="Setup name"
@@ -529,7 +563,7 @@ export function ProductionSimulationPage() {
                       >
                         <span className="layout-list-name">{s.name}</span>
                         <span className="layout-list-count">
-                          {s.machineCount} machines · {s.operatorCount} operators
+                          {s.machineCount} machines · {s.operatorCount} operators · {planningTypeLabel(s.planningType)}
                         </span>
                         <span className="layout-list-count">
                           By {creatorNameFor(s)} · {new Date(s.createdAt).toLocaleString()}
@@ -642,6 +676,11 @@ function ProductionSetupEditor({
   const [appliedFractureOperatorId, setAppliedFractureOperatorId] = useState('');
   const [appliedDiesChangeOperatorId, setAppliedDiesChangeOperatorId] = useState('');
   const [appliedDefectRepairingOperatorId, setAppliedDefectRepairingOperatorId] = useState('');
+  const groupMode = setup.planningType === 'MachinesGroup';
+  const [bulkGroupName, setBulkGroupName] = useState('');
+  const [appliedGroupName, setAppliedGroupName] = useState('');
+  const [bulkGroupOperatorIds, setBulkGroupOperatorIds] = useState<string[]>([]);
+  const [appliedGroupOperatorIds, setAppliedGroupOperatorIds] = useState<string[]>([]);
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -740,6 +779,13 @@ function ProductionSetupEditor({
     setAppliedFractureOperatorId(fracture);
     setAppliedDiesChangeOperatorId(diesChange);
     setAppliedDefectRepairingOperatorId(defectRepairing);
+    const groupName = commonValue((a) => a.groupName, selectedAssignments);
+    const groupOperatorKey = commonValue((a) => operatorSetKey(a.assignedOperatorIds));
+    const groupOperatorIds = groupOperatorKey ? groupOperatorKey.split(';') : [];
+    setBulkGroupName(groupName);
+    setAppliedGroupName(groupName);
+    setBulkGroupOperatorIds(groupOperatorIds);
+    setAppliedGroupOperatorIds(groupOperatorIds);
     // Deliberately NOT depending on setup.assignments: this should only resync when the SELECTION
     // itself changes, not every time any field gets applied — otherwise applying just one of the
     // pending fields (e.g. Doffing) would also silently wipe out the user's still-unapplied
@@ -782,13 +828,16 @@ function ProductionSetupEditor({
     const a = assignmentByMachine.get(m.id);
     const area = a?.constructionDetailId ? areaByConstructionId.get(a.constructionDetailId) : undefined;
     const slots = operatorSlotsForArea(area);
-    const handlers = slots.map((slot) => operatorForSlot(a, slot));
+    // Group machines split their body by assigned operator rather than by activity slot.
+    const handlers = groupMode ? a?.assignedOperatorIds ?? [] : slots.map((slot) => operatorForSlot(a, slot));
     const constructionColor = a?.constructionDetailId ? constructionFillMap.get(a.constructionDetailId) : undefined;
     const tooltip = [
       `Machine ${m.label}`,
       `Construction: ${a?.constructionDetailLabel ?? '—'}`,
       `Area: ${area ?? '—'}`,
-      ...slots.map((slot, i) => `${slot.label}: ${operatorLabel(handlers[i])}`),
+      ...(groupMode
+        ? [`Group: ${a?.groupName ?? '—'}`, `Operators: ${handlers.map((id) => operatorLabel(id)).join(', ') || '—'}`]
+        : slots.map((slot, i) => `${slot.label}: ${operatorLabel(handlers[i])}`)),
     ].join('\n');
 
     if (canvasView === 'operator') {
@@ -839,8 +888,9 @@ function ProductionSetupEditor({
       onHover={setLegendHover}
       hints={{
         construction: 'Construction Detail View: body color = Construction. Hover an entry to highlight its machines.',
-        operator:
-          'Operator View: body split Doffing | Loading | Fracture Repairing | Defect Repairing (CB/BU/SP/CH/CR) or Dies Change (WW/BA/CA); gray = not assigned yet; border = Construction. Hover an entry to highlight its machines.',
+        operator: groupMode
+          ? 'Operator View: body split by the operators assigned to the machine; gray = no operator yet; border = Construction. Hover an entry to highlight its machines.'
+          : 'Operator View: body split Doffing | Loading | Fracture Repairing | Defect Repairing (CB/BU/SP/CH/CR) or Dies Change (WW/BA/CA); gray = not assigned yet; border = Construction. Hover an entry to highlight its machines.',
       }}
     />
   );
@@ -891,7 +941,13 @@ function ProductionSetupEditor({
       fractureRepairingOperatorId: undefined,
       diesChangeOperatorId: undefined,
       defectRepairingOperatorId: undefined,
+      groupName: undefined,
+      assignedOperatorIds: undefined,
     });
+    setBulkGroupName('');
+    setAppliedGroupName('');
+    setBulkGroupOperatorIds([]);
+    setAppliedGroupOperatorIds([]);
     setBulkConstructionId('');
     setBulkMultiOperatorId('');
     setBulkDoffingOperatorId('');
@@ -981,8 +1037,11 @@ function ProductionSetupEditor({
           doffingOperatorId: a.doffingOperatorId === id ? undefined : a.doffingOperatorId,
           loadingOperatorId: a.loadingOperatorId === id ? undefined : a.loadingOperatorId,
           fractureRepairingOperatorId: a.fractureRepairingOperatorId === id ? undefined : a.fractureRepairingOperatorId,
+          assignedOperatorIds: withoutOperator(a.assignedOperatorIds, id),
         })),
       });
+      setBulkGroupOperatorIds((prev) => prev.filter((poolId) => poolId !== id));
+      setAppliedGroupOperatorIds((prev) => prev.filter((poolId) => poolId !== id));
       onOperatorCountChange(-1);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Failed to remove operator.');
@@ -1008,6 +1067,19 @@ function ProductionSetupEditor({
     void applyBulk(patch, { plannedOnly: !!operatorId });
     setBulkMultiOperatorId(operatorId);
     setAppliedMultiOperatorId(operatorId);
+  };
+
+  const applyGroupName = (groupName: string) => {
+    void applyBulk({ groupName: groupName.trim() || undefined });
+    setBulkGroupName(groupName.trim());
+    setAppliedGroupName(groupName.trim());
+  };
+
+  const applyGroupOperators = (operatorIds: string[]) => {
+    // Removing ([]) clears every selected machine; assigning skips unplanned ones.
+    void applyBulk({ assignedOperatorIds: operatorIds.length > 0 ? operatorIds : undefined }, { plannedOnly: operatorIds.length > 0 });
+    setBulkGroupOperatorIds(operatorIds);
+    setAppliedGroupOperatorIds(operatorIds);
   };
 
   const removeConstruction = () => {
@@ -1046,9 +1118,19 @@ function ProductionSetupEditor({
   const operatorLabelOrBlank = (id?: string) => (id ? setup.operators.find((o) => o.id === id)?.label ?? '' : '');
 
   const exportCsv = () => {
-    const headers = ['Machine', 'Construction Detail', 'Doffing', 'Loading', 'FractureRepairing', 'DiesChange', 'DefectRepairing'];
+    const headers = groupMode
+      ? ['Machine', 'Construction Detail', 'Group Name', 'Operators']
+      : ['Machine', 'Construction Detail', 'Doffing', 'Loading', 'FractureRepairing', 'DiesChange', 'DefectRepairing'];
     const rows = setup.layout.map((m) => {
       const a = assignmentByMachine.get(m.id);
+      if (groupMode) {
+        return [
+          m.label,
+          a?.constructionDetailLabel ?? '',
+          a?.groupName ?? '',
+          (a?.assignedOperatorIds ?? []).map((id) => operatorLabelOrBlank(id)).filter(Boolean).join(';'),
+        ];
+      }
       return [
         m.label,
         a?.constructionDetailLabel ?? '',
@@ -1083,6 +1165,8 @@ function ProductionSetupEditor({
       fracture: header.indexOf('fracturerepairing'),
       diesChange: header.indexOf('dieschange'),
       defectRepairing: header.indexOf('defectrepairing'),
+      groupName: header.indexOf('group name'),
+      operators: header.indexOf('operators'),
     };
     if (colIndex.machine === -1) {
       setImportMessage('CSV must have a "Machine" column.');
@@ -1118,6 +1202,21 @@ function ProductionSetupEditor({
             patch.constructionDetailLabel = product.mpp_constructiondetailcode;
           }
         }
+      }
+      if (groupMode) {
+        if (colIndex.groupName !== -1) patch.groupName = cols[colIndex.groupName]?.trim() || undefined;
+        if (colIndex.operators !== -1) {
+          const labels = (cols[colIndex.operators] ?? '').split(';').map((label) => label.trim()).filter(Boolean);
+          const ids: string[] = [];
+          labels.forEach((label) => {
+            const operatorId = operatorIdByLabel.get(label);
+            if (operatorId) ids.push(operatorId);
+            else errors.push(`Row ${rowNum}: operator "${label}" is not in this setup — add that operator first.`);
+          });
+          patch.assignedOperatorIds = ids.length > 0 ? [...new Set(ids)] : undefined;
+        }
+        patchByMachineId.set(machineId, patch);
+        return;
       }
       const operatorColumns: [keyof ProductionMachineAssignment, number, string][] = [
         ['doffingOperatorId', colIndex.doffing, 'Doffing'],
@@ -1255,6 +1354,8 @@ function ProductionSetupEditor({
   const fractureDirty = bulkFractureOperatorId !== appliedFractureOperatorId;
   const diesChangeDirty = bulkDiesChangeOperatorId !== appliedDiesChangeOperatorId;
   const defectRepairingDirty = bulkDefectRepairingOperatorId !== appliedDefectRepairingOperatorId;
+  const groupNameDirty = bulkGroupName.trim() !== appliedGroupName;
+  const groupOperatorsDirty = operatorSetKey(bulkGroupOperatorIds) !== operatorSetKey(appliedGroupOperatorIds);
 
   const removeButton = (title: string, onClick: () => void) => (
     <Button
@@ -1281,18 +1382,20 @@ function ProductionSetupEditor({
       }
     >
       {selectionOccupationPanel}
-      <div className="production-assign-mode-row">
-        <label htmlFor="production-operator-assignment-type">Opr Assign Type</label>
-        <select
-          id="production-operator-assignment-type"
-          className="input"
-          value={operatorAssignmentType}
-          onChange={(event) => changeOperatorAssignmentType(event.target.value as OperatorAssignmentType)}
-        >
-          <option value="multi">Multi Task</option>
-          <option value="split">Split Task</option>
-        </select>
-      </div>
+      {!groupMode && (
+        <div className="production-assign-mode-row">
+          <label htmlFor="production-operator-assignment-type">Opr Assign Type</label>
+          <select
+            id="production-operator-assignment-type"
+            className="input"
+            value={operatorAssignmentType}
+            onChange={(event) => changeOperatorAssignmentType(event.target.value as OperatorAssignmentType)}
+          >
+            <option value="multi">Multi Task</option>
+            <option value="split">Split Task</option>
+          </select>
+        </div>
+      )}
       <div className="production-assign-row">
         <SearchableSelect
           value={bulkConstructionId}
@@ -1313,7 +1416,68 @@ function ProductionSetupEditor({
         </Button>
         {removeButton('Remove Construction Detail from selection', removeConstruction)}
       </div>
-      {operatorAssignmentType === 'multi' ? (
+      {groupMode ? (
+        <>
+          <div className="production-assign-row">
+            <input
+              className="input"
+              placeholder="Group Name"
+              value={bulkGroupName}
+              onChange={(e) => setBulkGroupName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && selectedMachineIds.length > 0) applyGroupName(bulkGroupName);
+              }}
+            />
+            <Button
+              variant="secondary"
+              className={groupNameDirty ? 'btn-pending' : ''}
+              onClick={() => applyGroupName(bulkGroupName)}
+              disabled={selectedMachineIds.length === 0}
+              title="Apply group name to selection"
+            >
+              Apply
+            </Button>
+            {removeButton('Remove group name from selection', () => applyGroupName(''))}
+          </div>
+          <div className="production-assign-row">
+            <SearchableSelect
+              value=""
+              onChange={(id) => {
+                if (id) setBulkGroupOperatorIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+              }}
+              placeholder="Add Operator"
+              searchPlaceholder="Search operator…"
+              options={operatorOptions.filter((option) => !bulkGroupOperatorIds.includes(option.value))}
+            />
+            <Button
+              variant="secondary"
+              className={groupOperatorsDirty ? 'btn-pending' : ''}
+              onClick={() => applyGroupOperators(bulkGroupOperatorIds)}
+              disabled={selectedMachineIds.length === 0}
+              title="Apply these operators to the selection — any of them may handle any task on these machines"
+            >
+              Apply
+            </Button>
+            {removeButton('Remove all operators from selection', () => applyGroupOperators([]))}
+          </div>
+          {bulkGroupOperatorIds.length > 0 && (
+            <div className="production-operator-chips production-group-operators">
+              {bulkGroupOperatorIds.map((id) => (
+                <span key={id} className="production-operator-chip">
+                  {operatorLabel(id)}
+                  <button
+                    type="button"
+                    onClick={() => setBulkGroupOperatorIds((prev) => prev.filter((poolId) => poolId !== id))}
+                    title="Remove from this list"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+        </>
+      ) : operatorAssignmentType === 'multi' ? (
         <div className="production-assign-row">
           <SearchableSelect
             value={bulkMultiOperatorId}
@@ -1476,6 +1640,9 @@ function ProductionSetupEditor({
         }
       >
         <div className="grid-2">
+          <Field label="Planning Type" hint="Chosen when the setup is created">
+            <input className="input input-readonly" readOnly value={planningTypeLabel(setup.planningType)} />
+          </Field>
           <Field label="Task Priority">
             <SelectInput value={setup.taskPriority} options={TASK_PRIORITY_OPTIONS} onChange={(v) => onHeaderChange({ taskPriority: v })} />
           </Field>

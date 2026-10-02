@@ -15,11 +15,13 @@ export type Mpp_wl_productionsetupmachinesesstatuscode = keyof typeof Mpp_wl_pro
 
 export interface Mpp_wl_productionsetupmachinesesBase {
   importsequencenumber?: number;
+  mpp_assignedopr?: string;
   mpp_constructiondetailid?: string;
   mpp_defectrepairingoperatorid?: string;
   mpp_dieschangeoperatorid?: string;
   mpp_doffingoperatorid?: string;
   mpp_fracturerepairingoperatorid?: string;
+  mpp_groupname?: string;
   mpp_loadingoperatorid?: string;
   mpp_machineid: string;
   mpp_machinelabel?: string;

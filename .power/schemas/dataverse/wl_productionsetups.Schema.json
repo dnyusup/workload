@@ -202,6 +202,14 @@
           "x-ms-dataverse-type": "DecimalType",
           "x-ms-schema-name": "mpp_pixelspermeter"
         },
+        "mpp_planningtype": {
+          "type": "string",
+          "title": "PlanningType",
+          "x-ms-dataverse-attribute": "mpp_planningtype",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "mpp_PlanningType",
+          "maxLength": 100
+        },
         "mpp_rpc": {
           "type": "string",
           "title": "RPC",

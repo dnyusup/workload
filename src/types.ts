@@ -397,7 +397,16 @@ export interface ProductionMachineAssignment {
   fractureRepairingOperatorId?: string;
   diesChangeOperatorId?: string;
   defectRepairingOperatorId?: string;
+  /** MachinesGroup planning only — a free-text label for the machines handled together. */
+  groupName?: string;
+  /** MachinesGroup planning only — every operator that may handle this machine. Any of them takes
+   * whatever task comes due on it; the per-activity *OperatorId slots above stay empty. */
+  assignedOperatorIds?: string[];
 }
+
+/** DedicatedMachines: each activity on a machine is routed to its own assigned operator.
+ * MachinesGroup: a machine's operators share all of its work, whoever is free first. */
+export type PlanningType = 'DedicatedMachines' | 'MachinesGroup';
 
 export interface ProductionSetup {
   id: string;
@@ -416,6 +425,8 @@ export interface ProductionSetup {
   remarks?: LayoutRemark[];
   operators: ProductionOperator[];
   assignments: ProductionMachineAssignment[];
+  /** Chosen when the setup is created. */
+  planningType: PlanningType;
   shiftTime: number;
   lunchTime: number;
   lunchStartAt: number;

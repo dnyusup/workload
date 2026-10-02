@@ -23,6 +23,7 @@ export interface Mpp_wl_productionsetupsesBase {
   mpp_meetingtime?: number;
   mpp_name: string;
   mpp_pixelspermeter?: number;
+  mpp_planningtype?: string;
   mpp_rpc?: number;
   mpp_shifttime?: number;
   mpp_taskpriority?: string;

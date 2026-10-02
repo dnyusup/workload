@@ -1,4 +1,4 @@
-import type { ActivityKey, ProductionMachineAssignment } from '../types';
+import type { ActivityKey, PlanningType, ProductionMachineAssignment } from '../types';
 
 export type ProductionActivityFamily =
   | 'doffing'
@@ -29,4 +29,37 @@ export function assignedOperatorIdForActivity(
   if (family === 'diesChange') return assignment.diesChangeOperatorId ?? assignment.fractureRepairingOperatorId;
   if (family === 'defectRepairing') return assignment.defectRepairingOperatorId ?? assignment.fractureRepairingOperatorId;
   return assignment.fractureRepairingOperatorId;
+}
+
+/** Every operator that works on this machine in either planning type (per-activity slots plus the
+ * MachinesGroup pool), deduplicated. */
+export function machineOperatorIds(assignment: ProductionMachineAssignment | undefined): string[] {
+  if (!assignment) return [];
+  return [
+    ...new Set(
+      [
+        assignment.doffingOperatorId,
+        assignment.loadingOperatorId,
+        assignment.fractureRepairingOperatorId,
+        assignment.diesChangeOperatorId,
+        assignment.defectRepairingOperatorId,
+        ...(assignment.assignedOperatorIds ?? []),
+      ].filter((id): id is string => !!id),
+    ),
+  ];
+}
+
+/** Who carries an activity's workload on this machine, and what fraction each carries — the whole
+ * of it for the one dedicated operator, or an equal split across a MachinesGroup machine's pool. */
+export function operatorSharesForActivity(
+  planningType: PlanningType,
+  assignment: ProductionMachineAssignment | undefined,
+  activity: ActivityKey,
+): { operatorId: string; share: number }[] {
+  if (planningType === 'MachinesGroup') {
+    const pool = [...new Set(assignment?.assignedOperatorIds ?? [])];
+    return pool.map((operatorId) => ({ operatorId, share: 1 / pool.length }));
+  }
+  const operatorId = assignedOperatorIdForActivity(assignment, activity);
+  return operatorId ? [{ operatorId, share: 1 }] : [];
 }

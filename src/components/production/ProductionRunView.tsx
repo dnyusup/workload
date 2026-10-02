@@ -21,6 +21,7 @@ import { buildSetupConstructionColorMap } from '../../lib/constructionColors';
 import { isFinishProductSpoolType } from '../../lib/productType';
 import { estimateProductionEvents } from '../../lib/productionEstimate';
 import { summarizeOperatorTimelines } from '../../lib/operatorOccupation';
+import { machineOperatorIds } from '../../lib/productionActivityRouting';
 import { buildCanvasLegendData, type LegendHover } from '../../lib/canvasLegend';
 import { CanvasLegendPanel } from './CanvasLegendPanel';
 import { ProductionReportView } from './ProductionReportView';
@@ -444,13 +445,7 @@ export function ProductionRunView({
   const plannedMachines = machines.filter((m) => m.status !== 'unassigned');
   const assignedOperatorIds = useMemo(() => {
     const ids = new Set<string>();
-    setup.assignments.forEach((a) => {
-      if (a.doffingOperatorId) ids.add(a.doffingOperatorId);
-      if (a.loadingOperatorId) ids.add(a.loadingOperatorId);
-      if (a.fractureRepairingOperatorId) ids.add(a.fractureRepairingOperatorId);
-      if (a.diesChangeOperatorId) ids.add(a.diesChangeOperatorId);
-      if (a.defectRepairingOperatorId) ids.add(a.defectRepairingOperatorId);
-    });
+    setup.assignments.forEach((a) => machineOperatorIds(a).forEach((id) => ids.add(id)));
     return ids;
   }, [setup.assignments]);
   const displayedOperators = operators.filter((op) => assignedOperatorIds.has(op.id));
@@ -616,14 +611,7 @@ export function ProductionRunView({
   // busy operator's own slice of the line is easy to isolate out of hundreds of machines.
   const machinesForSelectedOperator = selectedOperator
     ? new Set(
-        setup.assignments
-          .filter(
-            (a) =>
-              a.doffingOperatorId === selectedOperator.id ||
-              a.loadingOperatorId === selectedOperator.id ||
-              a.fractureRepairingOperatorId === selectedOperator.id,
-          )
-          .map((a) => a.machineId),
+        setup.assignments.filter((a) => machineOperatorIds(a).includes(selectedOperator.id)).map((a) => a.machineId),
       )
     : null;
   const machineTimelineRows = (machinesForSelectedOperator ? plannedMachines.filter((m) => machinesForSelectedOperator.has(m.id)) : plannedMachines).filter(
@@ -795,6 +783,7 @@ export function ProductionRunView({
                     constructionColorMap={constructionColorMap}
                     operatorLabelById={operatorLabelById}
                     isDetailed={isDetailed}
+                    groupMode={setup.planningType === 'MachinesGroup'}
                     highlightedMachineIds={highlightedMachineIds}
                   />
                   <RemarksLayer remarks={setup.remarks} />
@@ -1368,6 +1357,7 @@ const MachinesLayer = memo(function MachinesLayer({
   constructionColorMap,
   operatorLabelById,
   isDetailed,
+  groupMode,
   highlightedMachineIds,
 }: {
   machines: ProductionSimulationState['machines'];
@@ -1380,6 +1370,7 @@ const MachinesLayer = memo(function MachinesLayer({
   constructionColorMap: Map<string, string>;
   operatorLabelById: (id?: string) => string;
   isDetailed: boolean;
+  groupMode: boolean;
   /** Hovered legend entry's machines — highlighted, every other machine dimmed. */
   highlightedMachineIds: Set<string> | null;
 }) {
@@ -1410,9 +1401,16 @@ const MachinesLayer = memo(function MachinesLayer({
           ? [
               `Machine ${m.label}`,
               `Construction: ${assignment?.constructionDetailLabel ?? '—'}`,
-              `Doffing: ${operatorLabelById(assignment?.doffingOperatorId)}`,
-              `Loading: ${operatorLabelById(assignment?.loadingOperatorId)}`,
-              `Fracture Repairing: ${operatorLabelById(assignment?.fractureRepairingOperatorId)}`,
+              ...(groupMode
+                ? [
+                    `Group: ${assignment?.groupName ?? '—'}`,
+                    `Operators: ${(assignment?.assignedOperatorIds ?? []).map((id) => operatorLabelById(id)).join(', ') || '—'}`,
+                  ]
+                : [
+                    `Doffing: ${operatorLabelById(assignment?.doffingOperatorId)}`,
+                    `Loading: ${operatorLabelById(assignment?.loadingOperatorId)}`,
+                    `Fracture Repairing: ${operatorLabelById(assignment?.fractureRepairingOperatorId)}`,
+                  ]),
             ].join('\n')
           : undefined;
         return (

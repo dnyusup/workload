@@ -141,6 +141,14 @@
           "required": true,
           "maxLength": 100
         },
+        "mpp_assignedopr": {
+          "type": "string",
+          "title": "assignedopr",
+          "x-ms-dataverse-attribute": "mpp_assignedopr",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "mpp_assignedopr",
+          "maxLength": 100
+        },
         "mpp_constructiondetailid": {
           "type": "string",
           "title": "constructiondetailid",
@@ -179,6 +187,14 @@
           "x-ms-dataverse-attribute": "mpp_fracturerepairingoperatorid",
           "x-ms-dataverse-type": "StringType",
           "x-ms-schema-name": "mpp_fracturerepairingoperatorid",
+          "maxLength": 100
+        },
+        "mpp_groupname": {
+          "type": "string",
+          "title": "groupname",
+          "x-ms-dataverse-attribute": "mpp_groupname",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "mpp_groupname",
           "maxLength": 100
         },
         "mpp_loadingoperatorid": {

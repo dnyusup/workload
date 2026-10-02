@@ -94,7 +94,17 @@
       "Bash(git commit --amend -m ' *)",
       "Bash(echo \"EXIT:$?\")",
       "Bash(echo \"TSC_EXIT:$?\")",
-      "Bash(echo \"LINT_EXIT:$?\")"
+      "Bash(echo \"LINT_EXIT:$?\")",
+      "Bash(python3 -)",
+      "Bash(sed -i 's/operatorIdsOf\\(/machineOperatorIds\\(/g' src/lib/productionReport.ts)",
+      "Bash(sed -i \"1s/.*/import type { ProductionSetup, ProductionSimulationState } from '..\\\\/types';/\" src/lib/productionReport.ts)",
+      "Bash(sed -i \"4a import { machineOperatorIds } from './productionActivityRouting';\" src/lib/productionReport.ts)",
+      "Bash(awk 'NR>=1280 && NR<=1400 && /^function |^const [A-Z][A-Za-z]* = |^  [a-zA-Z]*,$|planningType|assignmentByMachineId|operatorLabelById/ {print NR\": \"$0}' src/components/production/ProductionRunView.tsx)",
+      "Bash(echo \"TSC:$?\")",
+      "Bash(echo \"LINT:$?\")",
+      "Bash(ls \"C:\\\\Users\\\\deni.yusup\\\\.claude\\\\projects\\\\c--Users-deni-yusup-powerapps-code-WorkLoad\\\\memory\\\\\")",
+      "Read(//c/Users/deni.yusup/.claude/projects/c--Users-deni-yusup-powerapps-code-WorkLoad/**)",
+      "Read(//c/Users/deni.yusup/.claude/projects/c--Users-deni-yusup-powerapps-code-WorkLoad/memory/**)"
     ]
   }
 }
