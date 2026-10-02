@@ -1,6 +1,7 @@
 import type { ActivityKey, ProductionSetup } from '../types';
 import type { ResolvedConstruction } from './productionConstructionResolver';
 import { applyRpc, deriveMachineSpec } from './calculations';
+import { forecastCycleLength } from './frequencyTypes';
 
 const AVERAGE_DIES_PER_CHANGE_EVENT = (7 + 26) / 2;
 
@@ -48,10 +49,12 @@ export function estimateProductionEvents(
     const { activities, cycleLengths, runtimePerSpool } = construction;
 
     const eventsPerSpool = (key: ActivityKey): number => {
-      const cycle = cycleLengths[key];
+      const activity = activities.find((item) => item.key === key);
+      const cycle = activity?.frequencyType
+        ? forecastCycleLength(activity, activities, runtimePerSpool > 0 ? setup.shiftTime / runtimePerSpool : 0)
+        : cycleLengths[key];
       if (!Number.isFinite(cycle) || cycle <= 0) return 0;
       let rate = 1 / cycle;
-      const activity = activities.find((item) => item.key === key);
       // Only Loading's subs (Partial1/2) stand in for their parent at a shared spool boundary; the
       // engine runs every other sub (e.g. Doffing ScanMES) each time it's due, after the parent
       // (see queueTasksForMachine's altersWithParent), so only those overlaps are subtracted.
@@ -82,6 +85,9 @@ export function estimateProductionEvents(
             ? (machineCount * (setup.shiftTime / Math.max(1, runtimePerSpool)) * spoolWeight * activity.numerator) / 1000
             : 0;
         expected = plannedDies > 0 ? Math.ceil(plannedDies / AVERAGE_DIES_PER_CHANGE_EVENT) : 0;
+      } else if (activity.frequencyType === 'FirstDoffOnShift') {
+        // Exactly once per machine that Doffs at all during the shift.
+        expected = eventsPerSpool('doffing') > 0 ? machineCount : 0;
       } else {
         expected = totalSpools * eventsPerSpool(activity.key);
       }

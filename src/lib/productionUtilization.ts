@@ -2,6 +2,7 @@ import type { ActivityKey, ProductionSetup } from '../types';
 import { availableTimeMinutes, distanceMeters } from './calculations';
 import { activityFamily, assignedOperatorIdForActivity, isGroupMachine, operatorSharesForActivity } from './productionActivityRouting';
 import type { ResolvedConstruction } from './productionConstructionResolver';
+import { forecastCycleLength } from './frequencyTypes';
 
 const AVERAGE_DIES_PER_CHANGE_EVENT = (7 + 26) / 2;
 const GLOBAL_EVENT_ACTIVITIES = new Set(['fractureRepairing', 'diesChange', 'defectRepairing']);
@@ -74,13 +75,13 @@ function activityMinutesPerProducedSpool(
  * forecastWaitingMinutes; adding that time to man occupation would mix machine downtime
  * with labor time.
  */
-function machineCapacityScale(construction: ResolvedConstruction, runtimePerSpool: number): number {
+function machineCapacityScale(construction: ResolvedConstruction, runtimePerSpool: number, spoolsPerShift: number): number {
   const stopMinutesPerSpool = construction.activities.reduce((total, activity) => {
     if ((activity.machCondition ?? 'stop') === 'run') return total;
     return total + activityMinutesPerProducedSpool(
       activity.key,
       activity.timeMinutes,
-      construction.cycleLengths[activity.key],
+      forecastCycleLength(activity, construction.activities, spoolsPerShift),
     );
   }, 0);
   return runtimePerSpool > 0 ? runtimePerSpool / (runtimePerSpool + stopMinutesPerSpool) : 1;
@@ -183,7 +184,7 @@ export function calculatePlannedUtilization(
     // over that phase, the expected count during a shift is still shiftTime / runtime / cycle,
     // so subtracting an arbitrary "half cycle" would bias the forecast downward.
     const expectedSpools = setup.shiftTime / runtimePerSpool;
-    const forecastScale = machineCapacityScale(construction, runtimePerSpool);
+    const forecastScale = machineCapacityScale(construction, runtimePerSpool, expectedSpools);
     const machineContributions: PlannedActivityContribution[] = [];
 
     construction.activities.forEach((activity) => {
@@ -193,7 +194,7 @@ export function calculatePlannedUtilization(
       // the number of machines sharing a Construction (the main source of the planned-vs-run
       // discrepancy).
       if (GLOBAL_EVENT_ACTIVITIES.has(activity.key)) return;
-      const cycle = construction.cycleLengths[activity.key];
+      const cycle = forecastCycleLength(activity, construction.activities, expectedSpools);
       if (!Number.isFinite(cycle) || cycle <= 0 || expectedSpools <= 0) return;
       const expectedOccurrences = expectedSpools / cycle;
       const family = activityFamily(activity.key);

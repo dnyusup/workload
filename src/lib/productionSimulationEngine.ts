@@ -23,6 +23,7 @@ import { buildWallGraph, type WallGraph } from './wallRouting';
 const WALL_CLEARANCE_METERS = 0.5;
 import { activityFamily, assignedOperatorIdForActivity, isGroupMachine } from './productionActivityRouting';
 import type { ResolvedConstruction } from './productionConstructionResolver';
+import { frequencyTypeIsDue, triggerEventOf, type TriggerEvent } from './frequencyTypes';
 
 function emptyCounts(activities: ActivityConfig[]): Record<ActivityKey, number> {
   return Object.fromEntries(activities.map((a) => [a.key, 0]));
@@ -105,6 +106,11 @@ export class ProductionSimulationEngine {
   private logIdCounter = 0;
   private warnings: string[] = [];
   private warnedNoOperator = new Set<string>();
+  /** Per machine: trigger events completed since its last Doffing came due — what an
+   * event-triggered Doffing sub (ActivityConfig.frequencyType) waits for. */
+  private eventsSinceLastDoff = new Map<string, Set<TriggerEvent>>();
+  /** Machines whose first Doffing of this shift has already come due (FirstDoffOnShift). */
+  private doffedThisShift = new Set<string>();
   private routeCache: RoutingRowCache = createRoutingRowCache();
   /** Visibility graph around the layout's walls (null when there are none). */
   private wallGraph: WallGraph | null = null;
@@ -354,6 +360,14 @@ export class ProductionSimulationEngine {
     }
   }
 
+  private recordTriggerEvent(machineId: string, activity: ActivityKey) {
+    const event = triggerEventOf(activity);
+    if (!event) return;
+    const events = this.eventsSinceLastDoff.get(machineId) ?? new Set<TriggerEvent>();
+    events.add(event);
+    this.eventsSinceLastDoff.set(machineId, events);
+  }
+
   private addLog(atMin: number, message: string) {
     this.logIdCounter += 1;
     this.log.push({ id: `plog-${this.logIdCounter}`, timeMin: atMin, message });
@@ -407,9 +421,18 @@ export class ProductionSimulationEngine {
       dueCounts.set(key, Number.isFinite(cycle) && cycle > 0 ? Math.floor(machine.spoolsCompleted / cycle) : 0);
       handledCounts.set(key, machine.completedByActivity[key] ?? 0);
     });
+    const doffingDue = (dueCounts.get('doffing') ?? 0) > (handledCounts.get('doffing') ?? 0);
+    const eventsSinceLastDoff = this.eventsSinceLastDoff.get(machine.id) ?? new Set<TriggerEvent>();
+    const firstDoffOfShift = doffingDue && !this.doffedThisShift.has(machine.id);
     machine.activities.filter((a) => !GLOBAL_EVENT_ACTIVITIES.has(a.key)).forEach((activity) => {
       const { key } = activity;
       if (activity.loadingInterrupt) return;
+      if (activity.frequencyType) {
+        if (doffingDue && activity.parentKey === 'doffing' && frequencyTypeIsDue(activity.frequencyType, eventsSinceLastDoff, firstDoffOfShift)) {
+          newTasks.push({ activity: key, label: activity.label, timeMinutes: activity.timeMinutes, assignedOperatorId: this.operatorIdForTask(machine, key) });
+        }
+        return;
+      }
       const cycle = machine.cycleLengths[key];
       if (!Number.isFinite(cycle) || cycle <= 0) return;
       const dueCount = dueCounts.get(key) ?? 0;
@@ -439,6 +462,11 @@ export class ProductionSimulationEngine {
         machine.completedByActivity[key] = dueCount;
       }
     });
+    // Events from here on count toward the NEXT Doffing, not this one.
+    if (doffingDue) {
+      this.eventsSinceLastDoff.delete(machine.id);
+      this.doffedThisShift.add(machine.id);
+    }
 
     this.combineLoadingPartials(machine, newTasks);
     // Fracture Repairing is NOT queued here — it's injected directly by
@@ -916,6 +944,7 @@ export class ProductionSimulationEngine {
       }
       machine.totalServiced += 1;
       operator.serviceTasks.forEach((t, index, tasks) => {
+        this.recordTriggerEvent(machine.id, t.activity);
         this.metrics.completedByActivity[t.activity] = (this.metrics.completedByActivity[t.activity] ?? 0) + 1;
         if (t.activity === 'diesChange') this.metrics.diesChanged += t.quantity ?? 0;
         if (t.activity === 'doffing') {

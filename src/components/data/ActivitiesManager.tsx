@@ -7,6 +7,8 @@ import {
 } from '../../generated/models/Mpp_wl_activitiesModel';
 import { Mpp_wl_productsesService } from '../../generated/services/Mpp_wl_productsesService';
 import { fetchAllPages } from '../../lib/dataversePaging';
+import { parseFrequencyType } from '../../lib/frequencyTypes';
+import { FREQUENCY_TYPES, type FrequencyType } from '../../types';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { FloatingScrollbar } from '../ui/FloatingScrollbar';
@@ -28,8 +30,11 @@ interface ActivityFields {
   mpp_taskname: 0 | 1 | 2 | 3 | 4;
   mpp_subtaskname: string;
   mpp_tasktime: number;
-  mpp_numerator: number;
-  mpp_denominator: number;
+  /** '' = the usual Numerator/Denominator frequency. */
+  mpp_frequencytype: FrequencyType | '';
+  /** null = blank in Dataverse (tasks with their own frequency rule, e.g. Loading, Fracture). */
+  mpp_numerator: number | null;
+  mpp_denominator: number | null;
   mpp_machcondition: 'Stop' | 'Run';
   mpp_productcode: string;
   mpp_machinecode: string;
@@ -69,8 +74,9 @@ function emptyFields(): ActivityFields {
     mpp_taskname: 0,
     mpp_subtaskname: '',
     mpp_tasktime: 0,
-    mpp_numerator: 1,
-    mpp_denominator: 1,
+    mpp_frequencytype: '',
+    mpp_numerator: null,
+    mpp_denominator: null,
     mpp_machcondition: 'Stop',
     mpp_productcode: '',
     mpp_machinecode: '',
@@ -80,6 +86,17 @@ function emptyFields(): ActivityFields {
   };
 }
 
+/** An emptied number input stays blank instead of turning into 0. */
+function blankableNumber(value: string): number | null {
+  const parsed = parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/** Frequency Type only applies to Doffing sub-tasks. */
+function allowsFrequencyType(fields: Pick<ActivityFields, 'mpp_taskname' | 'mpp_subtaskname'>): boolean {
+  return fields.mpp_taskname === 0 && fields.mpp_subtaskname.trim() !== '';
+}
+
 function fieldsFromRecord(record: Mpp_wl_activities): ActivityFields {
   const constructionType = record.mpp_constructiontype ?? '';
   return {
@@ -87,8 +104,9 @@ function fieldsFromRecord(record: Mpp_wl_activities): ActivityFields {
     mpp_taskname: (record.mpp_taskname ?? 0) as 0 | 1 | 2 | 3 | 4,
     mpp_subtaskname: record.mpp_subtaskname ?? '',
     mpp_tasktime: record.mpp_tasktime ?? 0,
-    mpp_numerator: record.mpp_numerator ?? 1,
-    mpp_denominator: record.mpp_denominator ?? 1,
+    mpp_frequencytype: parseFrequencyType(record.mpp_frequencytype) ?? '',
+    mpp_numerator: record.mpp_numerator ?? null,
+    mpp_denominator: record.mpp_denominator ?? null,
     mpp_machcondition: (record.mpp_machcondition ?? '').trim().toLowerCase() === 'run' ? 'Run' : 'Stop',
     ...fieldsFromConstruction(constructionType),
   };
@@ -170,6 +188,7 @@ export function ActivitiesManager({
         if (row.id !== id) return row;
         const fields = { ...row.fields, [key]: value };
         if (key === 'mpp_constructiontype') Object.assign(fields, fieldsFromConstruction(value as string));
+        if (!allowsFrequencyType(fields)) fields.mpp_frequencytype = '';
         return { ...row, dirty: true, fields };
       }),
     );
@@ -198,6 +217,11 @@ export function ActivitiesManager({
         const av = a.fields[key as keyof ActivityFields];
         const bv = b.fields[key as keyof ActivityFields];
         const sign = dir === 'asc' ? 1 : -1;
+        // Blank cells sort last either way.
+        if (av == null || bv == null) {
+          if (av == null && bv == null) continue;
+          return av == null ? 1 : -1;
+        }
         const comparison =
           typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
         if (comparison !== 0) return comparison * sign;
@@ -248,8 +272,10 @@ export function ActivitiesManager({
     mpp_taskname: fields.mpp_taskname,
     mpp_subtaskname: fields.mpp_subtaskname || undefined,
     mpp_tasktime: fields.mpp_tasktime,
-    mpp_numerator: fields.mpp_numerator,
-    mpp_denominator: fields.mpp_denominator,
+    // Dataverse only clears a column on an explicit null; undefined would leave the old value.
+    mpp_frequencytype: fields.mpp_frequencytype || (null as unknown as undefined),
+    mpp_numerator: fields.mpp_numerator ?? (null as unknown as undefined),
+    mpp_denominator: fields.mpp_denominator ?? (null as unknown as undefined),
     mpp_machcondition: fields.mpp_machcondition,
     mpp_productcode: fields.mpp_productcode || undefined,
     mpp_machinecode: fields.mpp_machinecode || undefined,
@@ -322,6 +348,7 @@ export function ActivitiesManager({
               { key: 'mpp_taskname', label: 'Task' },
               { key: 'mpp_subtaskname', label: 'SubTask' },
               { key: 'mpp_tasktime', label: 'Time' },
+              { key: 'mpp_frequencytype', label: 'FrequencyType' },
               { key: 'mpp_numerator', label: 'Numerator' },
               { key: 'mpp_denominator', label: 'Denominator' },
               { key: 'mpp_machcondition', label: 'MachCondition' },
@@ -371,11 +398,14 @@ export function ActivitiesManager({
                 <th className="table-sortable-header" onClick={() => toggleSort('mpp_tasktime')}>
                   Time{sortIndicator('mpp_tasktime')}
                 </th>
-                <th className="table-sortable-header" onClick={() => toggleSort('mpp_numerator')}>
-                  Numerator{sortIndicator('mpp_numerator')}
+                <th className="table-sortable-header" onClick={() => toggleSort('mpp_frequencytype')}>
+                  FrequencyType{sortIndicator('mpp_frequencytype')}
                 </th>
-                <th className="table-sortable-header" onClick={() => toggleSort('mpp_denominator')}>
-                  Denominator{sortIndicator('mpp_denominator')}
+                <th className="table-sortable-header" title="Numerator" onClick={() => toggleSort('mpp_numerator')}>
+                  Num{sortIndicator('mpp_numerator')}
+                </th>
+                <th className="table-sortable-header" title="Denominator" onClick={() => toggleSort('mpp_denominator')}>
+                  Dem{sortIndicator('mpp_denominator')}
                 </th>
                 <th className="table-sortable-header" onClick={() => toggleSort('mpp_machcondition')}>
                   MachCondition{sortIndicator('mpp_machcondition')}
@@ -389,8 +419,8 @@ export function ActivitiesManager({
                 <th className="table-sortable-header" onClick={() => toggleSort('mpp_spooltype')}>
                   SpoolType{sortIndicator('mpp_spooltype')}
                 </th>
-                <th className="table-sortable-header" onClick={() => toggleSort('mpp_tensilegroup')}>
-                  TensileGroup{sortIndicator('mpp_tensilegroup')}
+                <th className="table-sortable-header" title="TensileGroup" onClick={() => toggleSort('mpp_tensilegroup')}>
+                  TG{sortIndicator('mpp_tensilegroup')}
                 </th>
                 <th className="table-sortable-header" onClick={() => toggleSort('mpp_laylength')}>
                   LayLength{sortIndicator('mpp_laylength')}
@@ -405,6 +435,7 @@ export function ActivitiesManager({
                     <input
                       className="input"
                       value={row.fields.mpp_constructiontype}
+                      title={row.fields.mpp_constructiontype || undefined}
                       onChange={(e) => updateField(row.id, 'mpp_constructiontype', e.target.value)}
                     />
                   </td>
@@ -438,19 +469,39 @@ export function ActivitiesManager({
                     />
                   </td>
                   <td>
-                    <input
+                    <select
                       className="input"
+                      value={row.fields.mpp_frequencytype}
+                      disabled={!allowsFrequencyType(row.fields)}
+                      title={allowsFrequencyType(row.fields) ? undefined : 'Only for Doffing sub-tasks'}
+                      onChange={(e) => updateField(row.id, 'mpp_frequencytype', e.target.value as FrequencyType | '')}
+                    >
+                      <option value="">(Numerator/Denominator)</option>
+                      {FREQUENCY_TYPES.map((type) => (
+                        <option key={type} value={type}>
+                          {type}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>
+                    <input
+                      className={`input ${row.fields.mpp_frequencytype ? 'input-readonly' : ''}`}
                       type="number"
-                      value={row.fields.mpp_numerator}
-                      onChange={(e) => updateField(row.id, 'mpp_numerator', parseFloat(e.target.value) || 0)}
+                      value={row.fields.mpp_numerator ?? ''}
+                      disabled={!!row.fields.mpp_frequencytype}
+                      title={row.fields.mpp_frequencytype ? 'Not used — frequency comes from FrequencyType' : undefined}
+                      onChange={(e) => updateField(row.id, 'mpp_numerator', blankableNumber(e.target.value))}
                     />
                   </td>
                   <td>
                     <input
-                      className="input"
+                      className={`input ${row.fields.mpp_frequencytype ? 'input-readonly' : ''}`}
                       type="number"
-                      value={row.fields.mpp_denominator}
-                      onChange={(e) => updateField(row.id, 'mpp_denominator', parseFloat(e.target.value) || 0)}
+                      value={row.fields.mpp_denominator ?? ''}
+                      disabled={!!row.fields.mpp_frequencytype}
+                      title={row.fields.mpp_frequencytype ? 'Not used — frequency comes from FrequencyType' : undefined}
+                      onChange={(e) => updateField(row.id, 'mpp_denominator', blankableNumber(e.target.value))}
                     />
                   </td>
                   <td>
@@ -468,7 +519,7 @@ export function ActivitiesManager({
                       className="input input-readonly"
                       value={row.fields.mpp_productcode}
                       readOnly
-                      title="Derived from Construction — edit Construction instead"
+                      title={`${row.fields.mpp_productcode || '—'}\nDerived from Construction — edit Construction instead`}
                     />
                   </td>
                   <td>

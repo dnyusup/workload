@@ -83,7 +83,22 @@ export interface ActivityConfig {
   loadingInterrupt?: boolean;
   /** Defect Repairing for the applicable areas is performed entirely at the Take Up zone. */
   defectTakeupOnly?: boolean;
+  /** Doffing sub-activities only. When set, the sub isn't due by Numerator/Denominator but on the
+   * first Doffing after the matching event happened on that machine (see FrequencyType). */
+  frequencyType?: FrequencyType;
 }
+
+export const FREQUENCY_TYPES = [
+  'FirstDoffAfterLoading',
+  'FirstDoffAfterLoadingAll',
+  'FirstDoffAfterLoadingPartial',
+  'FirstDoffAfterFractureRepairing',
+  'FirstDoffAfterDefectRepairing',
+  'FirstDoffAfterDiesChange',
+  'FirstDoffAfterInteruptions',
+  'FirstDoffOnShift',
+] as const;
+export type FrequencyType = (typeof FREQUENCY_TYPES)[number];
 
 export interface MovementParams {
   walkingSpeed: number; // meter/min

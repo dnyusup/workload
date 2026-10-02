@@ -157,6 +157,14 @@
           "x-ms-dataverse-type": "IntegerType",
           "x-ms-schema-name": "mpp_denominator"
         },
+        "mpp_frequencytype": {
+          "type": "string",
+          "title": "FrequencyType",
+          "x-ms-dataverse-attribute": "mpp_frequencytype",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "mpp_FrequencyType",
+          "maxLength": 100
+        },
         "mpp_laylength": {
           "type": "string",
           "title": "LayLength",

@@ -1341,15 +1341,21 @@
 }
 
 .activity-table th:nth-child(3),
-.activity-table td:nth-child(3),
+.activity-table td:nth-child(3) {
+  width: 230px;
+  min-width: 220px;
+}
+
 .activity-table th:nth-child(4),
-.activity-table td:nth-child(4) {
+.activity-table td:nth-child(4),
+.activity-table th:nth-child(5),
+.activity-table td:nth-child(5) {
   width: 78px;
   min-width: 72px;
 }
 
-.activity-table th:nth-child(5),
-.activity-table td:nth-child(5) {
+.activity-table th:nth-child(6),
+.activity-table td:nth-child(6) {
   width: 112px;
   min-width: 104px;
 }
@@ -1426,22 +1432,74 @@
   min-width: 170px;
 }
 
+.activities-table th:nth-child(4),
+.activities-table td:nth-child(4) {
+  width: 100px;
+  min-width: 96px;
+}
+
 .activities-table th:nth-child(5),
-.activities-table td:nth-child(5),
-.activities-table th:nth-child(6),
-.activities-table td:nth-child(6) {
+.activities-table td:nth-child(5) {
+  width: 190px;
+  min-width: 180px;
+}
+
+/* FrequencyType values are long; a smaller font keeps the column compact. */
+.activities-table td:nth-child(5) .input {
+  font-size: 0.72rem;
+}
+
+.activities-table th:nth-child(9),
+.activities-table td:nth-child(9) {
+  width: 140px;
+  min-width: 130px;
+}
+
+.activities-table th:nth-child(10),
+.activities-table td:nth-child(10) {
   width: 92px;
-  min-width: 92px;
+  min-width: 88px;
+}
+
+.activities-table th:nth-child(6),
+.activities-table td:nth-child(6),
+.activities-table th:nth-child(7),
+.activities-table td:nth-child(7) {
+  width: 64px;
+  min-width: 60px;
+}
+
+/* Num/Dem are narrow: drop the number spinners and side padding so the value itself fits. */
+.activities-table td:nth-child(6) .input,
+.activities-table td:nth-child(7) .input {
+  padding-left: 6px;
+  padding-right: 6px;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.activities-table td:nth-child(6) .input::-webkit-inner-spin-button,
+.activities-table td:nth-child(6) .input::-webkit-outer-spin-button,
+.activities-table td:nth-child(7) .input::-webkit-inner-spin-button,
+.activities-table td:nth-child(7) .input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .activities-table th:nth-child(11),
 .activities-table td:nth-child(11) {
-  width: 88px;
-  min-width: 88px;
+  width: 110px;
+  min-width: 104px;
 }
 
 .activities-table th:nth-child(12),
 .activities-table td:nth-child(12) {
+  width: 60px;
+  min-width: 56px;
+}
+
+.activities-table th:nth-child(13),
+.activities-table td:nth-child(13) {
   width: 82px;
   min-width: 82px;
 }
@@ -1471,7 +1529,8 @@
 }
 
 .activities-construction-filter .searchable-select {
-  width: 260px;
+  width: 420px;
+  max-width: 100%;
 }
 
 .table-remark {

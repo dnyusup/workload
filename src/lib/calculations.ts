@@ -112,6 +112,8 @@ export function applyRpc(baseMinutes: number, rpcPercent: number | undefined): n
 
 /** Cycle length in "spools completed" between occurrences of this activity. */
 export function activityCycleLength(activity: ActivityConfig): number {
+  // Event-triggered subs are never due by spool count (see frequencyTypes.ts).
+  if (activity.frequencyType) return Infinity;
   if (activity.numerator <= 0 || activity.denominator <= 0) return Infinity;
   const cycle = activity.denominator / activity.numerator;
   return cycle > 0 ? cycle : Infinity;

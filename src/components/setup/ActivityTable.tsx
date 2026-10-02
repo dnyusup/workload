@@ -1,10 +1,10 @@
-import type { ActivityConfig, MachCondition } from '../../types';
+import { FREQUENCY_TYPES, type ActivityConfig, type FrequencyType, type MachCondition } from '../../types';
 import { fractureRepairingDenominator } from '../../lib/calculations';
 import { Card } from '../ui/Card';
 import { Field, NumberInput } from '../ui/Field';
 
 const PROTECTED_ACTIVITY_KEYS = ['doffing', 'loading', 'fractureRepairing', 'diesChange', 'defectRepairing'];
-const SUB_ACTIVITY_DISABLED_KEYS = ['doffing', 'fractureRepairing', 'diesChange', 'defectRepairing'];
+const SUB_ACTIVITY_DISABLED_KEYS = ['fractureRepairing', 'diesChange', 'defectRepairing'];
 
 const SUB_ACTIVITY_DEFAULTS: Record<string, { label: string; timeMinutes: number; denominator: number }> = {
   doffing: { label: 'Doffing Partial', timeMinutes: 1, denominator: 2 },
@@ -105,6 +105,7 @@ export function ActivityTable({
             <tr>
               <th className="activity-column">Activity</th>
               <th>Time (min)</th>
+              <th>Frequency Type</th>
               <th>Numerator</th>
               <th>Denominator</th>
               <th>Mach Condition</th>
@@ -121,8 +122,11 @@ export function ActivityTable({
                   : fracturePerTon;
             const displayNumerator = a.numeratorAuto ? autoNumerator : a.numerator;
             const displayDenominator = a.denominatorAuto ? fractureRepairingDenominator(spoolWeight) : a.denominator;
-            const numeratorLocked = a.numeratorAuto || a.numeratorReadOnly;
-            const denominatorLocked = a.denominatorAuto || a.denominatorReadOnly;
+            // Only Doffing sub-activities can be event-triggered; their frequency then comes from
+            // the Frequency Type instead of Numerator/Denominator.
+            const allowsFrequencyType = a.parentKey === 'doffing';
+            const numeratorLocked = a.numeratorAuto || a.numeratorReadOnly || !!a.frequencyType;
+            const denominatorLocked = a.denominatorAuto || a.denominatorReadOnly || !!a.frequencyType;
             const remarks: string[] = [];
             if (a.numeratorAuto) {
               remarks.push(
@@ -151,6 +155,23 @@ export function ActivityTable({
                     value={a.timeMinutes}
                     onChange={(e) => update(a.key, { timeMinutes: parseFloat(e.target.value) })}
                   />
+                </td>
+                <td>
+                  <select
+                    className="input"
+                    value={a.frequencyType ?? ''}
+                    disabled={!allowsFrequencyType}
+                    title={allowsFrequencyType ? undefined : 'Only for Doffing sub-activities'}
+                    onChange={(e) => update(a.key, { frequencyType: (e.target.value as FrequencyType) || undefined })}
+                  >
+                    <option value="">{allowsFrequencyType ? '(Numerator/Denominator)' : '—'}</option>
+                    {allowsFrequencyType &&
+                      FREQUENCY_TYPES.map((type) => (
+                        <option key={type} value={type}>
+                          {type}
+                        </option>
+                      ))}
+                  </select>
                 </td>
                 <td>
                   <input

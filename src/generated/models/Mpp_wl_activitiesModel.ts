@@ -25,6 +25,7 @@ export interface Mpp_wl_activitiesBase {
   importsequencenumber?: number;
   mpp_constructiontype?: string;
   mpp_denominator?: number;
+  mpp_frequencytype?: string;
   mpp_laylength?: number;
   mpp_machcondition?: string;
   mpp_machinecode?: string;

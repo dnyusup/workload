@@ -1,5 +1,6 @@
 import type { ActivityConfig, AppConfig, LayoutMachine } from '../types';
-import { activityCycleLength, applyRpc, availableTimeMinutes, deriveMachineSpec, distanceMeters, extraBreakMinutes } from './calculations';
+import { applyRpc, availableTimeMinutes, deriveMachineSpec, distanceMeters, extraBreakMinutes } from './calculations';
+import { forecastCycleLength } from './frequencyTypes';
 import { generatePairedGrid, PAIR_GAP } from './gridLayout';
 import { machineWidthPx } from './layoutConstants';
 
@@ -36,8 +37,8 @@ function positiveFinite(value: number): number {
   return Number.isFinite(value) && value > 0 ? value : 0;
 }
 
-function minutesPerSpool(activity: ActivityConfig, rpcPercent: number | undefined): number {
-  const cycle = activityCycleLength(activity);
+function minutesPerSpool(activity: ActivityConfig, activities: ActivityConfig[], spoolsPerShift: number, rpcPercent: number | undefined): number {
+  const cycle = forecastCycleLength(activity, activities, spoolsPerShift);
   if (!Number.isFinite(cycle) || cycle <= 0) return 0;
   const eventRate = activity.key === 'diesChange'
     ? 1 / (cycle * AVERAGE_DIES_PER_CHANGE_EVENT)
@@ -45,9 +46,9 @@ function minutesPerSpool(activity: ActivityConfig, rpcPercent: number | undefine
   return eventRate * applyRpc(Math.max(0, activity.timeMinutes), rpcPercent);
 }
 
-function forecastScale(activities: ActivityConfig[], runtimePerSpool: number, rpcPercent: number | undefined): number {
+function forecastScale(activities: ActivityConfig[], runtimePerSpool: number, spoolsPerShift: number, rpcPercent: number | undefined): number {
   const stopMinutesPerSpool = activities.reduce(
-    (total, activity) => total + (activity.machCondition === 'run' ? 0 : minutesPerSpool(activity, rpcPercent)),
+    (total, activity) => total + (activity.machCondition === 'run' ? 0 : minutesPerSpool(activity, activities, spoolsPerShift, rpcPercent)),
     0,
   );
   return runtimePerSpool > 0 ? runtimePerSpool / (runtimePerSpool + stopMinutesPerSpool) : 1;
@@ -94,7 +95,7 @@ export function calculateSingleOperatorForecast(config: AppConfig): SingleOperat
   const derived = deriveMachineSpec(config.spec);
   const runtimePerSpool = positiveFinite(derived.runtimePerSpool);
   const expectedSpools = runtimePerSpool > 0 ? config.operator.shiftTime / runtimePerSpool : 0;
-  const scale = forecastScale(config.activities, runtimePerSpool, config.rpcPercent);
+  const scale = forecastScale(config.activities, runtimePerSpool, expectedSpools, config.rpcPercent);
   const availableMachines = assignedMachines.length;
 
   let plannedMinutes = 0;
@@ -134,7 +135,7 @@ export function calculateSingleOperatorForecast(config: AppConfig): SingleOperat
     let machineVisits = 0;
     config.activities.forEach((activity) => {
       if (GLOBAL_EVENT_ACTIVITIES.has(activity.key)) return;
-      const cycle = activityCycleLength(activity);
+      const cycle = forecastCycleLength(activity, config.activities, expectedSpools);
       if (!Number.isFinite(cycle) || cycle <= 0 || expectedSpools <= 0) return;
       const occurrences = expectedSpools / cycle;
       const quantityBased = activity.key === 'diesChange';
@@ -158,7 +159,7 @@ export function calculateSingleOperatorForecast(config: AppConfig): SingleOperat
     const totalExpectedSpools = expectedSpools * availableMachines;
     config.activities.forEach((activity) => {
       if (!GLOBAL_EVENT_ACTIVITIES.has(activity.key)) return;
-      const cycle = activityCycleLength(activity);
+      const cycle = forecastCycleLength(activity, config.activities, expectedSpools);
       if (!Number.isFinite(cycle) || cycle <= 0) return;
       const quantityBased = activity.key === 'diesChange';
       const totalQuantity = quantityBased ? totalExpectedSpools / cycle : 0;

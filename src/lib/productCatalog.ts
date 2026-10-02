@@ -3,6 +3,7 @@ import { Mpp_wl_activitiesmpp_taskname } from '../generated/models/Mpp_wl_activi
 import type { Mpp_wl_productses } from '../generated/models/Mpp_wl_productsesModel';
 import type { ActivityConfig, MachCondition, MachineSpecInput } from '../types';
 import { deriveMachineSpec, fractureRepairingDenominator } from './calculations';
+import { parseFrequencyType } from './frequencyTypes';
 
 export const WEIGHT_LOADING_AREAS = ['WW', 'BA', 'CA', 'IS', 'IP'];
 const DIES_CHANGE_AREAS = ['WW', 'BA', 'CA'];
@@ -322,6 +323,7 @@ export function buildActivitiesFromRows(
 
     if (taskKey !== 'diesChange' && taskKey !== 'defectRepairing') {
       subRows.forEach((row) => {
+      const frequencyType = taskKey === 'doffing' ? parseFrequencyType(row.mpp_frequencytype) : undefined;
       result.push({
         key: `${taskKey}-sub-${row.mpp_wl_activityid}`,
         parentKey: taskKey,
@@ -332,6 +334,7 @@ export function buildActivitiesFromRows(
         denominator: parseNumber(row.mpp_denominator, 1),
         denominatorAuto: false,
         machCondition: parseMachCondition(row.mpp_machcondition),
+        ...(frequencyType ? { frequencyType } : {}),
       });
       });
     }

@@ -20,6 +20,7 @@ import { machineWidthPx, machineHeightPx } from './layoutConstants';
 import { buildServiceSegments } from './machineZones';
 import { computeWalkingWaypoints, createRoutingRowCache, type RoutingRowCache } from './operatorRouting';
 import { createRng, randomSeed } from './rng';
+import { forecastCycleLength, frequencyTypeIsDue, triggerEventOf, type TriggerEvent } from './frequencyTypes';
 import { buildWallGraph, type WallGraph } from './wallRouting';
 
 /** How far operators keep from a wall's end when walking around it. */
@@ -95,6 +96,11 @@ export class SimulationEngine {
   private globalEventCounts = new Map<ActivityKey, number>();
   private plannedDies = 0;
   private scheduledDies = 0;
+  /** Per machine: trigger events completed since its last Doffing came due — what an
+   * event-triggered Doffing sub (ActivityConfig.frequencyType) waits for. */
+  private eventsSinceLastDoff = new Map<string, Set<TriggerEvent>>();
+  /** Machines whose first Doffing of this shift has already come due (FirstDoffOnShift). */
+  private doffedThisShift = new Set<string>();
 
   constructor(config: AppConfig) {
     this.config = config;
@@ -197,6 +203,16 @@ export class SimulationEngine {
         runtimePaused: false,
         runtimeRemainingMin: null,
       };
+
+      // A Doffing carried over from the previous shift is this shift's first one, so it brings the
+      // FirstDoffOnShift subs with it (a Doffing coming due later is handled in queueTasksForMachine).
+      if (savedCondition && machine.pendingTasks.some((task) => task.activity === 'doffing')) {
+        this.doffedThisShift.add(machine.id);
+        config.activities
+          .filter((activity) => activity.parentKey === 'doffing' && activity.frequencyType === 'FirstDoffOnShift')
+          .filter((activity) => !machine.pendingTasks.some((task) => task.activity === activity.key))
+          .forEach((activity) => machine.pendingTasks.push({ activity: activity.key, label: activity.label, timeMinutes: activity.timeMinutes }));
+      }
 
       // Simulate a realistic shift start: some machines are already stopped waiting on
       // unfinished work (e.g. left over from the previous operator), so the new operator
@@ -332,10 +348,14 @@ export class SimulationEngine {
 
   /** Expected occurrences of an activity per finished spool on one machine (0 if it never comes due). */
   private eventsPerSpool(key: ActivityKey): number {
+    const activity = this.config.activities.find((item) => item.key === key);
+    if (activity?.frequencyType) {
+      const forecastCycle = forecastCycleLength(activity, this.config.activities, this.config.operator.shiftTime / this.runtimePerSpool);
+      return Number.isFinite(forecastCycle) && forecastCycle > 0 ? 1 / forecastCycle : 0;
+    }
     const cycle = this.cycleLengths[key];
     if (!Number.isFinite(cycle) || cycle <= 0) return 0;
     let rate = 1 / cycle;
-    const activity = this.config.activities.find((item) => item.key === key);
     if (activity?.parentKey) {
       const parentCycle = this.cycleLengths[activity.parentKey];
       if (Number.isFinite(parentCycle) && parentCycle > 0) {
@@ -362,9 +382,13 @@ export class SimulationEngine {
   }
 
   private expectedEvents(_theoreticalSpoolsPerShift: number, key: ActivityKey): number {
-    const cycle = this.cycleLengths[key];
-    if (!Number.isFinite(cycle) || cycle <= 0) return 0;
+    const activity = this.config.activities.find((item) => item.key === key);
+    if (activity?.frequencyType === 'FirstDoffOnShift') {
+      return this.eventsPerSpool('doffing') > 0 ? this.assignedIds.size : 0;
+    }
     if (key === 'diesChange') {
+      const cycle = this.cycleLengths[key];
+      if (!Number.isFinite(cycle) || cycle <= 0) return 0;
       return this.plannedDies > 0 ? Math.ceil(this.plannedDies / AVERAGE_DIES_PER_CHANGE_EVENT) : 0;
     }
     const totalSpools = this.expectedSpoolsPerMachine() * this.assignedIds.size;
@@ -389,6 +413,14 @@ export class SimulationEngine {
   /** Run-condition activities are serviced without freezing the machine's production clock. */
   private isStopActivity(key: ActivityKey): boolean {
     return (this.findActivity(key).machCondition ?? 'stop') !== 'run';
+  }
+
+  private recordTriggerEvent(machineId: string, activity: ActivityKey) {
+    const event = triggerEventOf(activity);
+    if (!event) return;
+    const events = this.eventsSinceLastDoff.get(machineId) ?? new Set<TriggerEvent>();
+    events.add(event);
+    this.eventsSinceLastDoff.set(machineId, events);
   }
 
   private addLog(atMin: number, message: string) {
@@ -429,9 +461,18 @@ export class SimulationEngine {
       dueCounts.set(key, Number.isFinite(cycle) && cycle > 0 ? Math.floor(machine.spoolsCompleted / cycle) : 0);
       handledCounts.set(key, machine.completedByActivity[key] ?? 0);
     });
+    const doffingDue = (dueCounts.get('doffing') ?? 0) > (handledCounts.get('doffing') ?? 0);
+    const eventsSinceLastDoff = this.eventsSinceLastDoff.get(machine.id) ?? new Set<TriggerEvent>();
+    const firstDoffOfShift = doffingDue && !this.doffedThisShift.has(machine.id);
     this.config.activities.filter((activity) => !GLOBAL_EVENT_ACTIVITIES.has(activity.key)).forEach((activity) => {
       const { key } = activity;
       if (activity.loadingInterrupt) return;
+      if (activity.frequencyType) {
+        if (doffingDue && activity.parentKey === 'doffing' && frequencyTypeIsDue(activity.frequencyType, eventsSinceLastDoff, firstDoffOfShift)) {
+          newTasks.push({ activity: key, label: activity.label, timeMinutes: activity.timeMinutes });
+        }
+        return;
+      }
       const cycle = this.cycleLengths[key];
       if (!Number.isFinite(cycle) || cycle <= 0) return;
       const dueCount = dueCounts.get(key) ?? 0;
@@ -459,6 +500,11 @@ export class SimulationEngine {
         machine.completedByActivity[key] = dueCount;
       }
     });
+    // Events from here on count toward the NEXT Doffing, not this one.
+    if (doffingDue) {
+      this.eventsSinceLastDoff.delete(machine.id);
+      this.doffedThisShift.add(machine.id);
+    }
 
     this.combineLoadingPartials(newTasks);
 
@@ -1075,6 +1121,7 @@ export class SimulationEngine {
         machine.runtimeRemainingMin = null;
       }
       this.operator.serviceTasks.forEach((t, index, tasks) => {
+        this.recordTriggerEvent(machine.id, t.activity);
         this.metrics.completedByActivity[t.activity] += 1;
         if (t.activity === 'diesChange') this.metrics.diesChanged += t.quantity ?? 0;
         if (this.isEffectiveStopTask(index, tasks)) {
