@@ -62,6 +62,11 @@
           "entitySetName": "mpp_wl_outputmodelses",
           "logicalName": "mpp_wl_outputmodels",
           "isHidden": false
+        },
+        "wl_defaultvalues": {
+          "entitySetName": "mpp_wl_defaultvalues",
+          "logicalName": "mpp_wl_defaultvalue",
+          "isHidden": false
         }
       },
       "environmentVariableName": ""

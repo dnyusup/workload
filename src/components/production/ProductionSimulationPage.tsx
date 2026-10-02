@@ -37,6 +37,7 @@ import { ProductionRunView } from './ProductionRunView';
 import { CanvasLegendPanel } from './CanvasLegendPanel';
 import { buildCanvasLegendData, type LegendHover } from '../../lib/canvasLegend';
 import { isGroupMachine } from '../../lib/productionActivityRouting';
+import { loadDefaultValuesOrBuiltIn } from '../../lib/defaultValuesStore';
 
 const TASK_PRIORITY_OPTIONS: { value: TaskPriorityMode; label: string }[] = [
   { value: 'nearest', label: 'Nearest Task' },
@@ -315,6 +316,7 @@ export function ProductionSimulationPage() {
     setCreateProgress({ done: 0, total: layout.machines.length });
     setSummariesError(null);
     try {
+      const defaults = await loadDefaultValuesOrBuiltIn();
       const setup = await createProductionSetup(
         newSetupName.trim(),
         layout.machines,
@@ -323,6 +325,7 @@ export function ProductionSimulationPage() {
         layout.operatorStart,
         layout.walls,
         layout.remarks,
+        defaults,
       );
       setSummaries((prev) => [
         ...prev,

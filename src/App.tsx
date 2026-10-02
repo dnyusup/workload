@@ -14,6 +14,7 @@ import { OutputModelsManager } from './components/data/OutputModelsManager';
 import { LayoutManagerPage } from './components/layouts/LayoutManagerPage';
 import { ProductionSimulationPage } from './components/production/ProductionSimulationPage';
 import { UsersManagerPage } from './components/users/UsersManagerPage';
+import { SettingsPage } from './components/settings/SettingsPage';
 import './App.css';
 
 const ROLE_LABEL: Record<string, string> = { admin: 'Admin', contribute: 'Contribute', guest: 'Guest' };
@@ -25,6 +26,7 @@ const PAGE_DESCRIPTION: Record<AppPage, string> = {
   activities: 'Configure machine activity times and rules',
   outputModels: 'Review saved workload simulation outputs',
   users: 'Manage user access and roles',
+  settings: 'Application settings, such as default values for new setups',
 };
 
 function AppShell() {
@@ -133,6 +135,7 @@ function AppShell() {
             />
           )}
           {activePage === 'users' && <UsersManagerPage />}
+          {activePage === 'settings' && <SettingsPage />}
         </main>
       </div>
     </div>

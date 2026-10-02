@@ -3,6 +3,7 @@ import type { AppConfig } from '../types';
 import { AppConfigContext } from './appConfig';
 import { defaultActivities, deriveMachineSpec, ensureCoreActivities } from '../lib/calculations';
 import { generatePairedGrid } from '../lib/gridLayout';
+import { BUILT_IN_DEFAULTS } from '../lib/defaultValuesStore';
 
 const STORAGE_KEY = 'workload-sim-config-v1';
 
@@ -32,18 +33,18 @@ function defaultConfig(): AppConfig {
     spec: defaultSpec,
     operator: {
       machHandled: 20,
-      shiftTime: 480,
-      lunchTime: 30,
-      lunchStartAt: 240,
-      meetingTime: 15,
-      meetingStartAt: 420,
-      taskPriority: 'quickest',
+      shiftTime: BUILT_IN_DEFAULTS.shiftTime,
+      lunchTime: BUILT_IN_DEFAULTS.lunchTime,
+      lunchStartAt: BUILT_IN_DEFAULTS.lunchStartAt,
+      meetingTime: BUILT_IN_DEFAULTS.meetingTime,
+      meetingStartAt: BUILT_IN_DEFAULTS.meetingStartAt,
+      taskPriority: BUILT_IN_DEFAULTS.taskPriority,
     },
     activities: defaultActivities(derived.spoolWeight, defaultSpec.fracturePerTon),
-    movement: { walkingSpeed: 60, pixelsPerMeter: 20 },
+    movement: { walkingSpeed: BUILT_IN_DEFAULTS.walkingSpeed, pixelsPerMeter: BUILT_IN_DEFAULTS.pixelsPerMeter },
     layout,
     assignedMachineIds: layout.slice(0, 20).map((m) => m.id),
-    rpcPercent: 12,
+    rpcPercent: BUILT_IN_DEFAULTS.rpc,
   };
 }
 

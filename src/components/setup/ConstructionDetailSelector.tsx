@@ -8,6 +8,7 @@ import type { Mpp_wl_outputmodelses } from '../../generated/models/Mpp_wl_output
 import { useAppConfig } from '../../context/appConfig';
 import { fetchAllPages } from '../../lib/dataversePaging';
 import { buildActivitiesFromRows, isLoadingTaskRow, mapProductToSpec } from '../../lib/productCatalog';
+import { loadDefaultValuesOrBuiltIn } from '../../lib/defaultValuesStore';
 import { deriveMachineSpec, ensureCoreActivities } from '../../lib/calculations';
 import {
   previewAssignedMachineIds,
@@ -142,6 +143,7 @@ export function ConstructionDetailSelector({
       const derived = deriveMachineSpec(newSpec);
       const construction = product.mpp_constructioncode?.trim();
 
+      const defaultsPromise = loadDefaultValuesOrBuiltIn();
       let activityRows: Mpp_wl_activities[] = [];
       if (construction) {
         const result = await Mpp_wl_activitiesService.getAll({
@@ -160,11 +162,24 @@ export function ConstructionDetailSelector({
         setError(built.errors.join(' '));
       }
 
+      const defaults = await defaultsPromise;
       const nextConfig = {
         ...config,
-        // Extra "Other" breaks belong to the previous Construction's scenario — start clean (before
-        // the recommended machine count below is worked out).
-        operator: { ...config.operator, extraBreaks: [] },
+        // Shift/break/priority settings start from Setting → Default Values for every Construction;
+        // extra "Other" breaks belong to the previous Construction's scenario — start clean (both
+        // before the recommended machine count below is worked out).
+        operator: {
+          ...config.operator,
+          extraBreaks: [],
+          taskPriority: defaults.taskPriority,
+          shiftTime: defaults.shiftTime,
+          lunchTime: defaults.lunchTime,
+          lunchStartAt: defaults.lunchStartAt,
+          meetingTime: defaults.meetingTime,
+          meetingStartAt: defaults.meetingStartAt,
+        },
+        movement: { walkingSpeed: defaults.walkingSpeed, pixelsPerMeter: defaults.pixelsPerMeter },
+        rpcPercent: defaults.rpc,
         spec: newSpec,
         activities,
         selectedProductId: product.mpp_wl_productsid,

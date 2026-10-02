@@ -6,6 +6,7 @@
 // Models
 export * as CommonModels from './models/CommonModels';
 export * as Mpp_wl_activitiesModel from './models/Mpp_wl_activitiesModel';
+export * as Mpp_wl_defaultvaluesModel from './models/Mpp_wl_defaultvaluesModel';
 export * as Mpp_wl_layoutsesModel from './models/Mpp_wl_layoutsesModel';
 export * as Mpp_wl_outputmodelsesModel from './models/Mpp_wl_outputmodelsesModel';
 export * as Mpp_wl_productionsetupmachinesesModel from './models/Mpp_wl_productionsetupmachinesesModel';
@@ -17,6 +18,7 @@ export * as Office365UsersModel from './models/Office365UsersModel';
 
 // Services
 export * from './services/Mpp_wl_activitiesService';
+export * from './services/Mpp_wl_defaultvaluesService';
 export * from './services/Mpp_wl_layoutsesService';
 export * from './services/Mpp_wl_outputmodelsesService';
 export * from './services/Mpp_wl_productionsetupmachinesesService';

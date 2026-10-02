@@ -5,6 +5,7 @@ import { Mpp_wl_productionsetupmachinesesService } from '../generated/services/M
 import type { Mpp_wl_productionsetupmachineses } from '../generated/models/Mpp_wl_productionsetupmachinesesModel';
 import { fetchAllPages, escapeODataString, runWithConcurrency } from './dataversePaging';
 import { parseLayoutBlob, serializeLayoutBlob } from './savedLayoutsStore';
+import { BUILT_IN_DEFAULTS, type DefaultValues } from './defaultValuesStore';
 
 /** How many Dataverse requests to keep in flight at once for bulk create/update/delete loops
  * (one row per machine) — high enough to meaningfully cut wall-clock time versus fully
@@ -155,20 +156,21 @@ export async function createProductionSetup(
   operatorStart?: OperatorStartPoint,
   walls?: LayoutWall[],
   remarks?: LayoutRemark[],
+  defaults: DefaultValues = BUILT_IN_DEFAULTS,
 ): Promise<ProductionSetup> {
   const headerResult = await Mpp_wl_productionsetupsesService.create({
     mpp_name: name,
     mpp_layoutsnapshotjson: serializeLayoutBlob(layout, operatorStart, walls, remarks),
     mpp_creator_email: creatorEmail,
-    mpp_shifttime: 480,
-    mpp_lunchtime: 30,
-    mpp_lunchstartat: 240,
-    mpp_meetingtime: 15,
-    mpp_meetingstartat: 420,
-    mpp_taskpriority: 'quickest',
-    mpp_walkingspeed: 60,
-    mpp_pixelspermeter: 20,
-    mpp_rpc: 12,
+    mpp_shifttime: defaults.shiftTime,
+    mpp_lunchtime: defaults.lunchTime,
+    mpp_lunchstartat: defaults.lunchStartAt,
+    mpp_meetingtime: defaults.meetingTime,
+    mpp_meetingstartat: defaults.meetingStartAt,
+    mpp_taskpriority: defaults.taskPriority,
+    mpp_walkingspeed: defaults.walkingSpeed,
+    mpp_pixelspermeter: defaults.pixelsPerMeter,
+    mpp_rpc: defaults.rpc,
     // Active state, matching WL_Layouts' `0 | 1` statecode enum.
     statecode: 0,
   });
@@ -201,14 +203,14 @@ export async function createProductionSetup(
     remarks,
     operators: [],
     assignments: layout.map((m) => ({ machineId: m.id })),
-    shiftTime: 480,
-    lunchTime: 30,
-    lunchStartAt: 240,
-    meetingTime: 15,
-    meetingStartAt: 420,
-    taskPriority: 'quickest',
-    movement: { walkingSpeed: 60, pixelsPerMeter: 20 },
-    rpc: 12,
+    shiftTime: defaults.shiftTime,
+    lunchTime: defaults.lunchTime,
+    lunchStartAt: defaults.lunchStartAt,
+    meetingTime: defaults.meetingTime,
+    meetingStartAt: defaults.meetingStartAt,
+    taskPriority: defaults.taskPriority,
+    movement: { walkingSpeed: defaults.walkingSpeed, pixelsPerMeter: defaults.pixelsPerMeter },
+    rpc: defaults.rpc,
     updatedAt: Date.now(),
   };
 }
