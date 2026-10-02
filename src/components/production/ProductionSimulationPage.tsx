@@ -1916,25 +1916,43 @@ function ProductionSetupEditor({
               <tr>
                 <th>Machine</th>
                 <th>Construction</th>
+                <th>Group Name</th>
+                <th>Planning Type</th>
                 <th>Doffing</th>
                 <th>Loading</th>
                 <th>Fracture Repairing</th>
                 <th>Dies Change</th>
                 <th>Defect Repairing</th>
+                <th>Operators</th>
               </tr>
             </thead>
             <tbody>
               {setup.layout.map((m) => {
                 const a = assignmentByMachine.get(m.id);
+                const pool = a?.assignedOperatorIds ?? [];
                 return (
                   <tr key={m.id}>
                     <td>{m.label}</td>
                     <td>{a?.constructionDetailLabel ?? '—'}</td>
+                    <td>{a?.groupName ?? '—'}</td>
+                    <td>{a?.planningType ? planningTypeLabel(a.planningType) : '—'}</td>
                     <td>{operatorLabel(a?.doffingOperatorId)}</td>
                     <td>{operatorLabel(a?.loadingOperatorId)}</td>
                     <td>{operatorLabel(a?.fractureRepairingOperatorId)}</td>
                     <td>{operatorLabel(a?.diesChangeOperatorId)}</td>
                     <td>{operatorLabel(a?.defectRepairingOperatorId)}</td>
+                    <td>
+                      {pool.length === 0 ? (
+                        '—'
+                      ) : pool.length === 1 ? (
+                        operatorLabel(pool[0])
+                      ) : (
+                        // A pool can be long — keep the cell to a count, full list on hover.
+                        <span className="production-operators-cell" title={pool.map((id) => operatorLabel(id)).join('\n')}>
+                          {pool.length} operators
+                        </span>
+                      )}
+                    </td>
                   </tr>
                 );
               })}

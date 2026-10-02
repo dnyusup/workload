@@ -4784,3 +4784,8 @@
 .production-group-operators {
   margin: -4px 0 10px;
 }
+
+.production-operators-cell {
+  cursor: help;
+  border-bottom: 1px dotted #64748b;
+}
