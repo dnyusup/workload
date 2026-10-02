@@ -36,6 +36,7 @@ import { LayoutBuilder, type MachineAppearance } from '../setup/LayoutBuilder';
 import { ProductionRunView } from './ProductionRunView';
 import { CanvasLegendPanel } from './CanvasLegendPanel';
 import { buildCanvasLegendData, type LegendHover } from '../../lib/canvasLegend';
+import { isGroupMachine } from '../../lib/productionActivityRouting';
 
 const TASK_PRIORITY_OPTIONS: { value: TaskPriorityMode; label: string }[] = [
   { value: 'nearest', label: 'Nearest Task' },
@@ -52,6 +53,20 @@ const planningTypeLabel = (value: PlanningType) =>
 
 /** Order-insensitive key for comparing two operator-id lists (e.g. pending vs applied). */
 const operatorSetKey = (ids: string[] | undefined) => [...new Set(ids ?? [])].sort().join(';');
+
+const CLEARED_DEDICATED_OPERATORS: Partial<ProductionMachineAssignment> = {
+  doffingOperatorId: undefined,
+  loadingOperatorId: undefined,
+  fractureRepairingOperatorId: undefined,
+  diesChangeOperatorId: undefined,
+  defectRepairingOperatorId: undefined,
+};
+
+function dedicatedOperatorIds(a: ProductionMachineAssignment | undefined): string[] {
+  return [a?.doffingOperatorId, a?.loadingOperatorId, a?.fractureRepairingOperatorId, a?.diesChangeOperatorId, a?.defectRepairingOperatorId].filter(
+    (id): id is string => !!id,
+  );
+}
 
 function withoutOperator(ids: string[] | undefined, operatorId: string): string[] | undefined {
   const remaining = ids?.filter((id) => id !== operatorId);
@@ -179,7 +194,6 @@ export function ProductionSimulationPage() {
 
   const [savedLayouts, setSavedLayouts] = useState<SavedLayout[]>([]);
   const [creatingFromLayoutId, setCreatingFromLayoutId] = useState('');
-  const [newPlanningType, setNewPlanningType] = useState<PlanningType>('DedicatedMachines');
   const [newSetupName, setNewSetupName] = useState('');
   const [creatingSetup, setCreatingSetup] = useState(false);
   const [createProgress, setCreateProgress] = useState<{ done: number; total: number } | null>(null);
@@ -309,7 +323,6 @@ export function ProductionSimulationPage() {
         layout.operatorStart,
         layout.walls,
         layout.remarks,
-        newPlanningType,
       );
       setSummaries((prev) => [
         ...prev,
@@ -320,7 +333,6 @@ export function ProductionSimulationPage() {
           machineCount: setup.layout.length,
           updatedAt: setup.updatedAt,
           createdAt: setup.updatedAt,
-          planningType: setup.planningType,
           createdByEmail: user.email,
           createdByName: user.displayName,
         },
@@ -329,7 +341,6 @@ export function ProductionSimulationPage() {
       setSelectedId(setup.id);
       setNewSetupName('');
       setCreatingFromLayoutId('');
-      setNewPlanningType('DedicatedMachines');
     } catch (err) {
       setSummariesError(err instanceof Error ? err.message : 'Failed to create Production Setup.');
     } finally {
@@ -502,20 +513,6 @@ export function ProductionSimulationPage() {
                   </option>
                 ))}
               </select>
-              <select
-                className="input"
-                value={newPlanningType}
-                onChange={(e) => setNewPlanningType(e.target.value as PlanningType)}
-                disabled={creatingSetup}
-                title="DedicatedMachines: each activity on a machine has its own operator. MachinesGroup: a machine's operators share all of its work."
-                aria-label="Planning type"
-              >
-                {PLANNING_TYPE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
               <input
                 className="input"
                 placeholder="Setup name"
@@ -563,7 +560,7 @@ export function ProductionSimulationPage() {
                       >
                         <span className="layout-list-name">{s.name}</span>
                         <span className="layout-list-count">
-                          {s.machineCount} machines · {s.operatorCount} operators · {planningTypeLabel(s.planningType)}
+                          {s.machineCount} machines · {s.operatorCount} operators
                         </span>
                         <span className="layout-list-count">
                           By {creatorNameFor(s)} · {new Date(s.createdAt).toLocaleString()}
@@ -676,7 +673,7 @@ function ProductionSetupEditor({
   const [appliedFractureOperatorId, setAppliedFractureOperatorId] = useState('');
   const [appliedDiesChangeOperatorId, setAppliedDiesChangeOperatorId] = useState('');
   const [appliedDefectRepairingOperatorId, setAppliedDefectRepairingOperatorId] = useState('');
-  const groupMode = setup.planningType === 'MachinesGroup';
+  const [bulkPlanningType, setBulkPlanningType] = useState<PlanningType | ''>('');
   const [bulkGroupName, setBulkGroupName] = useState('');
   const [appliedGroupName, setAppliedGroupName] = useState('');
   const [bulkGroupOperatorIds, setBulkGroupOperatorIds] = useState<string[]>([]);
@@ -705,6 +702,17 @@ function ProductionSetupEditor({
       .map((product) => [product.mpp_wl_productsid, product.mpp_area!.trim().toUpperCase()]),
   );
   const operatorLabel = (id?: string) => (id ? setup.operators.find((o) => o.id === id)?.label ?? '—' : '—');
+
+  /** The planning type every one of these machines shares, or '' when none is set or they differ. */
+  const commonPlanningType = (machineIds: string[]): PlanningType | '' => {
+    const types = new Set(machineIds.map((id) => assignmentByMachine.get(id)?.planningType ?? ''));
+    return types.size === 1 ? [...types][0] : '';
+  };
+  const appliedPlanningType = commonPlanningType(selectedMachineIds);
+  /** Per-activity breakdown only means something for Dedicated + Split Task; otherwise one operator
+   * (or a shared pool) does every task, so only All Task is shown. */
+  const showsActivityOccupation = (planningType: PlanningType | '') =>
+    planningType === 'DedicatedMachines' && operatorAssignmentType === 'split';
 
   // Every Construction used in this setup gets its own fill (ordered like WL_Products, so it
   // matches the dropdown); every operator likewise gets its own.
@@ -779,6 +787,7 @@ function ProductionSetupEditor({
     setAppliedFractureOperatorId(fracture);
     setAppliedDiesChangeOperatorId(diesChange);
     setAppliedDefectRepairingOperatorId(defectRepairing);
+    setBulkPlanningType(commonPlanningType(selectedMachineIds));
     const groupName = commonValue((a) => a.groupName, selectedAssignments);
     const groupOperatorKey = commonValue((a) => operatorSetKey(a.assignedOperatorIds));
     const groupOperatorIds = groupOperatorKey ? groupOperatorKey.split(';') : [];
@@ -829,14 +838,17 @@ function ProductionSetupEditor({
     const area = a?.constructionDetailId ? areaByConstructionId.get(a.constructionDetailId) : undefined;
     const slots = operatorSlotsForArea(area);
     // Group machines split their body by assigned operator rather than by activity slot.
-    const handlers = groupMode ? a?.assignedOperatorIds ?? [] : slots.map((slot) => operatorForSlot(a, slot));
+    const groupMachine = isGroupMachine(a);
+    const handlers = groupMachine ? a?.assignedOperatorIds ?? [] : slots.map((slot) => operatorForSlot(a, slot));
     const constructionColor = a?.constructionDetailId ? constructionFillMap.get(a.constructionDetailId) : undefined;
     const tooltip = [
       `Machine ${m.label}`,
       `Construction: ${a?.constructionDetailLabel ?? '—'}`,
       `Area: ${area ?? '—'}`,
-      ...(groupMode
-        ? [`Group: ${a?.groupName ?? '—'}`, `Operators: ${handlers.map((id) => operatorLabel(id)).join(', ') || '—'}`]
+      `Group: ${a?.groupName ?? '—'}`,
+      `Planning Type: ${a?.planningType ? planningTypeLabel(a.planningType) : '—'}`,
+      ...(groupMachine
+        ? [`Operators: ${handlers.map((id) => operatorLabel(id)).join(', ') || '—'}`]
         : slots.map((slot, i) => `${slot.label}: ${operatorLabel(handlers[i])}`)),
     ].join('\n');
 
@@ -888,9 +900,8 @@ function ProductionSetupEditor({
       onHover={setLegendHover}
       hints={{
         construction: 'Construction Detail View: body color = Construction. Hover an entry to highlight its machines.',
-        operator: groupMode
-          ? 'Operator View: body split by the operators assigned to the machine; gray = no operator yet; border = Construction. Hover an entry to highlight its machines.'
-          : 'Operator View: body split Doffing | Loading | Fracture Repairing | Defect Repairing (CB/BU/SP/CH/CR) or Dies Change (WW/BA/CA); gray = not assigned yet; border = Construction. Hover an entry to highlight its machines.',
+        operator:
+          'Operator View: Dedicated Machines split the body Doffing | Loading | Fracture Repairing | Defect Repairing (CB/BU/SP/CH/CR) or Dies Change (WW/BA/CA); Machines Group split it by their assigned operators; gray = not assigned yet; border = Construction. Hover an entry to highlight its machines.',
       }}
     />
   );
@@ -931,37 +942,43 @@ function ProductionSetupEditor({
     }
   };
 
-  const unplanSelection = async () => {
-    if (selectedMachineIds.length === 0) return;
-    await applyBulk({
-      constructionDetailId: undefined,
-      constructionDetailLabel: undefined,
-      doffingOperatorId: undefined,
-      loadingOperatorId: undefined,
-      fractureRepairingOperatorId: undefined,
-      diesChangeOperatorId: undefined,
-      defectRepairingOperatorId: undefined,
-      groupName: undefined,
-      assignedOperatorIds: undefined,
-    });
-    setBulkGroupName('');
-    setAppliedGroupName('');
-    setBulkGroupOperatorIds([]);
-    setAppliedGroupOperatorIds([]);
-    setBulkConstructionId('');
+  const resetDedicatedOperatorFields = () => {
     setBulkMultiOperatorId('');
     setBulkDoffingOperatorId('');
     setBulkLoadingOperatorId('');
     setBulkFractureOperatorId('');
     setBulkDiesChangeOperatorId('');
     setBulkDefectRepairingOperatorId('');
-    setAppliedConstructionId('');
     setAppliedMultiOperatorId('');
     setAppliedDoffingOperatorId('');
     setAppliedLoadingOperatorId('');
     setAppliedFractureOperatorId('');
     setAppliedDiesChangeOperatorId('');
     setAppliedDefectRepairingOperatorId('');
+  };
+
+  const resetGroupOperatorFields = () => {
+    setBulkGroupOperatorIds([]);
+    setAppliedGroupOperatorIds([]);
+  };
+
+  const unplanSelection = async () => {
+    if (selectedMachineIds.length === 0) return;
+    await applyBulk({
+      constructionDetailId: undefined,
+      constructionDetailLabel: undefined,
+      ...CLEARED_DEDICATED_OPERATORS,
+      groupName: undefined,
+      planningType: undefined,
+      assignedOperatorIds: undefined,
+    });
+    setBulkConstructionId('');
+    setAppliedConstructionId('');
+    setBulkGroupName('');
+    setAppliedGroupName('');
+    setBulkPlanningType('');
+    resetDedicatedOperatorFields();
+    resetGroupOperatorFields();
   };
 
   const buildBulkOperatorLabels = (prefix: string, count: number): string[] => {
@@ -1069,6 +1086,32 @@ function ProductionSetupEditor({
     setAppliedMultiOperatorId(operatorId);
   };
 
+  /** Operators only make sense under their own planning type, so switching (or clearing) it drops
+   * the other type's operators instead of leaving stale ones behind. */
+  const applyPlanningType = (planningType: PlanningType | '') => {
+    const keepsDedicated = planningType === 'DedicatedMachines';
+    const keepsGroup = planningType === 'MachinesGroup';
+    const selected = selectedMachineIds.map((id) => assignmentByMachine.get(id));
+    const dropsOperators = selected.some(
+      (a) => (!keepsDedicated && dedicatedOperatorIds(a).length > 0) || (!keepsGroup && (a?.assignedOperatorIds?.length ?? 0) > 0),
+    );
+    if (
+      dropsOperators &&
+      !window.confirm('Changing the planning type removes the operators currently assigned to these machines. Continue?')
+    ) {
+      setBulkPlanningType(appliedPlanningType);
+      return;
+    }
+    void applyBulk({
+      planningType: planningType || undefined,
+      ...(keepsDedicated ? {} : CLEARED_DEDICATED_OPERATORS),
+      ...(keepsGroup ? {} : { assignedOperatorIds: undefined }),
+    });
+    setBulkPlanningType(planningType);
+    if (!keepsDedicated) resetDedicatedOperatorFields();
+    if (!keepsGroup) resetGroupOperatorFields();
+  };
+
   const applyGroupName = (groupName: string) => {
     void applyBulk({ groupName: groupName.trim() || undefined });
     setBulkGroupName(groupName.trim());
@@ -1118,27 +1161,31 @@ function ProductionSetupEditor({
   const operatorLabelOrBlank = (id?: string) => (id ? setup.operators.find((o) => o.id === id)?.label ?? '' : '');
 
   const exportCsv = () => {
-    const headers = groupMode
-      ? ['Machine', 'Construction Detail', 'Group Name', 'Operators']
-      : ['Machine', 'Construction Detail', 'Doffing', 'Loading', 'FractureRepairing', 'DiesChange', 'DefectRepairing'];
+    const headers = [
+      'Machine',
+      'Construction Detail',
+      'Group Name',
+      'Planning Type',
+      'Doffing',
+      'Loading',
+      'FractureRepairing',
+      'DiesChange',
+      'DefectRepairing',
+      'Operators',
+    ];
     const rows = setup.layout.map((m) => {
       const a = assignmentByMachine.get(m.id);
-      if (groupMode) {
-        return [
-          m.label,
-          a?.constructionDetailLabel ?? '',
-          a?.groupName ?? '',
-          (a?.assignedOperatorIds ?? []).map((id) => operatorLabelOrBlank(id)).filter(Boolean).join(';'),
-        ];
-      }
       return [
         m.label,
         a?.constructionDetailLabel ?? '',
+        a?.groupName ?? '',
+        a?.planningType ?? '',
         operatorLabelOrBlank(a?.doffingOperatorId),
         operatorLabelOrBlank(a?.loadingOperatorId),
         operatorLabelOrBlank(a?.fractureRepairingOperatorId),
         operatorLabelOrBlank(a?.diesChangeOperatorId),
         operatorLabelOrBlank(a?.defectRepairingOperatorId),
+        (a?.assignedOperatorIds ?? []).map((id) => operatorLabelOrBlank(id)).filter(Boolean).join(';'),
       ];
     });
     downloadCsv(`${setup.name.replace(/[^a-z0-9]+/gi, '_') || 'production-setup'}.csv`, headers, rows);
@@ -1166,6 +1213,7 @@ function ProductionSetupEditor({
       diesChange: header.indexOf('dieschange'),
       defectRepairing: header.indexOf('defectrepairing'),
       groupName: header.indexOf('group name'),
+      planningType: header.indexOf('planning type'),
       operators: header.indexOf('operators'),
     };
     if (colIndex.machine === -1) {
@@ -1203,20 +1251,25 @@ function ProductionSetupEditor({
           }
         }
       }
-      if (groupMode) {
-        if (colIndex.groupName !== -1) patch.groupName = cols[colIndex.groupName]?.trim() || undefined;
-        if (colIndex.operators !== -1) {
-          const labels = (cols[colIndex.operators] ?? '').split(';').map((label) => label.trim()).filter(Boolean);
-          const ids: string[] = [];
-          labels.forEach((label) => {
-            const operatorId = operatorIdByLabel.get(label);
-            if (operatorId) ids.push(operatorId);
-            else errors.push(`Row ${rowNum}: operator "${label}" is not in this setup — add that operator first.`);
-          });
-          patch.assignedOperatorIds = ids.length > 0 ? [...new Set(ids)] : undefined;
-        }
-        patchByMachineId.set(machineId, patch);
-        return;
+      if (colIndex.groupName !== -1) patch.groupName = cols[colIndex.groupName]?.trim() || undefined;
+      if (colIndex.planningType !== -1) {
+        const value = cols[colIndex.planningType]?.trim() ?? '';
+        const planningType = PLANNING_TYPE_OPTIONS.find(
+          (option) => option.value.toLowerCase() === value.toLowerCase() || option.label.toLowerCase() === value.toLowerCase(),
+        )?.value;
+        if (!value) patch.planningType = undefined;
+        else if (planningType) patch.planningType = planningType;
+        else errors.push(`Row ${rowNum}: planning type "${value}" must be DedicatedMachines or MachinesGroup.`);
+      }
+      if (colIndex.operators !== -1) {
+        const labels = (cols[colIndex.operators] ?? '').split(';').map((label) => label.trim()).filter(Boolean);
+        const ids: string[] = [];
+        labels.forEach((label) => {
+          const operatorId = operatorIdByLabel.get(label);
+          if (operatorId) ids.push(operatorId);
+          else errors.push(`Row ${rowNum}: operator "${label}" (Operators) is not in this setup — add that operator first.`);
+        });
+        patch.assignedOperatorIds = ids.length > 0 ? [...new Set(ids)] : undefined;
       }
       const operatorColumns: [keyof ProductionMachineAssignment, number, string][] = [
         ['doffingOperatorId', colIndex.doffing, 'Doffing'],
@@ -1309,7 +1362,7 @@ function ProductionSetupEditor({
     if (occupation.plannedMachineCount === 0) return ['No Construction assigned yet'];
     return [
       `All Task: ${formatOccupation(occupation.allTask)}`,
-      ...occupation.activities
+      ...(showsActivityOccupation(commonPlanningType(machineIds)) ? occupation.activities : [])
         .filter((row) => row.plannedMinutes > 0)
         .map((row) => `· ${row.label}: ${formatOccupation(row)}`),
     ];
@@ -1328,7 +1381,10 @@ function ProductionSetupEditor({
       {selectionOccupation.plannedMachineCount === 0 ? (
         <p className="data-manager-hint">Apply a Construction Detail to see man occupation.</p>
       ) : (
-        [selectionOccupation.allTask, ...selectionOccupation.activities.filter((row) => row.plannedMinutes > 0)].map(
+        [
+          selectionOccupation.allTask,
+          ...(showsActivityOccupation(appliedPlanningType) ? selectionOccupation.activities : []).filter((row) => row.plannedMinutes > 0),
+        ].map(
           (row) => (
             <div
               key={row.key}
@@ -1354,6 +1410,7 @@ function ProductionSetupEditor({
   const fractureDirty = bulkFractureOperatorId !== appliedFractureOperatorId;
   const diesChangeDirty = bulkDiesChangeOperatorId !== appliedDiesChangeOperatorId;
   const defectRepairingDirty = bulkDefectRepairingOperatorId !== appliedDefectRepairingOperatorId;
+  const planningTypeDirty = bulkPlanningType !== appliedPlanningType;
   const groupNameDirty = bulkGroupName.trim() !== appliedGroupName;
   const groupOperatorsDirty = operatorSetKey(bulkGroupOperatorIds) !== operatorSetKey(appliedGroupOperatorIds);
 
@@ -1372,6 +1429,156 @@ function ProductionSetupEditor({
     </Button>
   );
 
+  const dedicatedOperatorRows =
+    operatorAssignmentType === 'multi' ? (
+      <div className="production-assign-row">
+        <SearchableSelect
+          value={bulkMultiOperatorId}
+          onChange={setBulkMultiOperatorId}
+          placeholder="Select Operator"
+          searchPlaceholder="Search operator…"
+          options={operatorOptions}
+        />
+        <Button
+          variant="secondary"
+          className={multiOperatorDirty ? 'btn-pending' : ''}
+          onClick={() => applyMultiTaskOperator(bulkMultiOperatorId)}
+          disabled={selectedMachineIds.length === 0}
+          title="Apply the selected operator to all activities"
+        >
+          Apply
+        </Button>
+        {removeButton('Remove operator from all activities of selection', () => applyMultiTaskOperator(''))}
+      </div>
+    ) : (
+      <>
+        <div className="production-assign-row">
+          <SearchableSelect
+            value={bulkDoffingOperatorId}
+            onChange={setBulkDoffingOperatorId}
+            placeholder="Select Doffing Operator"
+            searchPlaceholder="Search operator…"
+            options={operatorOptions}
+          />
+          <Button
+            variant="secondary"
+            className={doffingDirty ? 'btn-pending' : ''}
+            onClick={() => {
+              applyBulk({ doffingOperatorId: bulkDoffingOperatorId || undefined }, { plannedOnly: true });
+              setAppliedDoffingOperatorId(bulkDoffingOperatorId);
+            }}
+            disabled={selectedMachineIds.length === 0}
+            title="Apply Doffing operator to selection"
+          >
+            Doff
+          </Button>
+          {removeButton('Remove Doffing operator from selection', () =>
+            removeTaskOperator('doffingOperatorId', setBulkDoffingOperatorId, setAppliedDoffingOperatorId),
+          )}
+        </div>
+        <div className="production-assign-row">
+          <SearchableSelect
+            value={bulkLoadingOperatorId}
+            onChange={setBulkLoadingOperatorId}
+            placeholder="Select Loading Operator"
+            searchPlaceholder="Search operator…"
+            options={operatorOptions}
+          />
+          <Button
+            variant="secondary"
+            className={loadingDirty ? 'btn-pending' : ''}
+            onClick={() => {
+              applyBulk({ loadingOperatorId: bulkLoadingOperatorId || undefined }, { plannedOnly: true });
+              setAppliedLoadingOperatorId(bulkLoadingOperatorId);
+            }}
+            disabled={selectedMachineIds.length === 0}
+            title="Apply Loading operator to selection"
+          >
+            Load
+          </Button>
+          {removeButton('Remove Loading operator from selection', () =>
+            removeTaskOperator('loadingOperatorId', setBulkLoadingOperatorId, setAppliedLoadingOperatorId),
+          )}
+        </div>
+        <div className="production-assign-row">
+          <SearchableSelect
+            value={bulkFractureOperatorId}
+            onChange={setBulkFractureOperatorId}
+            placeholder="Select Fracture Repairing Operator"
+            searchPlaceholder="Search operator…"
+            options={operatorOptions}
+          />
+          <Button
+            variant="secondary"
+            className={fractureDirty ? 'btn-pending' : ''}
+            onClick={() => {
+              applyBulk({ fractureRepairingOperatorId: bulkFractureOperatorId || undefined }, { plannedOnly: true });
+              setAppliedFractureOperatorId(bulkFractureOperatorId);
+            }}
+            disabled={selectedMachineIds.length === 0}
+            title="Apply Fracture Repairing operator to selection"
+          >
+            Fract
+          </Button>
+          {removeButton('Remove Fracture Repairing operator from selection', () =>
+            removeTaskOperator('fractureRepairingOperatorId', setBulkFractureOperatorId, setAppliedFractureOperatorId),
+          )}
+        </div>
+        <div className="production-assign-row">
+          <SearchableSelect
+            value={bulkDiesChangeOperatorId}
+            onChange={setBulkDiesChangeOperatorId}
+            placeholder="Select Dies Change Operator"
+            searchPlaceholder="Search operator…"
+            options={operatorOptions}
+          />
+          <Button
+            variant="secondary"
+            className={diesChangeDirty ? 'btn-pending' : ''}
+            onClick={() => {
+              applyBulk({ diesChangeOperatorId: bulkDiesChangeOperatorId || undefined }, { plannedOnly: true });
+              setAppliedDiesChangeOperatorId(bulkDiesChangeOperatorId);
+            }}
+            disabled={selectedMachineIds.length === 0}
+            title="Apply Dies Change operator to selection"
+          >
+            Dies
+          </Button>
+          {removeButton('Remove Dies Change operator from selection', () =>
+            removeTaskOperator('diesChangeOperatorId', setBulkDiesChangeOperatorId, setAppliedDiesChangeOperatorId),
+          )}
+        </div>
+        <div className="production-assign-row">
+          <SearchableSelect
+            value={bulkDefectRepairingOperatorId}
+            onChange={setBulkDefectRepairingOperatorId}
+            placeholder="Select Defect Repairing Operator"
+            searchPlaceholder="Search operator…"
+            options={operatorOptions}
+          />
+          <Button
+            variant="secondary"
+            className={defectRepairingDirty ? 'btn-pending' : ''}
+            onClick={() => {
+              applyBulk({ defectRepairingOperatorId: bulkDefectRepairingOperatorId || undefined }, { plannedOnly: true });
+              setAppliedDefectRepairingOperatorId(bulkDefectRepairingOperatorId);
+            }}
+            disabled={selectedMachineIds.length === 0}
+            title="Apply Defect Repairing operator to selection"
+          >
+            Defect
+          </Button>
+          {removeButton('Remove Defect Repairing operator from selection', () =>
+            removeTaskOperator(
+              'defectRepairingOperatorId',
+              setBulkDefectRepairingOperatorId,
+              setAppliedDefectRepairingOperatorId,
+            ),
+          )}
+        </div>
+      </>
+    );
+
   const assignSelectionCard = (
     <Card
       title={`Assign Selection (${selectedMachineIds.length} machine(s) selected)`}
@@ -1382,20 +1589,6 @@ function ProductionSetupEditor({
       }
     >
       {selectionOccupationPanel}
-      {!groupMode && (
-        <div className="production-assign-mode-row">
-          <label htmlFor="production-operator-assignment-type">Opr Assign Type</label>
-          <select
-            id="production-operator-assignment-type"
-            className="input"
-            value={operatorAssignmentType}
-            onChange={(event) => changeOperatorAssignmentType(event.target.value as OperatorAssignmentType)}
-          >
-            <option value="multi">Multi Task</option>
-            <option value="split">Split Task</option>
-          </select>
-        </div>
-      )}
       <div className="production-assign-row">
         <SearchableSelect
           value={bulkConstructionId}
@@ -1416,29 +1609,72 @@ function ProductionSetupEditor({
         </Button>
         {removeButton('Remove Construction Detail from selection', removeConstruction)}
       </div>
-      {groupMode ? (
+      <div className="production-assign-row">
+        <input
+          className="input"
+          placeholder="Group Name"
+          value={bulkGroupName}
+          onChange={(e) => setBulkGroupName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && selectedMachineIds.length > 0) applyGroupName(bulkGroupName);
+          }}
+        />
+        <Button
+          variant="secondary"
+          className={groupNameDirty ? 'btn-pending' : ''}
+          onClick={() => applyGroupName(bulkGroupName)}
+          disabled={selectedMachineIds.length === 0}
+          title="Apply group name to selection"
+        >
+          Apply
+        </Button>
+        {removeButton('Remove group name from selection', () => applyGroupName(''))}
+      </div>
+      <div className="production-assign-row">
+        <select
+          className="input"
+          value={bulkPlanningType}
+          onChange={(e) => setBulkPlanningType(e.target.value as PlanningType | '')}
+          aria-label="Planning Type"
+          title="Dedicated Machines: each activity has its own operator. Machines Group: the assigned operators share all of a machine's work."
+        >
+          <option value="">Select Planning Type</option>
+          {PLANNING_TYPE_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <Button
+          variant="secondary"
+          className={planningTypeDirty ? 'btn-pending' : ''}
+          onClick={() => applyPlanningType(bulkPlanningType)}
+          disabled={selectedMachineIds.length === 0 || !bulkPlanningType}
+          title="Apply planning type to selection"
+        >
+          Apply
+        </Button>
+        {removeButton('Remove planning type (and its operators) from selection', () => applyPlanningType(''))}
+      </div>
+      {appliedPlanningType === 'DedicatedMachines' && (
         <>
-          <div className="production-assign-row">
-            <input
+          <div className="production-assign-mode-row">
+            <label htmlFor="production-operator-assignment-type">Opr Assign Type</label>
+            <select
+              id="production-operator-assignment-type"
               className="input"
-              placeholder="Group Name"
-              value={bulkGroupName}
-              onChange={(e) => setBulkGroupName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && selectedMachineIds.length > 0) applyGroupName(bulkGroupName);
-              }}
-            />
-            <Button
-              variant="secondary"
-              className={groupNameDirty ? 'btn-pending' : ''}
-              onClick={() => applyGroupName(bulkGroupName)}
-              disabled={selectedMachineIds.length === 0}
-              title="Apply group name to selection"
+              value={operatorAssignmentType}
+              onChange={(event) => changeOperatorAssignmentType(event.target.value as OperatorAssignmentType)}
             >
-              Apply
-            </Button>
-            {removeButton('Remove group name from selection', () => applyGroupName(''))}
+              <option value="multi">Multi Task</option>
+              <option value="split">Split Task</option>
+            </select>
           </div>
+          {dedicatedOperatorRows}
+        </>
+      )}
+      {appliedPlanningType === 'MachinesGroup' && (
+        <>
           <div className="production-assign-row">
             <SearchableSelect
               value=""
@@ -1477,153 +1713,9 @@ function ProductionSetupEditor({
             </div>
           )}
         </>
-      ) : operatorAssignmentType === 'multi' ? (
-        <div className="production-assign-row">
-          <SearchableSelect
-            value={bulkMultiOperatorId}
-            onChange={setBulkMultiOperatorId}
-            placeholder="Select Operator"
-            searchPlaceholder="Search operator…"
-            options={operatorOptions}
-          />
-          <Button
-            variant="secondary"
-            className={multiOperatorDirty ? 'btn-pending' : ''}
-            onClick={() => applyMultiTaskOperator(bulkMultiOperatorId)}
-            disabled={selectedMachineIds.length === 0}
-            title="Apply the selected operator to all activities"
-          >
-            Apply
-          </Button>
-          {removeButton('Remove operator from all activities of selection', () => applyMultiTaskOperator(''))}
-        </div>
-      ) : (
-        <>
-          <div className="production-assign-row">
-            <SearchableSelect
-              value={bulkDoffingOperatorId}
-              onChange={setBulkDoffingOperatorId}
-              placeholder="Select Doffing Operator"
-              searchPlaceholder="Search operator…"
-              options={operatorOptions}
-            />
-            <Button
-              variant="secondary"
-              className={doffingDirty ? 'btn-pending' : ''}
-              onClick={() => {
-                applyBulk({ doffingOperatorId: bulkDoffingOperatorId || undefined }, { plannedOnly: true });
-                setAppliedDoffingOperatorId(bulkDoffingOperatorId);
-              }}
-              disabled={selectedMachineIds.length === 0}
-              title="Apply Doffing operator to selection"
-            >
-              Doff
-            </Button>
-            {removeButton('Remove Doffing operator from selection', () =>
-              removeTaskOperator('doffingOperatorId', setBulkDoffingOperatorId, setAppliedDoffingOperatorId),
-            )}
-          </div>
-          <div className="production-assign-row">
-            <SearchableSelect
-              value={bulkLoadingOperatorId}
-              onChange={setBulkLoadingOperatorId}
-              placeholder="Select Loading Operator"
-              searchPlaceholder="Search operator…"
-              options={operatorOptions}
-            />
-            <Button
-              variant="secondary"
-              className={loadingDirty ? 'btn-pending' : ''}
-              onClick={() => {
-                applyBulk({ loadingOperatorId: bulkLoadingOperatorId || undefined }, { plannedOnly: true });
-                setAppliedLoadingOperatorId(bulkLoadingOperatorId);
-              }}
-              disabled={selectedMachineIds.length === 0}
-              title="Apply Loading operator to selection"
-            >
-              Load
-            </Button>
-            {removeButton('Remove Loading operator from selection', () =>
-              removeTaskOperator('loadingOperatorId', setBulkLoadingOperatorId, setAppliedLoadingOperatorId),
-            )}
-          </div>
-          <div className="production-assign-row">
-            <SearchableSelect
-              value={bulkFractureOperatorId}
-              onChange={setBulkFractureOperatorId}
-              placeholder="Select Fracture Repairing Operator"
-              searchPlaceholder="Search operator…"
-              options={operatorOptions}
-            />
-            <Button
-              variant="secondary"
-              className={fractureDirty ? 'btn-pending' : ''}
-              onClick={() => {
-                applyBulk({ fractureRepairingOperatorId: bulkFractureOperatorId || undefined }, { plannedOnly: true });
-                setAppliedFractureOperatorId(bulkFractureOperatorId);
-              }}
-              disabled={selectedMachineIds.length === 0}
-              title="Apply Fracture Repairing operator to selection"
-            >
-              Fract
-            </Button>
-            {removeButton('Remove Fracture Repairing operator from selection', () =>
-              removeTaskOperator('fractureRepairingOperatorId', setBulkFractureOperatorId, setAppliedFractureOperatorId),
-            )}
-          </div>
-          <div className="production-assign-row">
-            <SearchableSelect
-              value={bulkDiesChangeOperatorId}
-              onChange={setBulkDiesChangeOperatorId}
-              placeholder="Select Dies Change Operator"
-              searchPlaceholder="Search operator…"
-              options={operatorOptions}
-            />
-            <Button
-              variant="secondary"
-              className={diesChangeDirty ? 'btn-pending' : ''}
-              onClick={() => {
-                applyBulk({ diesChangeOperatorId: bulkDiesChangeOperatorId || undefined }, { plannedOnly: true });
-                setAppliedDiesChangeOperatorId(bulkDiesChangeOperatorId);
-              }}
-              disabled={selectedMachineIds.length === 0}
-              title="Apply Dies Change operator to selection"
-            >
-              Dies
-            </Button>
-            {removeButton('Remove Dies Change operator from selection', () =>
-              removeTaskOperator('diesChangeOperatorId', setBulkDiesChangeOperatorId, setAppliedDiesChangeOperatorId),
-            )}
-          </div>
-          <div className="production-assign-row">
-            <SearchableSelect
-              value={bulkDefectRepairingOperatorId}
-              onChange={setBulkDefectRepairingOperatorId}
-              placeholder="Select Defect Repairing Operator"
-              searchPlaceholder="Search operator…"
-              options={operatorOptions}
-            />
-            <Button
-              variant="secondary"
-              className={defectRepairingDirty ? 'btn-pending' : ''}
-              onClick={() => {
-                applyBulk({ defectRepairingOperatorId: bulkDefectRepairingOperatorId || undefined }, { plannedOnly: true });
-                setAppliedDefectRepairingOperatorId(bulkDefectRepairingOperatorId);
-              }}
-              disabled={selectedMachineIds.length === 0}
-              title="Apply Defect Repairing operator to selection"
-            >
-              Defect
-            </Button>
-            {removeButton('Remove Defect Repairing operator from selection', () =>
-              removeTaskOperator(
-                'defectRepairingOperatorId',
-                setBulkDefectRepairingOperatorId,
-                setAppliedDefectRepairingOperatorId,
-              ),
-            )}
-          </div>
-        </>
+      )}
+      {!appliedPlanningType && selectedMachineIds.length > 0 && (
+        <p className="data-manager-hint">Apply a Planning Type to assign operators to the selection.</p>
       )}
     </Card>
   );
@@ -1640,9 +1732,6 @@ function ProductionSetupEditor({
         }
       >
         <div className="grid-2">
-          <Field label="Planning Type" hint="Chosen when the setup is created">
-            <input className="input input-readonly" readOnly value={planningTypeLabel(setup.planningType)} />
-          </Field>
           <Field label="Task Priority">
             <SelectInput value={setup.taskPriority} options={TASK_PRIORITY_OPTIONS} onChange={(v) => onHeaderChange({ taskPriority: v })} />
           </Field>

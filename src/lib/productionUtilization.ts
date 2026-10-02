@@ -1,6 +1,6 @@
 import type { ActivityKey, ProductionSetup } from '../types';
 import { availableTimeMinutes, distanceMeters } from './calculations';
-import { activityFamily, assignedOperatorIdForActivity, operatorSharesForActivity } from './productionActivityRouting';
+import { activityFamily, assignedOperatorIdForActivity, isGroupMachine, operatorSharesForActivity } from './productionActivityRouting';
 import type { ResolvedConstruction } from './productionConstructionResolver';
 
 const AVERAGE_DIES_PER_CHANGE_EVENT = (7 + 26) / 2;
@@ -125,7 +125,6 @@ export function calculatePlannedUtilization(
   >();
   const unresolvedMachineIds: string[] = [];
   let unassignedMinutes = 0;
-  const groupMode = setup.planningType === 'MachinesGroup';
 
   /** Books a contribution onto whoever handles it — split equally across a MachinesGroup
    * machine's operators — or onto unassigned demand when nobody does. */
@@ -135,7 +134,7 @@ export function calculatePlannedUtilization(
     visits: number,
     forecastScale: number,
   ) => {
-    const shares = operatorSharesForActivity(setup.planningType, assignment, contribution.activityKey).filter(({ operatorId }) =>
+    const shares = operatorSharesForActivity(assignment, contribution.activityKey).filter(({ operatorId }) =>
       operatorById.has(operatorId),
     );
     if (shares.length === 0) {
@@ -218,7 +217,7 @@ export function calculatePlannedUtilization(
         machineId: machine.id,
         machineLabel: machine.label,
         constructionLabel: construction.label,
-        operatorId: groupMode ? undefined : assignedOperatorIdForActivity(assignment, activity.key),
+        operatorId: isGroupMachine(assignment) ? undefined : assignedOperatorIdForActivity(assignment, activity.key),
         expectedOccurrences: eventCount,
         ...(quantityBased ? { expectedQuantity } : {}),
         plannedMinutes,
@@ -277,7 +276,7 @@ export function calculatePlannedUtilization(
           machineId: machine.machineId,
           machineLabel: machine.machineLabel,
           constructionLabel: machine.constructionLabel,
-          operatorId: groupMode ? undefined : assignedOperatorIdForActivity(assignment, activity.key),
+          operatorId: isGroupMachine(assignment) ? undefined : assignedOperatorIdForActivity(assignment, activity.key),
           expectedOccurrences: machineEventCount,
           ...(quantityBased ? { expectedQuantity: machineExpectedQuantity } : {}),
           plannedMinutes,
@@ -402,8 +401,6 @@ export function calculateSelectionOccupation(
     }));
   const scopedSetup: ProductionSetup = {
     ...setup,
-    // The hypothetical operators below are wired through the per-activity slots.
-    planningType: 'DedicatedMachines',
     layout,
     // Keep the real start point so walking is measured from where operators actually begin.
     operatorStart: setup.operatorStart ?? (setup.layout[0] ? { x: setup.layout[0].x, y: setup.layout[0].y } : undefined),

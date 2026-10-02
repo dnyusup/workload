@@ -1,4 +1,4 @@
-import type { ActivityKey, PlanningType, ProductionMachineAssignment } from '../types';
+import type { ActivityKey, ProductionMachineAssignment } from '../types';
 
 export type ProductionActivityFamily =
   | 'doffing'
@@ -49,14 +49,17 @@ export function machineOperatorIds(assignment: ProductionMachineAssignment | und
   ];
 }
 
+export function isGroupMachine(assignment: ProductionMachineAssignment | undefined): boolean {
+  return assignment?.planningType === 'MachinesGroup';
+}
+
 /** Who carries an activity's workload on this machine, and what fraction each carries — the whole
  * of it for the one dedicated operator, or an equal split across a MachinesGroup machine's pool. */
 export function operatorSharesForActivity(
-  planningType: PlanningType,
   assignment: ProductionMachineAssignment | undefined,
   activity: ActivityKey,
 ): { operatorId: string; share: number }[] {
-  if (planningType === 'MachinesGroup') {
+  if (isGroupMachine(assignment)) {
     const pool = [...new Set(assignment?.assignedOperatorIds ?? [])];
     return pool.map((operatorId) => ({ operatorId, share: 1 / pool.length }));
   }

@@ -1,8 +1,6 @@
-import { useState } from 'react';
 import type { AppConfig, DowntimeReason, SimulationState } from '../../types';
 import { deriveMachineSpec } from '../../lib/calculations';
 import { Card } from '../ui/Card';
-import { useAuth } from '../../context/auth';
 import { useFillToWindowBottom } from '../../hooks/useFillToWindowBottom';
 
 function fmt(v: number) {
@@ -48,12 +46,9 @@ function colorForDowntime(key: string, index: number) {
 }
 
 export function Dashboard({ state, config }: { state: SimulationState; config: AppConfig }) {
-  const { user } = useAuth();
   // Reaches the bottom of the window even when the canvas column is shorter (e.g. zoomed out).
   const { ref: dashboardOuterRef, minHeight: dashboardMinHeight } = useFillToWindowBottom<HTMLDivElement>();
   const { metrics, machines, log } = state;
-  const isAdmin = user.role === 'admin';
-  const [targetUtilization, setTargetUtilization] = useState(85);
   const busyMin = metrics.walkingMin + metrics.servicingMin;
   const workedElapsed = Math.max(0, metrics.clockMin - metrics.breakElapsedMin);
   const utilization = workedElapsed > 0 ? (busyMin / workedElapsed) * 100 : 0;
@@ -102,26 +97,6 @@ export function Dashboard({ state, config }: { state: SimulationState; config: A
   const runningTimeFracturePerTon = runningTimeTonage > 0 ? totalFractureCount / runningTimeTonage : 0;
   const runningTimeDiesPerTon = runningTimeTonage > 0 ? metrics.diesChanged / runningTimeTonage : 0;
   const runningTimeDefectPerTon = runningTimeTonage > 0 ? totalDefectRepairingCount / runningTimeTonage : 0;
-
-  let verdict = 'Operator capacity is sufficient.';
-  let verdictClass = 'verdict-ok';
-  if (utilization >= 100) {
-    verdict = 'Operator overload — consider adding an operator or reducing machines.';
-    verdictClass = 'verdict-bad';
-  } else if (utilization >= 95) {
-    verdict = 'High workload — approaching capacity limit.';
-    verdictClass = 'verdict-warn';
-  } else if (utilization < 75) {
-    verdict = 'Need operator optimization — operator is underutilized.';
-    verdictClass = 'verdict-info';
-  }
-
-  // Sizes #MachHandled so utilization would land back around the target — shown for every verdict
-  // except when it would round to zero (i.e. already right at the target).
-  const machRecommendation =
-    utilization > 0 && metrics.assignedMachineCount > 0
-      ? Math.round(metrics.assignedMachineCount * (targetUtilization / utilization)) - metrics.assignedMachineCount
-      : 0;
 
   const rpcMin = Object.entries(metrics.servicingByActivity)
     .filter(([key]) => key.startsWith('rpc:'))
@@ -269,30 +244,6 @@ export function Dashboard({ state, config }: { state: SimulationState; config: A
             {fmtTime(metrics.idleMin)} ({fmt(utilizationPct(metrics.idleMin))}%)
           </span>
         </div>
-        <div className={`verdict ${verdictClass}`}>{verdict}</div>
-        <label className="target-utilization-field">
-          <span>Target Man Occupation</span>
-          <span className="target-utilization-input-group">
-            <input
-              className="input input-sm"
-              type="number"
-              min={1}
-              max={100}
-              value={targetUtilization}
-              onChange={(e) => {
-                const value = parseFloat(e.target.value);
-                if (Number.isFinite(value)) setTargetUtilization(Math.min(100, Math.max(1, value)));
-              }}
-            />
-            <span>%</span>
-          </span>
-        </label>
-        {isAdmin && machRecommendation !== 0 && (
-          <div className="verdict-recommendation">
-            #Mach Recommendation: {machRecommendation > 0 ? `+${machRecommendation}` : machRecommendation} machine
-            {Math.abs(machRecommendation) > 1 ? 's' : ''} (target ~{targetUtilization}% man occupation)
-          </div>
-        )}
       </Card>
 
       <Card

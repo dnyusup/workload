@@ -2,6 +2,9 @@ import type { ProductionSimulationState } from '../types';
 
 const NON_SERVICE_KINDS = new Set(['walking', 'lunch', 'meeting', 'otherBreak', 'idle']);
 
+/** serviceBreakdown label every RPC segment is grouped under, whatever activity it followed. */
+export const RPC_OCCUPATION_LABEL = 'Others (RPC)';
+
 /** Same detail level as the single-operator Simulator's Man Occupation card (Man Occupation %,
  * Walking, Total service, per-activity service breakdown, Idle) — derived straight from the
  * timeline segments of whichever operator(s) are passed in, so the same function covers both the
@@ -28,7 +31,7 @@ export function summarizeOperatorTimelines(
       // RPC segments are tagged per activity (`rpc:doffing`, `rpc:loading`, …) so the timeline can
       // tell them apart from the activity's own time — but here they're grouped into one row
       // instead of looking up a label for the raw `rpc:*` key, which activityLabel wouldn't find.
-      const label = s.kind.startsWith('rpc:') ? 'Others (RPC)' : activityLabel(s.kind);
+      const label = s.kind.startsWith('rpc:') ? RPC_OCCUPATION_LABEL : activityLabel(s.kind);
       const minutes = Math.max(0, Math.min(s.endMin, timelineDuration) - s.startMin);
       serviceLabelTotals.set(label, (serviceLabelTotals.get(label) ?? 0) + minutes);
     });

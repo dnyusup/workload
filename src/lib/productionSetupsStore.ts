@@ -18,7 +18,6 @@ export interface ProductionSetupSummary {
   machineCount: number;
   updatedAt: number;
   createdAt: number;
-  planningType: PlanningType;
   /** Who created this setup, by email — stamped from the signed-in user at creation time
    * (mpp_creator_email). Primary ownership key (Contribute only sees/deletes their own); falls
    * back to `createdByName` for setups created before this column existed. */
@@ -41,11 +40,11 @@ function parseAssignedOperators(value: string | undefined | null): string[] | un
   return ids.length > 0 ? ids : undefined;
 }
 
-function parsePlanningType(value: string | undefined | null): PlanningType {
-  return value === 'MachinesGroup' ? 'MachinesGroup' : 'DedicatedMachines';
+function parsePlanningType(value: string | undefined | null): PlanningType | undefined {
+  return value === 'MachinesGroup' || value === 'DedicatedMachines' ? value : undefined;
 }
 
-function machineRowToAssignment(row: Mpp_wl_productionsetupmachineses,constructionLabelById: Map<string, string>): ProductionMachineAssignment {
+function machineRowToAssignment(row: Mpp_wl_productionsetupmachineses, constructionLabelById: Map<string, string>): ProductionMachineAssignment {
   return {
     machineId: row.mpp_machineid,
     constructionDetailId: row.mpp_constructiondetailid ?? undefined,
@@ -56,6 +55,7 @@ function machineRowToAssignment(row: Mpp_wl_productionsetupmachineses,constructi
     diesChangeOperatorId: row.mpp_dieschangeoperatorid ?? undefined,
     defectRepairingOperatorId: row.mpp_defectrepairingoperatorid ?? undefined,
     groupName: row.mpp_groupname?.trim() || undefined,
+    planningType: parsePlanningType(row.mpp_planningtype),
     assignedOperatorIds: parseAssignedOperators(row.mpp_assignedopr),
   };
 }
@@ -90,7 +90,6 @@ export async function listProductionSetupSummaries(): Promise<ProductionSetupSum
     machineCount: machineCounts.get(row.mpp_wl_productionsetupsid) ?? 0,
     updatedAt: row.modifiedon ? new Date(row.modifiedon).getTime() : Date.now(),
     createdAt: row.createdon ? new Date(row.createdon).getTime() : Date.now(),
-    planningType: parsePlanningType(row.mpp_planningtype),
     createdByEmail: row.mpp_creator_email ?? '',
     createdByName: row.createdbyname ?? '',
   }));
@@ -132,7 +131,6 @@ export async function loadProductionSetup(id: string, constructionLabelById: Map
     remarks,
     operators,
     assignments,
-    planningType: parsePlanningType(header.mpp_planningtype),
     shiftTime: header.mpp_shifttime ?? 480,
     lunchTime: header.mpp_lunchtime ?? 30,
     lunchStartAt: header.mpp_lunchstartat ?? 240,
@@ -157,11 +155,9 @@ export async function createProductionSetup(
   operatorStart?: OperatorStartPoint,
   walls?: LayoutWall[],
   remarks?: LayoutRemark[],
-  planningType: PlanningType = 'DedicatedMachines',
 ): Promise<ProductionSetup> {
   const headerResult = await Mpp_wl_productionsetupsesService.create({
     mpp_name: name,
-    mpp_planningtype: planningType,
     mpp_layoutsnapshotjson: serializeLayoutBlob(layout, operatorStart, walls, remarks),
     mpp_creator_email: creatorEmail,
     mpp_shifttime: 480,
@@ -205,7 +201,6 @@ export async function createProductionSetup(
     remarks,
     operators: [],
     assignments: layout.map((m) => ({ machineId: m.id })),
-    planningType,
     shiftTime: 480,
     lunchTime: 30,
     lunchStartAt: 240,
@@ -346,6 +341,7 @@ export async function updateMachineAssignments(
       if ('diesChangeOperatorId' in patch) fields.mpp_dieschangeoperatorid = patch.diesChangeOperatorId ?? null;
       if ('defectRepairingOperatorId' in patch) fields.mpp_defectrepairingoperatorid = patch.defectRepairingOperatorId ?? null;
       if ('groupName' in patch) fields.mpp_groupname = patch.groupName?.trim() || null;
+      if ('planningType' in patch) fields.mpp_planningtype = patch.planningType ?? null;
       if ('assignedOperatorIds' in patch) {
         fields.mpp_assignedopr = patch.assignedOperatorIds?.length ? patch.assignedOperatorIds.join(ASSIGNED_OPERATOR_SEPARATOR) : null;
       }

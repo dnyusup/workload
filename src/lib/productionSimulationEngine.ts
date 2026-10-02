@@ -21,7 +21,7 @@ import { buildWallGraph, type WallGraph } from './wallRouting';
 
 /** How far operators keep from a wall's end when walking around it. */
 const WALL_CLEARANCE_METERS = 0.5;
-import { activityFamily, assignedOperatorIdForActivity } from './productionActivityRouting';
+import { activityFamily, assignedOperatorIdForActivity, isGroupMachine } from './productionActivityRouting';
 import type { ResolvedConstruction } from './productionConstructionResolver';
 
 function emptyCounts(activities: ActivityConfig[]): Record<ActivityKey, number> {
@@ -128,15 +128,14 @@ export class ProductionSimulationEngine {
   private machinesByOperator = new Map<string, ProdMachine[]>();
   private machineById = new Map<string, ProdMachine>();
   private assignmentByMachineId = new Map<string, ProductionMachineAssignment>();
-  /** MachinesGroup planning: tasks carry no assignedOperatorId — any operator in the machine's
-   * pool takes all of its pending work, and the machine lock keeps two of them from servicing it at
-   * once. DedicatedMachines keeps the per-activity routing. */
-  private readonly groupMode: boolean;
+  /** MachinesGroup machines only (a machine is in here exactly when it's planned as a group): its
+   * tasks carry no assignedOperatorId — any operator in the pool takes all of its pending work, and
+   * the machine lock keeps two of them from servicing it at once. Every other machine keeps the
+   * per-activity DedicatedMachines routing. */
   private operatorPoolByMachineId = new Map<string, Set<string>>();
 
   constructor(setup: ProductionSetup, resolved: Map<string, ResolvedConstruction>, resolveErrors: string[] = []) {
     this.setup = setup;
-    this.groupMode = setup.planningType === 'MachinesGroup';
     this.wallGraph = buildWallGraph(setup.walls ?? [], WALL_CLEARANCE_METERS * (setup.movement.pixelsPerMeter || 20));
     this.warnings.push(...resolveErrors);
 
@@ -220,7 +219,8 @@ export class ProductionSimulationEngine {
       this.machineById.set(m.id, m);
       const assignment = this.assignmentByMachineId.get(m.id);
       if (!assignment) return;
-      const operatorIds = this.groupMode
+      const groupMachine = isGroupMachine(assignment);
+      const operatorIds = groupMachine
         ? new Set((assignment.assignedOperatorIds ?? []).filter((id) => knownOperatorIds.has(id)))
         : new Set(
             [
@@ -231,7 +231,7 @@ export class ProductionSimulationEngine {
               assignment.defectRepairingOperatorId,
             ].filter((id): id is string => !!id),
           );
-      if (this.groupMode) this.operatorPoolByMachineId.set(m.id, operatorIds);
+      if (groupMachine) this.operatorPoolByMachineId.set(m.id, operatorIds);
       operatorIds.forEach((id) => {
         const list = this.machinesByOperator.get(id);
         if (list) list.push(m);
@@ -361,15 +361,15 @@ export class ProductionSimulationEngine {
   }
 
   private operatorIdForTask(machineAssignment: ProdMachine, activity: ActivityKey): string | undefined {
-    if (this.groupMode) return undefined;
+    if (this.operatorPoolByMachineId.has(machineAssignment.id)) return undefined;
     return assignedOperatorIdForActivity(this.assignmentByMachineId.get(machineAssignment.id), activity);
   }
 
   /** Whether anyone will ever pick this task up — its own operator, or (MachinesGroup) anyone in
    * the machine's pool. */
   private hasHandler(machine: ProdMachine, assignedOperatorId: string | undefined): boolean {
-    if (this.groupMode) return (this.operatorPoolByMachineId.get(machine.id)?.size ?? 0) > 0;
-    return !!assignedOperatorId;
+    const pool = this.operatorPoolByMachineId.get(machine.id);
+    return pool ? pool.size > 0 : !!assignedOperatorId;
   }
 
   /** If both Loading Partial1 and Partial2 just came due together on the same machine, the
@@ -697,10 +697,11 @@ export class ProductionSimulationEngine {
   }
 
   private tasksFor(operatorId: string, machine: ProdMachine): PendingTask[] {
-    if (this.groupMode) {
+    const pool = this.operatorPoolByMachineId.get(machine.id);
+    if (pool) {
       // One operator does every task in one visit, so Doffing-before-Loading ordering is already
       // natural and isTaskReady's cross-operator wait doesn't apply.
-      return this.operatorPoolByMachineId.get(machine.id)?.has(operatorId) ? [...machine.pendingTasks] : [];
+      return pool.has(operatorId) ? [...machine.pendingTasks] : [];
     }
     return machine.pendingTasks.filter((t) => t.assignedOperatorId === operatorId && this.isTaskReady(machine, t));
   }

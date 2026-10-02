@@ -25,6 +25,7 @@ export interface Mpp_wl_productionsetupmachinesesBase {
   mpp_loadingoperatorid?: string;
   mpp_machineid: string;
   mpp_machinelabel?: string;
+  mpp_planningtype?: string;
   mpp_productionsetupid?: string;
   mpp_wl_productionsetupmachinesid: string;
   overriddencreatedon?: string;

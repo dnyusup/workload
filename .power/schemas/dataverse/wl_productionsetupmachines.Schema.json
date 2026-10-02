@@ -223,6 +223,14 @@
           "x-ms-schema-name": "mpp_machinelabel",
           "maxLength": 100
         },
+        "mpp_planningtype": {
+          "type": "string",
+          "title": "PlanningType",
+          "x-ms-dataverse-attribute": "mpp_planningtype",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "mpp_PlanningType",
+          "maxLength": 100
+        },
         "mpp_productionsetupid": {
           "type": "string",
           "title": "productionsetupid",

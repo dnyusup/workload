@@ -397,10 +397,13 @@ export interface ProductionMachineAssignment {
   fractureRepairingOperatorId?: string;
   diesChangeOperatorId?: string;
   defectRepairingOperatorId?: string;
-  /** MachinesGroup planning only — a free-text label for the machines handled together. */
+  /** Free-text label for machines planned together. */
   groupName?: string;
-  /** MachinesGroup planning only — every operator that may handle this machine. Any of them takes
-   * whatever task comes due on it; the per-activity *OperatorId slots above stay empty. */
+  /** Undefined = not chosen yet; the simulation then routes it like DedicatedMachines, so setups
+   * planned before this existed keep running. */
+  planningType?: PlanningType;
+  /** MachinesGroup only — every operator that may handle this machine. Any of them takes whatever
+   * task comes due on it; the per-activity *OperatorId slots above stay empty. */
   assignedOperatorIds?: string[];
 }
 
@@ -425,8 +428,6 @@ export interface ProductionSetup {
   remarks?: LayoutRemark[];
   operators: ProductionOperator[];
   assignments: ProductionMachineAssignment[];
-  /** Chosen when the setup is created. */
-  planningType: PlanningType;
   shiftTime: number;
   lunchTime: number;
   lunchStartAt: number;

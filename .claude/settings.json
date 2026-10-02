@@ -104,7 +104,8 @@
       "Bash(echo \"LINT:$?\")",
       "Bash(ls \"C:\\\\Users\\\\deni.yusup\\\\.claude\\\\projects\\\\c--Users-deni-yusup-powerapps-code-WorkLoad\\\\memory\\\\\")",
       "Read(//c/Users/deni.yusup/.claude/projects/c--Users-deni-yusup-powerapps-code-WorkLoad/**)",
-      "Read(//c/Users/deni.yusup/.claude/projects/c--Users-deni-yusup-powerapps-code-WorkLoad/memory/**)"
+      "Read(//c/Users/deni.yusup/.claude/projects/c--Users-deni-yusup-powerapps-code-WorkLoad/memory/**)",
+      "Bash(grep -n \"^    </Card>$\" src/components/production/ProductionSimulationPage.tsx)"
     ]
   }
 }

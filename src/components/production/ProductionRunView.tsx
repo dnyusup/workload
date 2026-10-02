@@ -3,7 +3,6 @@ import { machineLocalFrame } from '../../lib/layoutConstants';
 import type { ProductionMachineAssignment, ProductionSetup, ProductionSimulationState } from '../../types';
 import type { ResolvedConstruction } from '../../lib/productionConstructionResolver';
 import { useProductionSimulation } from '../../hooks/useProductionSimulation';
-import { useAuth } from '../../context/auth';
 
 const HIDDEN_SPOOL_LABEL_AREAS = new Set(['WW', 'IS', 'IP', 'BA', 'CA']);
 import { MachineZoneLabels } from '../ui/MachineZoneLabels';
@@ -20,8 +19,8 @@ import {
 import { buildSetupConstructionColorMap } from '../../lib/constructionColors';
 import { isFinishProductSpoolType } from '../../lib/productType';
 import { estimateProductionEvents } from '../../lib/productionEstimate';
-import { summarizeOperatorTimelines } from '../../lib/operatorOccupation';
-import { machineOperatorIds } from '../../lib/productionActivityRouting';
+import { RPC_OCCUPATION_LABEL, summarizeOperatorTimelines } from '../../lib/operatorOccupation';
+import { isGroupMachine, machineOperatorIds } from '../../lib/productionActivityRouting';
 import { buildCanvasLegendData, type LegendHover } from '../../lib/canvasLegend';
 import { CanvasLegendPanel } from './CanvasLegendPanel';
 import { ProductionReportView } from './ProductionReportView';
@@ -102,14 +101,6 @@ function colorForDowntime(label: string, index: number) {
   return known[label] ?? downtimePalette[index % downtimePalette.length];
 }
 
-function verdictFor(utilization: number): { text: string; className: string } {
-  if (utilization >= 100) return { text: 'Overload — consider adding operators or reducing machines.', className: 'verdict-bad' };
-  if (utilization >= 95) return { text: 'High workload — approaching capacity limit.', className: 'verdict-warn' };
-  if (utilization < 75) return { text: 'Needs optimization — operator is underutilized.', className: 'verdict-info' };
-  return { text: 'Operator capacity is sufficient.', className: 'verdict-ok' };
-}
-
-
 function operatorStatusLabel(op: ProductionSimulationState['operators'][number]) {
   if (op.phase === 'break') return `${op.breakLabel} (${Math.ceil(op.breakRemainingMin)}m)`;
   if (op.phase === 'walking') return `→ Machine ${op.targetMachineLabel}`;
@@ -133,11 +124,8 @@ export function ProductionRunView({
   allProductIds: string[];
   onBack: () => void;
 }) {
-  const { user } = useAuth();
   const { state, playing, speed, controls } = useProductionSimulation(setup, resolved, resolveErrors);
-  const isAdmin = user.role === 'admin';
   const { machines, operators, metrics } = state;
-  const [targetUtilization, setTargetUtilization] = useState(85);
   // Reject % = the OEE Quality loss. Display-only (the engine is unchanged): it scales tonnage down
   // to GOOD tonnage and multiplies into every OEE figure. Plain state — back to 0 per page visit.
   const [rejectPercent, setRejectPercent] = useState(0);
@@ -521,57 +509,6 @@ export function ProductionRunView({
   const utilOperators = utilFilterOperatorId ? operators.filter((op) => op.id === utilFilterOperatorId) : displayedOperators;
   const utilFilterLabel = utilFilterOperatorId ? operators.find((op) => op.id === utilFilterOperatorId)?.label ?? null : null;
   const utilSummary = summarizeOperatorTimelines(utilOperators, timelineDuration, activityLabel);
-  const utilVerdict = verdictFor(utilSummary.utilization);
-
-  // Observed utilization depends on how this ONE simulated run happened to play out — routing
-  // detours, queue order, which operator got assigned too many machines, etc. That's exactly the
-  // kind of noise the recommendation should look past: instead it's computed straight from each
-  // PLANNED machine's own Construction (cycle lengths + activity times), the same numbers the
-  // engine itself uses to decide when work is due — so "operator assigned to too many machines"
-  // shows up directly as too much theoretical demand for the team size, regardless of how the
-  // queueing/waiting actually unfolded. Machines with no Construction assigned are excluded
-  // entirely (unplanned = not real workload yet).
-  const theoreticalRequiredMinutes = useMemo(() => {
-    if (utilFilterOperatorId) return null; // a fleet-wide demand total isn't meaningful for one person
-    let total = 0;
-    setup.assignments.forEach((a) => {
-      if (!a.constructionDetailId) return;
-      const construction = resolved.get(a.constructionDetailId);
-      if (!construction) return;
-      const runtimePerSpool = construction.runtimePerSpool || 1;
-      const theoreticalSpools = timelineDuration / runtimePerSpool;
-      (['doffing', 'loading', 'fractureRepairing'] as const).forEach((prefix) => {
-        construction.activities
-          .filter((act) => act.key === prefix || act.key.startsWith(`${prefix}-`))
-          .forEach((act) => {
-            const cycle = construction.cycleLengths[act.key];
-            if (!Number.isFinite(cycle) || cycle <= 0) return;
-            total += (theoreticalSpools / cycle) * act.timeMinutes;
-          });
-      });
-    });
-    return total;
-  }, [utilFilterOperatorId, setup.assignments, resolved, timelineDuration]);
-
-  // Headcount recommendation, not a machine count: how many operators (fractional — no need to
-  // wait for a whole extra person) it'd take to cover the theoretical demand above at the target
-  // utilization. Uses the WHOLE team (not just displayedOperators) as the current baseline, since
-  // an operator with zero tasks assigned is still a body on the floor the recommendation should
-  // subtract against. Falls back to the plain utilization-ratio calc when filtered to one operator.
-  const allOperatorsSummary = summarizeOperatorTimelines(operators, timelineDuration, activityLabel);
-  const perOperatorAvailableMin = operators.length > 0 ? allOperatorsSummary.elapsed / operators.length : 0;
-  const requiredOperators =
-    theoreticalRequiredMinutes !== null && perOperatorAvailableMin > 0
-      ? theoreticalRequiredMinutes / (perOperatorAvailableMin * (targetUtilization / 100))
-      : 0;
-  const operatorRecommendation = utilFilterOperatorId
-    ? utilOperators.length > 0 && utilSummary.utilization > 0
-      ? utilOperators.length * (utilSummary.utilization / targetUtilization) - utilOperators.length
-      : 0
-    : operators.length > 0
-      ? requiredOperators - operators.length
-      : 0;
-
   const operatorUtilRows = displayedOperators.map((op) => ({
     id: op.id,
     label: op.label,
@@ -783,7 +720,6 @@ export function ProductionRunView({
                     constructionColorMap={constructionColorMap}
                     operatorLabelById={operatorLabelById}
                     isDetailed={isDetailed}
-                    groupMode={setup.planningType === 'MachinesGroup'}
                     highlightedMachineIds={highlightedMachineIds}
                   />
                   <RemarksLayer remarks={setup.remarks} />
@@ -1089,51 +1025,33 @@ export function ProductionRunView({
                       {fmtTime(utilSummary.totalService)} ({fmt((utilSummary.totalService / (utilSummary.elapsed || 1)) * 100)}%)
                     </span>
                   </div>
-                  {utilSummary.serviceBreakdown.map((s) => (
-                    <div className="metric-row small" key={s.label}>
-                      <span>Handle: {s.label}</span>
-                      <span>
-                        {fmtTime(s.minutes)} ({fmt((s.minutes / (utilSummary.elapsed || 1)) * 100)}%)
-                      </span>
-                    </div>
-                  ))}
+                  {utilSummary.serviceBreakdown
+                    .filter((s) => s.label !== RPC_OCCUPATION_LABEL)
+                    .map((s) => (
+                      <div className="metric-row small" key={s.label}>
+                        <span>Handle: {s.label}</span>
+                        <span>
+                          {fmtTime(s.minutes)} ({fmt((s.minutes / (utilSummary.elapsed || 1)) * 100)}%)
+                        </span>
+                      </div>
+                    ))}
+                  {/* Same place as the Workload Simulator's card: right above Idle, no "Handle:". */}
+                  {utilSummary.serviceBreakdown
+                    .filter((s) => s.label === RPC_OCCUPATION_LABEL)
+                    .map((s) => (
+                      <div className="metric-row small" key={s.label}>
+                        <span>{s.label}</span>
+                        <span>
+                          {fmtTime(s.minutes)} ({fmt((s.minutes / (utilSummary.elapsed || 1)) * 100)}%)
+                        </span>
+                      </div>
+                    ))}
                   <div className="metric-row small">
                     <span>Idle</span>
                     <span>
                       {fmtTime(utilSummary.idle)} ({fmt((utilSummary.idle / (utilSummary.elapsed || 1)) * 100)}%)
                     </span>
                   </div>
-                  <div className={`verdict ${utilVerdict.className}`}>{utilVerdict.text}</div>
-                  <label className="target-utilization-field">
-                    <span>Target Man Occupation</span>
-                    <span className="target-utilization-input-group">
-                      <input
-                        className="input input-sm"
-                        type="number"
-                        min={1}
-                        max={100}
-                        value={targetUtilization}
-                        onChange={(e) => {
-                          const value = parseFloat(e.target.value);
-                          if (Number.isFinite(value)) setTargetUtilization(Math.min(100, Math.max(1, value)));
-                        }}
-                      />
-                      <span>%</span>
-                    </span>
-                  </label>
-                  {isAdmin && Math.abs(operatorRecommendation) >= 0.05 && (
-                    <div className="verdict-recommendation">
-                      #Operator Recommendation: {operatorRecommendation > 0 ? '+' : ''}
-                      {fmt(operatorRecommendation)} operator (target ~{targetUtilization}% man occupation)
-                      {!utilFilterOperatorId && theoreticalRequiredMinutes !== null && (
-                        <>
-                          <br />
-                          Based on {fmtTime(theoreticalRequiredMinutes)} of theoretical demand per shift across all planned machines'
-                          Constructions (not on how this run happened to play out)
-                        </>
-                      )}
-                    </div>
-                  )}
                 </>
               )}
             </Card>
@@ -1357,7 +1275,6 @@ const MachinesLayer = memo(function MachinesLayer({
   constructionColorMap,
   operatorLabelById,
   isDetailed,
-  groupMode,
   highlightedMachineIds,
 }: {
   machines: ProductionSimulationState['machines'];
@@ -1370,7 +1287,6 @@ const MachinesLayer = memo(function MachinesLayer({
   constructionColorMap: Map<string, string>;
   operatorLabelById: (id?: string) => string;
   isDetailed: boolean;
-  groupMode: boolean;
   /** Hovered legend entry's machines — highlighted, every other machine dimmed. */
   highlightedMachineIds: Set<string> | null;
 }) {
@@ -1401,7 +1317,7 @@ const MachinesLayer = memo(function MachinesLayer({
           ? [
               `Machine ${m.label}`,
               `Construction: ${assignment?.constructionDetailLabel ?? '—'}`,
-              ...(groupMode
+              ...(isGroupMachine(assignment)
                 ? [
                     `Group: ${assignment?.groupName ?? '—'}`,
                     `Operators: ${(assignment?.assignedOperatorIds ?? []).map((id) => operatorLabelById(id)).join(', ') || '—'}`,
