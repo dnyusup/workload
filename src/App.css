@@ -4848,3 +4848,22 @@
   cursor: help;
   border-bottom: 1px dotted #64748b;
 }
+
+.operator-start-dialog {
+  width: min(640px, 100%);
+}
+
+.operator-start-table-wrap {
+  max-height: min(60vh, 520px);
+  overflow: auto;
+}
+
+.operator-start-table-wrap .input {
+  width: 100%;
+}
+
+.operator-start-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

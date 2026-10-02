@@ -400,6 +400,9 @@ export interface InheritedSimulationSnapshot {
 export interface ProductionOperator {
   id: string;
   label: string;
+  /** This operator's own Lunch/Meeting start minute; undefined = follow the setup's. */
+  lunchStartAt?: number;
+  meetingStartAt?: number;
 }
 
 export interface ProductionMachineAssignment {

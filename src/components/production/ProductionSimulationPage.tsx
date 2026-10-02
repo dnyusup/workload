@@ -35,6 +35,7 @@ import { BlockingProgressOverlay } from '../ui/BlockingProgressOverlay';
 import { LayoutBuilder, type MachineAppearance } from '../setup/LayoutBuilder';
 import { ProductionRunView } from './ProductionRunView';
 import { CanvasLegendPanel } from './CanvasLegendPanel';
+import { OperatorStartTimesDialog } from './OperatorStartTimesDialog';
 import { buildCanvasLegendData, type LegendHover } from '../../lib/canvasLegend';
 import { isGroupMachine } from '../../lib/productionActivityRouting';
 import { loadDefaultValuesOrBuiltIn } from '../../lib/defaultValuesStore';
@@ -685,6 +686,7 @@ function ProductionSetupEditor({
   const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [plannedUtilizationOpen, setPlannedUtilizationOpen] = useState(false);
+  const [startTimesOpen, setStartTimesOpen] = useState(false);
   const [plannedUtilizationFullscreen, setPlannedUtilizationFullscreen] = useState(false);
   const plannedUtilizationPanelRef = useRef<HTMLDivElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -1774,16 +1776,33 @@ function ProductionSetupEditor({
       <Card
         title="Operators"
         actions={
-          <Button
-            variant="secondary"
-            onClick={() => setPlannedUtilizationOpen(true)}
-            title="Show planned man occupation in fullscreen"
-            aria-label="Show planned man occupation in fullscreen"
-          >
-            📊
-          </Button>
+          <div className="production-csv-actions">
+            <Button
+              variant="secondary"
+              onClick={() => setStartTimesOpen(true)}
+              title="Custom Lunch / Meeting start per operator"
+              aria-label="Custom Lunch / Meeting start per operator"
+            >
+              ⚙️
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => setPlannedUtilizationOpen(true)}
+              title="Show planned man occupation in fullscreen"
+              aria-label="Show planned man occupation in fullscreen"
+            >
+              📊
+            </Button>
+          </div>
         }
       >
+        {startTimesOpen && (
+          <OperatorStartTimesDialog
+            setup={setup}
+            onSaved={(operators) => onLocalChange({ operators })}
+            onClose={() => setStartTimesOpen(false)}
+          />
+        )}
         <div className="production-operator-add">
           <input
             className="input"

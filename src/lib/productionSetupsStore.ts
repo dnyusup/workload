@@ -117,7 +117,12 @@ export async function loadProductionSetup(id: string, constructionLabelById: Map
   machineRowIdCache.set(id, rowIdByMachineId);
 
   const { machines: layout, operatorStart, walls, remarks } = parseLayoutBlob(header.mpp_layoutsnapshotjson);
-  const operators: ProductionOperator[] = operatorRows.map((row) => ({ id: row.mpp_wl_productionsetupoperatorsid, label: row.mpp_name }));
+  const operators: ProductionOperator[] = operatorRows.map((row) => ({
+    id: row.mpp_wl_productionsetupoperatorsid,
+    label: row.mpp_name,
+    lunchStartAt: row.mpp_lunchstartatminutes ?? undefined,
+    meetingStartAt: row.mpp_meetingstartatminutes ?? undefined,
+  }));
   const assignmentByMachineId = new Map(machineRows.map((row) => [row.mpp_machineid, machineRowToAssignment(row, constructionLabelById)]));
   // Every machine in the layout snapshot gets an assignment entry even if its Dataverse row
   // somehow went missing, so the UI never has to null-check `assignments.find(...)`.
@@ -290,6 +295,21 @@ export async function addProductionOperator(setupId: string, label: string): Pro
 export async function renameProductionOperator(operatorId: string, label: string): Promise<void> {
   const result = await Mpp_wl_productionsetupoperatorsesService.update(operatorId, { mpp_name: label });
   if (!result.success) throw new Error(result.error?.message ?? 'Failed to rename operator.');
+}
+
+/** Saves an operator's own Lunch/Meeting start minute — undefined clears it back to the setup's. */
+export async function updateProductionOperatorStartTimes(
+  operatorId: string,
+  times: Pick<ProductionOperator, 'lunchStartAt' | 'meetingStartAt'>,
+): Promise<void> {
+  // Dataverse only clears a column on an explicit null.
+  const fields: Record<string, number | null> = {
+    mpp_lunchstartatminutes: times.lunchStartAt ?? null,
+    mpp_meetingstartatminutes: times.meetingStartAt ?? null,
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result = await Mpp_wl_productionsetupoperatorsesService.update(operatorId, fields as any);
+  if (!result.success) throw new Error(result.error?.message ?? 'Failed to save operator start times.');
 }
 
 /** Removing an operator also has to clear it out of every machine row that still references it —

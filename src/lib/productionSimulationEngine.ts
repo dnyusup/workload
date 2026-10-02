@@ -324,12 +324,15 @@ export class ProductionSimulationEngine {
       timeline: [],
     }));
 
-    this.operators.forEach((op) => {
+    // Each operator can override when their Lunch/Meeting starts; durations always come from the setup.
+    setup.operators.forEach((op) => {
+      const lunchStartAt = op.lunchStartAt ?? setup.lunchStartAt;
+      const meetingStartAt = op.meetingStartAt ?? setup.meetingStartAt;
       this.breaksByOperator.set(
         op.id,
         [
-          { label: 'Lunch Time', startAt: Math.max(0, setup.lunchStartAt), duration: Math.max(0, setup.lunchTime), done: setup.lunchTime <= 0 },
-          { label: 'Meeting Time', startAt: Math.max(0, setup.meetingStartAt), duration: Math.max(0, setup.meetingTime), done: setup.meetingTime <= 0 },
+          { label: 'Lunch Time', startAt: Math.max(0, lunchStartAt), duration: Math.max(0, setup.lunchTime), done: setup.lunchTime <= 0 },
+          { label: 'Meeting Time', startAt: Math.max(0, meetingStartAt), duration: Math.max(0, setup.meetingTime), done: setup.meetingTime <= 0 },
         ].sort((a, b) => a.startAt - b.startAt),
       );
     });
