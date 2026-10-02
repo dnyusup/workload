@@ -43,6 +43,7 @@ function defaultConfig(): AppConfig {
     movement: { walkingSpeed: 60, pixelsPerMeter: 20 },
     layout,
     assignedMachineIds: layout.slice(0, 20).map((m) => m.id),
+    rpcPercent: 12,
   };
 }
 
@@ -64,6 +65,7 @@ function loadConfig(): AppConfig {
         taskPriority: parsed.operator?.taskPriority ?? 'quickest',
       };
       parsed.spec = { ...defaultSpec, ...parsed.spec, area: parsed.spec?.area ?? '' };
+      parsed.rpcPercent = parsed.rpcPercent ?? 12;
       // Configs saved before explicit machine assignment existed relied on "first N machines in
       // layout order" — preserve that as the initial assignment so they keep running exactly as
       // before, instead of suddenly losing their assignment and failing the new Start validation.

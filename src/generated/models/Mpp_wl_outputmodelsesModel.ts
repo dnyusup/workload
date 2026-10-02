@@ -51,6 +51,7 @@ export interface Mpp_wl_outputmodelsesBase {
   mpp_polength2?: number;
   mpp_polength3?: number;
   mpp_productcode?: string;
+  mpp_rpc?: number;
   mpp_runtimeperspool?: number;
   mpp_shifttime?: number;
   mpp_speed?: number;

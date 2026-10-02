@@ -1,6 +1,7 @@
 import type { ActivityConfig, MachCondition } from '../../types';
 import { fractureRepairingDenominator } from '../../lib/calculations';
 import { Card } from '../ui/Card';
+import { Field, NumberInput } from '../ui/Field';
 
 const PROTECTED_ACTIVITY_KEYS = ['doffing', 'loading', 'fractureRepairing', 'diesChange', 'defectRepairing'];
 const SUB_ACTIVITY_DISABLED_KEYS = ['doffing', 'fractureRepairing', 'diesChange', 'defectRepairing'];
@@ -17,14 +18,21 @@ export function ActivityTable({
   fracturePerTon,
   diesPerTon,
   defectsPerTon,
+  rpcPercent,
   onChange,
+  onRpcPercentChange,
 }: {
   activities: ActivityConfig[];
   spoolWeight: number;
   fracturePerTon: number;
   diesPerTon: number;
   defectsPerTon: number;
+  /** Rest & Personal Care allowance applied on top of every activity's time when it's actually
+   * serviced — see simulationEngine.ts/buildServiceSegments, which keep it as its own timeline
+   * segment instead of inflating the activity's own time shown in this table. */
+  rpcPercent: number;
   onChange: (next: ActivityConfig[]) => void;
+  onRpcPercentChange: (next: number) => void;
 }) {
   const update = (key: string, patch: Partial<ActivityConfig>) => {
     onChange(activities.map((a) => (a.key === key ? { ...a, ...patch } : a)));
@@ -80,7 +88,17 @@ export function ActivityTable({
   };
 
   return (
-    <Card title="Activity Table" subtitle="Time and frequency for each service type per spool cycle">
+    <Card
+      title="Activity Table"
+      subtitle="Time and frequency for each service type per spool cycle"
+      actions={
+        <div className="activity-table-rpc">
+          <Field label="RPC %" tooltip="Rest & Personal Care allowance: added on top of every activity's time when it's actually serviced (shown as its own segment in the timeline), e.g. 12% turns a 10-minute activity into 11.2 minutes.">
+            <NumberInput value={rpcPercent} min={0} onChange={onRpcPercentChange} />
+          </Field>
+        </div>
+      }
+    >
       <div className="activity-table-wrap">
         <table className="table activity-table">
           <thead>

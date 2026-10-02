@@ -64,8 +64,12 @@ export function OutputEstimate({
   };
 
   const activityByKey = new Map(forecast.activityContributions.map((contribution) => [contribution.key, contribution]));
-  const handlingContributions = forecast.activityContributions.filter((contribution) => contribution.handlingMinutes > 0);
+  const handlingContributions = forecast.activityContributions.filter(
+    (contribution) => contribution.key !== 'rpc' && contribution.handlingMinutes > 0,
+  );
   const downtimeContributions = forecast.activityContributions.filter((contribution) => contribution.downtimeMinutes > 0);
+  // Shown separately, right above Idle, same position as the actual simulation's Man Occupation card.
+  const rpcContribution = activityByKey.get('rpc');
 
   return (
     <div className="output-estimate">
@@ -147,6 +151,14 @@ export function OutputEstimate({
               </span>
             </div>
           ))}
+          {rpcContribution && rpcContribution.handlingMinutes > 0 && (
+            <div className="metric-row small">
+              <span>{rpcContribution.label}</span>
+              <span>
+                {fmtTime(rpcContribution.handlingMinutes)} ({percentage(rpcContribution.handlingMinutes, forecast.availableMinutes)}%)
+              </span>
+            </div>
+          )}
           <div className="metric-row small">
             <span>Idle</span>
             <span>{fmtTime(idleMinutes)} ({percentage(idleMinutes, forecast.availableMinutes)}%)</span>

@@ -140,7 +140,9 @@ export function SetupWizard({ onStart }: { onStart: () => void }) {
                 fracturePerTon={config.spec.fracturePerTon}
                 diesPerTon={config.spec.diesPerTon}
                 defectsPerTon={config.spec.defectsPerTon}
+                rpcPercent={config.rpcPercent ?? 12}
                 onChange={(activities) => setConfig((prev) => ({ ...prev, activities }))}
+                onRpcPercentChange={(rpcPercent) => setConfig((prev) => ({ ...prev, rpcPercent }))}
               />
               <MovementParamsForm
                 movement={config.movement}

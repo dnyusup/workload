@@ -32,6 +32,7 @@ export type OutputModelKey =
   | 'mpp_lunchstarttime'
   | 'mpp_meetingtime'
   | 'mpp_meetingstarttime'
+  | 'mpp_rpc'
   | 'mpp_numberofmachinesassigned'
   | 'mpp_plannedmanoccupation'
   | 'mpp_actualmanoccupation'
@@ -97,6 +98,7 @@ export const OUTPUT_MODEL_COLUMNS: OutputModelColumn[] = [
   { key: 'mpp_lunchstarttime', label: 'LunchStartAt' },
   { key: 'mpp_meetingtime', label: 'MeetingTime' },
   { key: 'mpp_meetingstarttime', label: 'MeetingStartAt' },
+  { key: 'mpp_rpc', label: 'RPC %' },
   { key: 'mpp_numberofmachinesassigned', label: '#MachinesAssigned' },
   { key: 'mpp_plannedmanoccupation', label: 'PlannedManOccupation' },
   { key: 'mpp_actualmanoccupation', label: 'ActualManOccupation' },

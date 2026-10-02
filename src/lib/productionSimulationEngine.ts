@@ -13,7 +13,7 @@ import type {
   ProductionSimMetrics,
   ProductionSimulationState,
 } from '../types';
-import { availableTimeMinutes, deriveMachineSpec, distanceMeters } from './calculations';
+import { applyRpc, availableTimeMinutes, deriveMachineSpec, distanceMeters } from './calculations';
 import { machineWidthPx, machineHeightPx } from './layoutConstants';
 import { buildServiceSegments } from './machineZones';
 import { computeWalkingWaypoints, createRoutingRowCache, type RoutingRowCache } from './operatorRouting';
@@ -653,7 +653,7 @@ export class ProductionSimulationEngine {
   private estimateServiceEtaMin(operator: ProductionOperatorRuntimeState, machine: ProdMachine, myTasks: PendingTask[]): number {
     const speed = this.setup.movement.walkingSpeed > 0 ? this.setup.movement.walkingSpeed : 1;
     const pxPerM = this.setup.movement.pixelsPerMeter;
-    const segments = buildServiceSegments(myTasks, machine.x, machine.y, machine.orientation, machine.pairSide, this.setup.movement.walkingSpeed, pxPerM, machine.widthPx, machine.heightPx, machine.axis);
+    const segments = buildServiceSegments(myTasks, machine.x, machine.y, machine.orientation, machine.pairSide, this.setup.movement.walkingSpeed, pxPerM, machine.widthPx, machine.heightPx, machine.axis, this.setup.rpc);
     if (segments.length === 0) return this.walkingDistanceMeters(operator.x, operator.y, machine.x, machine.y) / speed;
     let total = this.walkingDistanceMeters(operator.x, operator.y, segments[0].x, segments[0].y) / speed;
     total += segments[0].dwellMin;
@@ -708,7 +708,7 @@ export class ProductionSimulationEngine {
   private startWalkingTo(operator: ProductionOperatorRuntimeState, machine: ProdMachine) {
     machine.lockedByOperatorId = operator.id;
     const myTasks = this.tasksFor(operator.id, machine);
-    const segments = buildServiceSegments(myTasks, machine.x, machine.y, machine.orientation, machine.pairSide, this.setup.movement.walkingSpeed, this.setup.movement.pixelsPerMeter, machine.widthPx, machine.heightPx, machine.axis);
+    const segments = buildServiceSegments(myTasks, machine.x, machine.y, machine.orientation, machine.pairSide, this.setup.movement.walkingSpeed, this.setup.movement.pixelsPerMeter, machine.widthPx, machine.heightPx, machine.axis, this.setup.rpc);
     const firstStop = segments[0] ?? { x: machine.x, y: machine.y };
     const route = computeWalkingWaypoints({ x: operator.x, y: operator.y }, { x: firstStop.x, y: firstStop.y }, this.machines, this.setup.movement.pixelsPerMeter, this.routeCache, this.wallGraph);
     const [firstHop, ...remainingHops] = route.slice(1);
@@ -772,17 +772,36 @@ export class ProductionSimulationEngine {
   private isEffectiveStopTask(machine: ProdMachine, index: number, tasks: PendingTask[]): boolean {
     const task = tasks[index];
     if (isStopActivity(machine.activities, task.activity)) return true;
+    return this.nextTaskIsStop(machine, index, tasks);
+  }
+
+  /** Whether the task right after `index` (if any) is a Stop-condition activity — the lookahead
+   * half of isEffectiveStopTask. */
+  private nextTaskIsStop(machine: ProdMachine, index: number, tasks: PendingTask[]): boolean {
     const next = tasks[index + 1];
     return next ? isStopActivity(machine.activities, next.activity) : false;
   }
 
+  /** Same RPC-tail handling as simulationEngine.ts's syncMachineRunStateForCurrentTask: a task's
+   * RPC tail (see buildServiceSegments) always behaves like a Run activity itself regardless of
+   * the task's own Mach Condition (RPC is rest time, never work that stops the machine on its
+   * own) — but still follows the very same "Run right before Stop stops early" rule as any Run
+   * activity would, one task further out: it asks whether the NEXT task is itself effectively a
+   * stop (isEffectiveStopTask, not just its own raw Mach Condition) — so a Run task that's
+   * nominally Run in the Activity Table but is itself about to stop early because of what comes
+   * after IT still correctly stops the RPC time right before it, too. */
   private syncMachineRunStateForCurrentTask(operator: ProductionOperatorRuntimeState, atMin: number) {
     const machine = operator.targetMachineId ? this.machineById.get(operator.targetMachineId) : undefined;
     if (!machine) return;
     const task = this.serviceTaskForCurrentZone(operator);
     if (!task) return;
+    const isRpcZone = operator.currentZoneLabel?.endsWith(' — RPC') ?? false;
     const index = operator.serviceTasks.indexOf(task);
-    const shouldStop = index >= 0 ? this.isEffectiveStopTask(machine, index, operator.serviceTasks) : isStopActivity(machine.activities, task.activity);
+    const shouldStop = isRpcZone
+      ? index + 1 < operator.serviceTasks.length && this.isEffectiveStopTask(machine, index + 1, operator.serviceTasks)
+      : index >= 0
+        ? this.isEffectiveStopTask(machine, index, operator.serviceTasks)
+        : isStopActivity(machine.activities, task.activity);
     this.setMachineRunState(machine, !shouldStop, atMin);
   }
 
@@ -818,7 +837,7 @@ export class ProductionSimulationEngine {
     }
     operator.serviceTasks = tasks;
     const segments = machine
-      ? buildServiceSegments(tasks, machine.x, machine.y, machine.orientation, machine.pairSide, this.setup.movement.walkingSpeed, this.setup.movement.pixelsPerMeter, machine.widthPx, machine.heightPx, machine.axis)
+      ? buildServiceSegments(tasks, machine.x, machine.y, machine.orientation, machine.pairSide, this.setup.movement.walkingSpeed, this.setup.movement.pixelsPerMeter, machine.widthPx, machine.heightPx, machine.axis, this.setup.rpc)
       : [];
     if (segments.length === 0) {
       this.finishService(operator, this.metrics.clockMin);
@@ -870,6 +889,19 @@ export class ProductionSimulationEngine {
           machine.downtimeByReason[t.activity] = (machine.downtimeByReason[t.activity] ?? 0) + t.timeMinutes;
           machine.downtimeMin += t.timeMinutes;
         }
+        // Same "stops early" check as the task's own RPC tail uses live (see
+        // syncMachineRunStateForCurrentTask) — if the RPC time right after this task actually kept
+        // the machine stopped (because the NEXT task is itself effectively a stop), that RPC time
+        // counts as downtime too, filed under this task's own activity rather than a separate RPC
+        // bucket.
+        if (index + 1 < tasks.length && this.isEffectiveStopTask(machine, index + 1, tasks)) {
+          const rpcMinutes = applyRpc(t.timeMinutes, this.setup.rpc) - t.timeMinutes;
+          if (rpcMinutes > 1e-9) {
+            this.metrics.downtimeByReason[t.activity] = (this.metrics.downtimeByReason[t.activity] ?? 0) + rpcMinutes;
+            machine.downtimeByReason[t.activity] = (machine.downtimeByReason[t.activity] ?? 0) + rpcMinutes;
+            machine.downtimeMin += rpcMinutes;
+          }
+        }
         if (t.activity === 'loading' || t.activity.startsWith('loading-')) machine.spoolsSinceLoading = 0;
       });
       if (machine.lockedByOperatorId === operator.id) machine.lockedByOperatorId = null;
@@ -908,15 +940,19 @@ export class ProductionSimulationEngine {
       currentServiceTask?.activity === 'defectRepairing' || currentServiceTask?.activity.startsWith('defectRepairing-');
     const isWorking = !!servicingOperator && (servicingOperator.serviceSubPhase === 'dwelling' || (servicingOperator.serviceSubPhase === 'moving' && includesMovement));
     const activeTask = isWorking ? currentServiceTask ?? servicingOperator!.serviceTasks[0] : undefined;
+    const isRpcZone = isWorking && (servicingOperator?.currentZoneLabel?.endsWith(' — RPC') ?? false);
+    const activeActivityKey = activeTask ? (isRpcZone ? `rpc:${activeTask.activity}` : activeTask.activity) : undefined;
     const waitingActivity = machine.pendingTasks[0]?.activity;
     const kind: MachineTimelineKind = machine.status === 'running'
-      ? (activeTask ? `running:${activeTask.activity}` : 'running')
-      : activeTask?.activity ?? (waitingActivity ? `waiting:${waitingActivity}` : 'waiting');
+      ? (activeActivityKey ? `running:${activeActivityKey}` : 'running')
+      : activeActivityKey ?? (waitingActivity ? `waiting:${waitingActivity}` : 'waiting');
     const label = kind === 'running'
       ? 'Running'
-      : activeTask && kind === `running:${activeTask.activity}`
-        ? `Running + ${activeTask.label}`
-        : activeTask?.label ?? (waitingActivity ? `Waiting ${machine.pendingTasks[0]?.label}` : 'Waiting');
+      : activeTask && activeActivityKey && kind === `running:${activeActivityKey}`
+        ? (isRpcZone ? `Running + ${activeTask.label} (RPC)` : `Running + ${activeTask.label}`)
+        : activeTask
+          ? (isRpcZone ? `${activeTask.label} (RPC)` : activeTask.label)
+          : (waitingActivity ? `Waiting ${machine.pendingTasks[0]?.label}` : 'Waiting');
     const timeline = machine.timeline;
     const previous = timeline[timeline.length - 1];
     if (previous && previous.endMin >= startMin - 1e-9 && previous.kind === kind) {
@@ -1027,8 +1063,10 @@ export class ProductionSimulationEngine {
         operator.zoneDwellRemainingMin -= step;
         perOpMetrics.servicingMin += step;
         const task = this.serviceTaskForCurrentZone(operator);
-        const activityKey = task?.activity ?? 'service';
-        this.recordOperatorTime(operator, clockCursor, step, activityKey, operator.currentZoneLabel ?? 'Handle');
+        const isRpcZone = operator.currentZoneLabel?.endsWith(' — RPC') ?? false;
+        const activityKey = task ? (isRpcZone ? `rpc:${task.activity}` : task.activity) : 'service';
+        const label = task && isRpcZone ? `${task.label} (RPC)` : operator.currentZoneLabel ?? 'Handle';
+        this.recordOperatorTime(operator, clockCursor, step, activityKey, label);
         remaining -= step;
         clockCursor += step;
         if (operator.zoneDwellRemainingMin <= 1e-9) this.advanceToNextZone(operator, clockCursor);

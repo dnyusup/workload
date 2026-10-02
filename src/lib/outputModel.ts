@@ -59,6 +59,16 @@ function sumActivityMinutes(record: Record<string, number>, prefix: string) {
     .reduce((total, [, minutes]) => total + Math.max(0, minutes), 0);
 }
 
+/** Total RPC allowance time across every activity — kept out of each activity's own
+ * doffing/loading/etc. percentage (see simulationEngine.ts recording it under its own
+ * `rpc:<activity>` key) and folded into the "Others" percentage instead, which otherwise always
+ * reported 0. */
+function sumRpcMinutes(record: Record<string, number>) {
+  return Object.entries(record)
+    .filter(([key]) => key.startsWith('rpc:'))
+    .reduce((total, [, minutes]) => total + Math.max(0, minutes), 0);
+}
+
 function runningMachineMinutes(state: SimulationState) {
   return state.machines.reduce(
     (total, machine) =>
@@ -82,6 +92,7 @@ function activityPercentages(state: SimulationState) {
   const fractureRepairing = sumActivityMinutes(serviceByActivity, 'fractureRepairing');
   const defectRepairing = sumActivityMinutes(serviceByActivity, 'defectRepairing');
   const diesChange = sumActivityMinutes(serviceByActivity, 'diesChange');
+  const rpc = sumRpcMinutes(serviceByActivity);
   const walking = Math.max(0, state.metrics.walkingMin);
   const busyMinutes = Math.max(0, state.metrics.servicingMin + state.metrics.walkingMin);
   const idle = state.operator.timeline
@@ -96,7 +107,7 @@ function activityPercentages(state: SimulationState) {
     defectRepairing: percentage(defectRepairing, nonBreakMinutes),
     diesChange: percentage(diesChange, nonBreakMinutes),
     walking: percentage(walking, nonBreakMinutes),
-    others: 0,
+    others: percentage(rpc, nonBreakMinutes),
     idle: percentage(idle, nonBreakMinutes),
   };
 }
@@ -184,6 +195,7 @@ export function buildOutputModelPayload(
     mpp_lunchstarttime: config.operator.lunchStartAt,
     mpp_meetingtime: config.operator.meetingTime,
     mpp_meetingstarttime: config.operator.meetingStartAt,
+    mpp_rpc: config.rpcPercent ?? 12,
     mpp_numberofmachinesassigned: state.metrics.assignedMachineCount,
     mpp_plannedmanoccupation: storedPercentage(forecast.forecastUtilizationPercent),
     mpp_actualmanoccupation: storedPercentage(actualManOccupation),

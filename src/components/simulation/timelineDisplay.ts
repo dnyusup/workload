@@ -8,6 +8,11 @@ export const ZONE_COLORS = {
   defectRepairing: '#facc15',
 } as const;
 
+/** Rest & Personal Care allowance time, kept visually distinct from the activity it's tacked onto
+ * (see buildServiceSegments) wherever it shows up in a timeline — operator or machine. */
+export const RPC_COLOR = '#2dd4bf';
+export const RPC_LABEL = 'RPC (Rest & Personal Care)';
+
 /** Colors a machine's Pay Off / Take Up zone rectangles based on which activities are pending on
  * it — `activeTasks` are extra tasks currently being serviced (only relevant for the one machine
  * an operator is actively at, identified by `activeMachineId`), since those get spliced off
@@ -102,6 +107,9 @@ export function machineTimelineColor(kind: MachineTimelineKind): string {
     const activityKind = kind.slice('running:'.length);
     return `linear-gradient(to bottom, ${machineTimelineColor('running')} 50%, ${machineTimelineColor(activityKind)} 50%)`;
   }
+  if (kind.startsWith('rpc:')) {
+    return RPC_COLOR;
+  }
   if (kind.startsWith('loading-')) {
     return '#c4b5fd';
   }
@@ -146,6 +154,7 @@ const machineBaseKinds = new Set<string>(machineTimelineKinds.map((item) => item
  * separate kinds — group them by their display label instead. */
 function operatorSegmentGroup(segment: TimelineSegment): TimelineSummaryGroup {
   if (operatorBaseKinds.has(segment.kind)) return OPERATOR_KIND_GROUPS.find((g) => g.key === segment.kind)!;
+  if (segment.kind.startsWith('rpc:')) return { key: 'rpc', label: RPC_LABEL, color: RPC_COLOR };
   const label = segment.label.split(' — ')[0];
   return { key: `label:${label}`, label, color: '#c084fc' };
 }
@@ -154,6 +163,9 @@ function operatorSegmentGroup(segment: TimelineSegment): TimelineSummaryGroup {
  * variants, whose labels are Construction-independent too). */
 function machineSegmentGroup(segment: TimelineSegment): TimelineSummaryGroup {
   if (machineBaseKinds.has(segment.kind)) return MACHINE_BASE_GROUPS.find((g) => g.key === segment.kind)!;
+  if (segment.kind.startsWith('rpc:') || segment.kind.startsWith('running:rpc:')) {
+    return { key: 'rpc', label: RPC_LABEL, color: RPC_COLOR };
+  }
   const label = machineTimelineLabel(segment.kind, segment.label);
   return { key: `label:${label}`, label, color: machineTimelineColor(segment.kind) };
 }

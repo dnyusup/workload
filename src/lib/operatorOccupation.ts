@@ -25,7 +25,10 @@ export function summarizeOperatorTimelines(
   segments
     .filter((s) => !NON_SERVICE_KINDS.has(s.kind))
     .forEach((s) => {
-      const label = activityLabel(s.kind);
+      // RPC segments are tagged per activity (`rpc:doffing`, `rpc:loading`, …) so the timeline can
+      // tell them apart from the activity's own time — but here they're grouped into one row
+      // instead of looking up a label for the raw `rpc:*` key, which activityLabel wouldn't find.
+      const label = s.kind.startsWith('rpc:') ? 'Others (RPC)' : activityLabel(s.kind);
       const minutes = Math.max(0, Math.min(s.endMin, timelineDuration) - s.startMin);
       serviceLabelTotals.set(label, (serviceLabelTotals.get(label) ?? 0) + minutes);
     });

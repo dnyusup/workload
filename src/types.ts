@@ -180,6 +180,11 @@ export interface AppConfig {
    * machine gets a fracture/dies-change event, dies-change batch size, etc.) repeat exactly;
    * left undefined for a fresh run, which draws a new seed each time it's simulated. */
   seed?: number;
+  /** Rest & Personal Care allowance, as a percent (12 = 12%) added on top of every activity's own
+   * time when it's actually serviced — shown separately in the timeline rather than folded into
+   * the activity's own segment. Optional so configs saved before this existed still load (treated
+   * as the same 12% default shown in the UI). */
+  rpcPercent?: number;
 }
 
 export type MachineStatus = 'running' | 'needs-service' | 'being-serviced' | 'unassigned';
@@ -418,6 +423,9 @@ export interface ProductionSetup {
   meetingStartAt: number;
   taskPriority: TaskPriorityMode;
   movement: MovementParams;
+  /** Same Rest & Personal Care allowance as AppConfig.rpcPercent, applied per-machine using that
+   * machine's own Construction activities. */
+  rpc: number;
   updatedAt: number;
 }
 

@@ -1310,6 +1310,25 @@
   overflow-x: auto;
 }
 
+.activity-table-rpc {
+  display: flex;
+  align-items: center;
+}
+
+.activity-table-rpc .field {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.activity-table-rpc .field-label {
+  white-space: nowrap;
+}
+
+.activity-table-rpc .input {
+  width: 70px;
+}
+
 .activity-table .activity-column {
   width: 322px;
   min-width: 280px;

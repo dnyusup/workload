@@ -1,6 +1,6 @@
 import type { ActivityKey, ProductionSetup } from '../types';
 import type { ResolvedConstruction } from './productionConstructionResolver';
-import { deriveMachineSpec } from './calculations';
+import { applyRpc, deriveMachineSpec } from './calculations';
 
 const AVERAGE_DIES_PER_CHANGE_EVENT = (7 + 26) / 2;
 
@@ -67,7 +67,7 @@ export function estimateProductionEvents(
 
     const stopMinPerSpool = activities
       .filter((activity) => activity.key !== 'diesChange' && activity.machCondition === 'stop')
-      .reduce((sum, activity) => sum + eventsPerSpool(activity.key) * activity.timeMinutes, 0);
+      .reduce((sum, activity) => sum + eventsPerSpool(activity.key) * applyRpc(activity.timeMinutes, setup.rpc), 0);
     const minutesPerSpool = runtimePerSpool + stopMinPerSpool;
     const spoolsPerMachine = minutesPerSpool > 0 ? setup.shiftTime / minutesPerSpool : 0;
     const totalSpools = spoolsPerMachine * machineCount;

@@ -100,6 +100,16 @@ export function syncAutoActivityValues(
   }));
 }
 
+/** Adds the Rest & Personal Care allowance on top of a base activity time, e.g. 12% rpcPercent
+ * turns a 10-minute activity into 11.2 minutes actually spent servicing it. Used everywhere an
+ * activity's time feeds a throughput estimate, so planned/forecast numbers stay consistent with
+ * the extra time the simulation actually adds (see buildServiceSegments, which applies the same
+ * allowance but keeps it as its own separate timeline segment instead of inflating the activity's). */
+export function applyRpc(baseMinutes: number, rpcPercent: number | undefined): number {
+  const pct = Number.isFinite(rpcPercent) ? Math.max(0, rpcPercent as number) : 0;
+  return baseMinutes * (1 + pct / 100);
+}
+
 /** Cycle length in "spools completed" between occurrences of this activity. */
 export function activityCycleLength(activity: ActivityConfig): number {
   if (activity.numerator <= 0 || activity.denominator <= 0) return Infinity;

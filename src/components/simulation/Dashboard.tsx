@@ -123,6 +123,10 @@ export function Dashboard({ state, config }: { state: SimulationState; config: A
       ? Math.round(metrics.assignedMachineCount * (targetUtilization / utilization)) - metrics.assignedMachineCount
       : 0;
 
+  const rpcMin = Object.entries(metrics.servicingByActivity)
+    .filter(([key]) => key.startsWith('rpc:'))
+    .reduce((total, [, minutes]) => total + Math.max(0, minutes), 0);
+
   const downtimeEntries = (Object.keys(metrics.downtimeByReason) as DowntimeReason[])
     .map((key, index) => ({
       key,
@@ -248,6 +252,14 @@ export function Dashboard({ state, config }: { state: SimulationState; config: A
             <span>Unclassified handle</span>
             <span>
               {fmtTime(metrics.servicingByActivity.service)} ({fmt(utilizationPct(metrics.servicingByActivity.service))}%)
+            </span>
+          </div>
+        )}
+        {rpcMin > 1e-9 && (
+          <div className="metric-row small">
+            <span>Others (RPC)</span>
+            <span>
+              {fmtTime(rpcMin)} ({fmt(utilizationPct(rpcMin))}%)
             </span>
           </div>
         )}

@@ -17,6 +17,8 @@ import {
   machineTimelineKinds,
   machineTimelineColor,
   machineTimelineLabel,
+  RPC_COLOR,
+  RPC_LABEL,
 } from './timelineDisplay';
 
 const LABEL_MARGIN = 24;
@@ -253,7 +255,12 @@ export function LayoutCanvas({
         .filter((segment) => !timelineKinds.some((item) => item.kind === segment.kind))
         .reduce<{ kind: OperatorTimelineKind; label: string; color: string }[]>((items, segment) => {
           if (!items.some((item) => item.kind === segment.kind)) {
-            items.push({ kind: segment.kind, label: segment.label.split(' — ')[0], color: '#c084fc' });
+            const isRpc = segment.kind.startsWith('rpc:');
+            items.push({
+              kind: segment.kind,
+              label: isRpc ? RPC_LABEL : segment.label.split(' — ')[0],
+              color: isRpc ? RPC_COLOR : '#c084fc',
+            });
           }
           return items;
         }, []),

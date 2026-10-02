@@ -23,7 +23,7 @@ const DETAIL_SECTIONS: { title: string; keys: OutputModelKey[]; wide?: boolean }
   },
   {
     title: 'Operator Setup',
-    keys: ['mpp_taskpriority', 'mpp_shifttime', 'mpp_lunchtime', 'mpp_lunchstarttime', 'mpp_meetingtime', 'mpp_meetingstarttime', 'mpp_numberofmachinesassigned'],
+    keys: ['mpp_taskpriority', 'mpp_shifttime', 'mpp_lunchtime', 'mpp_lunchstarttime', 'mpp_meetingtime', 'mpp_meetingstarttime', 'mpp_rpc', 'mpp_numberofmachinesassigned'],
   },
   {
     title: 'Actual Rates',

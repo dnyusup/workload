@@ -1494,6 +1494,9 @@ function ProductionSetupEditor({
           <Field label="Meeting starts at minute">
             <NumberInput value={setup.meetingStartAt} min={0} onChange={(v) => onHeaderChange({ meetingStartAt: v })} />
           </Field>
+          <Field label="RPC %" tooltip="Rest & Personal Care allowance: added on top of every activity's time when it's actually serviced (shown as its own segment in the timeline), e.g. 12% turns a 10-minute activity into 11.2 minutes.">
+            <NumberInput value={setup.rpc ?? 12} min={0} onChange={(v) => onHeaderChange({ rpc: v })} />
+          </Field>
           <Field label="Walking Speed (m/min)">
             <NumberInput value={setup.movement.walkingSpeed} min={0} onChange={(v) => onHeaderChange({ movement: { ...setup.movement, walkingSpeed: v } })} />
           </Field>

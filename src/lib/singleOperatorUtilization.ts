@@ -1,5 +1,5 @@
 import type { ActivityConfig, AppConfig, LayoutMachine } from '../types';
-import { activityCycleLength, availableTimeMinutes, deriveMachineSpec, distanceMeters, extraBreakMinutes } from './calculations';
+import { activityCycleLength, applyRpc, availableTimeMinutes, deriveMachineSpec, distanceMeters, extraBreakMinutes } from './calculations';
 import { generatePairedGrid, PAIR_GAP } from './gridLayout';
 import { machineWidthPx } from './layoutConstants';
 
@@ -36,18 +36,18 @@ function positiveFinite(value: number): number {
   return Number.isFinite(value) && value > 0 ? value : 0;
 }
 
-function minutesPerSpool(activity: ActivityConfig): number {
+function minutesPerSpool(activity: ActivityConfig, rpcPercent: number | undefined): number {
   const cycle = activityCycleLength(activity);
   if (!Number.isFinite(cycle) || cycle <= 0) return 0;
   const eventRate = activity.key === 'diesChange'
     ? 1 / (cycle * AVERAGE_DIES_PER_CHANGE_EVENT)
     : 1 / cycle;
-  return eventRate * Math.max(0, activity.timeMinutes);
+  return eventRate * applyRpc(Math.max(0, activity.timeMinutes), rpcPercent);
 }
 
-function forecastScale(activities: ActivityConfig[], runtimePerSpool: number): number {
+function forecastScale(activities: ActivityConfig[], runtimePerSpool: number, rpcPercent: number | undefined): number {
   const stopMinutesPerSpool = activities.reduce(
-    (total, activity) => total + (activity.machCondition === 'run' ? 0 : minutesPerSpool(activity)),
+    (total, activity) => total + (activity.machCondition === 'run' ? 0 : minutesPerSpool(activity, rpcPercent)),
     0,
   );
   return runtimePerSpool > 0 ? runtimePerSpool / (runtimePerSpool + stopMinutesPerSpool) : 1;
@@ -94,7 +94,7 @@ export function calculateSingleOperatorForecast(config: AppConfig): SingleOperat
   const derived = deriveMachineSpec(config.spec);
   const runtimePerSpool = positiveFinite(derived.runtimePerSpool);
   const expectedSpools = runtimePerSpool > 0 ? config.operator.shiftTime / runtimePerSpool : 0;
-  const scale = forecastScale(config.activities, runtimePerSpool);
+  const scale = forecastScale(config.activities, runtimePerSpool, config.rpcPercent);
   const availableMachines = assignedMachines.length;
 
   let plannedMinutes = 0;
@@ -112,6 +112,22 @@ export function calculateSingleOperatorForecast(config: AppConfig): SingleOperat
     if (activity.machCondition !== 'run') existing.downtimeMinutes += handlingMinutes;
     activityContributions.set(activity.key, existing);
   };
+  /** RPC allowance time, kept out of each activity's own contribution (handling and downtime
+   * alike) and rolled into one "Others (RPC)" row instead — same split the actual simulation shows
+   * in its Man Occupation card (see outputModel.ts's sumRpcMinutes/"others" bucket). Never counted
+   * as downtime here: this forecast doesn't model task ordering, so it can't tell (like the actual
+   * engine does) whether a given RPC stretch really kept a machine stopped. */
+  const addRpcMinutes = (handlingMinutes: number) => {
+    if (handlingMinutes <= 1e-9) return;
+    const existing = activityContributions.get('rpc') ?? {
+      key: 'rpc',
+      label: 'Others (RPC)',
+      handlingMinutes: 0,
+      downtimeMinutes: 0,
+    };
+    existing.handlingMinutes += handlingMinutes;
+    activityContributions.set('rpc', existing);
+  };
 
   assignedMachines.forEach((machine) => {
     let machinePlannedMinutes = 0;
@@ -124,12 +140,14 @@ export function calculateSingleOperatorForecast(config: AppConfig): SingleOperat
       const quantityBased = activity.key === 'diesChange';
       const quantity = quantityBased ? occurrences : 0;
       const eventCount = quantityBased ? quantity / AVERAGE_DIES_PER_CHANGE_EVENT : occurrences;
-      const minutes = quantityBased
-        ? quantity * Math.max(0, activity.timeMinutes)
-        : eventCount * Math.max(0, activity.timeMinutes);
+      const baseTimeMinutes = Math.max(0, activity.timeMinutes);
+      const timeMinutes = applyRpc(baseTimeMinutes, config.rpcPercent);
+      const baseMinutesTotal = quantityBased ? quantity * baseTimeMinutes : eventCount * baseTimeMinutes;
+      const minutes = quantityBased ? quantity * timeMinutes : eventCount * timeMinutes;
       machinePlannedMinutes += minutes;
       machineVisits = Math.max(machineVisits, eventCount);
-      addActivityContribution(activity, minutes * scale);
+      addActivityContribution(activity, baseMinutesTotal * scale);
+      addRpcMinutes((minutes - baseMinutesTotal) * scale);
     });
     plannedMinutes += machinePlannedMinutes;
     forecastServiceMinutes += machinePlannedMinutes * scale;
@@ -147,12 +165,14 @@ export function calculateSingleOperatorForecast(config: AppConfig): SingleOperat
       const totalEvents = quantityBased
         ? totalQuantity / AVERAGE_DIES_PER_CHANGE_EVENT
         : totalExpectedSpools / cycle;
-      const minutes = quantityBased
-        ? totalQuantity * Math.max(0, activity.timeMinutes)
-        : totalEvents * Math.max(0, activity.timeMinutes);
+      const baseTimeMinutes = Math.max(0, activity.timeMinutes);
+      const timeMinutes = applyRpc(baseTimeMinutes, config.rpcPercent);
+      const baseTotal = quantityBased ? totalQuantity * baseTimeMinutes : totalEvents * baseTimeMinutes;
+      const minutes = quantityBased ? totalQuantity * timeMinutes : totalEvents * timeMinutes;
       plannedMinutes += minutes;
       forecastServiceMinutes += minutes * scale;
-      addActivityContribution(activity, minutes * scale);
+      addActivityContribution(activity, baseTotal * scale);
+      addRpcMinutes((minutes - baseTotal) * scale);
       assignedMachines.forEach((machine) => {
         const machineEvents = totalEvents / availableMachines;
         visitsByMachine.set(machine.id, Math.max(visitsByMachine.get(machine.id) ?? 0, machineEvents * scale));

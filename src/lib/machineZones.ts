@@ -123,6 +123,10 @@ export function buildServiceSegments(
   boxWidthPx: number = MACHINE_W,
   boxHeightPx: number = MACHINE_H,
   axis: MachineAxis = 'vertical',
+  /** Rest & Personal Care allowance (percent) tacked on after each task's own zone schedule, as
+   * one extra dwell segment at the last zone worked — kept separate from the task's own segments
+   * (rather than scaling their dwellMin) so the timeline can show RPC time distinctly. */
+  rpcPercent = 0,
 ): ServiceSegment[] {
   const segments: ServiceSegment[] = [];
   for (const task of tasks) {
@@ -162,6 +166,19 @@ export function buildServiceSegments(
         x: segment.pos.x,
         y: segment.pos.y,
       });
+    }
+    if (rpcPercent > 0 && positioned.length > 0) {
+      const rpcMin = task.timeMinutes * (rpcPercent / 100);
+      if (rpcMin > 1e-9) {
+        const last = positioned[positioned.length - 1];
+        segments.push({
+          zone: last.zone,
+          label: `${task.label} — RPC`,
+          dwellMin: rpcMin,
+          x: last.pos.x,
+          y: last.pos.y,
+        });
+      }
     }
   }
   return segments;

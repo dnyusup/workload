@@ -202,6 +202,13 @@
           "x-ms-dataverse-type": "DecimalType",
           "x-ms-schema-name": "mpp_pixelspermeter"
         },
+        "mpp_rpc": {
+          "type": "string",
+          "title": "RPC",
+          "x-ms-dataverse-attribute": "mpp_rpc",
+          "x-ms-dataverse-type": "DecimalType",
+          "x-ms-schema-name": "mpp_RPC"
+        },
         "mpp_shifttime": {
           "type": "string",
           "title": "shifttime",

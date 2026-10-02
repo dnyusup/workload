@@ -399,6 +399,13 @@
           "x-ms-schema-name": "mpp_productcode",
           "maxLength": 100
         },
+        "mpp_rpc": {
+          "type": "string",
+          "title": "RPC",
+          "x-ms-dataverse-attribute": "mpp_rpc",
+          "x-ms-dataverse-type": "DecimalType",
+          "x-ms-schema-name": "mpp_RPC"
+        },
         "mpp_runtimeperspool": {
           "type": "string",
           "title": "Runtime/spool",
