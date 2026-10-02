@@ -161,7 +161,7 @@
           "type": "string",
           "title": "LayLength",
           "x-ms-dataverse-attribute": "mpp_laylength",
-          "x-ms-dataverse-type": "IntegerType",
+          "x-ms-dataverse-type": "DecimalType",
           "x-ms-schema-name": "mpp_laylength"
         },
         "mpp_machcondition": {

@@ -15,6 +15,8 @@ export type Mpp_wl_productionsetupoperatorsesstatuscode = keyof typeof Mpp_wl_pr
 
 export interface Mpp_wl_productionsetupoperatorsesBase {
   importsequencenumber?: number;
+  mpp_lunchstartatminutes?: number;
+  mpp_meetingstartatminutes?: number;
   mpp_name: string;
   mpp_productionsetupid?: string;
   mpp_wl_productionsetupoperatorsid: string;

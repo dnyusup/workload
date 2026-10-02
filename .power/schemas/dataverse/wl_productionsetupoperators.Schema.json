@@ -141,6 +141,20 @@
           "required": true,
           "maxLength": 100
         },
+        "mpp_lunchstartatminutes": {
+          "type": "string",
+          "title": "lunchstartatminutes",
+          "x-ms-dataverse-attribute": "mpp_lunchstartatminutes",
+          "x-ms-dataverse-type": "IntegerType",
+          "x-ms-schema-name": "mpp_lunchstartatminutes"
+        },
+        "mpp_meetingstartatminutes": {
+          "type": "string",
+          "title": "meetingstartatminutes",
+          "x-ms-dataverse-attribute": "mpp_meetingstartatminutes",
+          "x-ms-dataverse-type": "IntegerType",
+          "x-ms-schema-name": "mpp_meetingstartatminutes"
+        },
         "mpp_name": {
           "type": "string",
           "title": "Name",
