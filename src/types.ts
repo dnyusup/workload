@@ -47,6 +47,18 @@ export interface OperatorConfig {
   taskPriority: TaskPriorityMode;
   /** Optional so configs saved before this existed still load. */
   extraBreaks?: ExtraBreak[];
+  /** See DoffPrioritySettings. Optional so configs saved before this existed still load (= off). */
+  doffPriority?: boolean;
+  minRemainForDoffPriority?: number;
+}
+
+/** When on, an operator mid-visit leaves the rest of that visit for later as soon as another machine
+ * needs Doffing — provided at least `minRemainForDoffPriority` minutes of the visit are still left
+ * — does the waiting Doffings first (by Task Priority), then picks again by Task Priority, the
+ * suspended work competing with only its remaining time. */
+export interface DoffPrioritySettings {
+  doffPriority: boolean;
+  minRemainForDoffPriority: number;
 }
 
 export type ActivityKey = string;
@@ -285,6 +297,16 @@ export interface ServiceSegment {
   y: number;
 }
 
+/** What's left of a visit an operator left early for Doffing priority — resumed later exactly from
+ * where it stopped (the first segment carries only the remaining dwell). */
+export interface SuspendedVisit {
+  tasks: PendingTask[];
+  segments: ServiceSegment[];
+  /** Production Simulation, dedicated machines: only this operator may resume it. Undefined = any
+   * operator allowed on the machine (the single-operator Simulator, or a MachinesGroup pool). */
+  ownerOperatorId?: string;
+}
+
 export interface OperatorRuntimeState {
   x: number;
   y: number;
@@ -456,6 +478,8 @@ export interface ProductionSetup {
   /** Same Rest & Personal Care allowance as AppConfig.rpcPercent, applied per-machine using that
    * machine's own Construction activities. */
   rpc: number;
+  doffPriority: boolean;
+  minRemainForDoffPriority: number;
   updatedAt: number;
 }
 

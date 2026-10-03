@@ -106,7 +106,9 @@
       "Read(//c/Users/deni.yusup/.claude/projects/c--Users-deni-yusup-powerapps-code-WorkLoad/**)",
       "Read(//c/Users/deni.yusup/.claude/projects/c--Users-deni-yusup-powerapps-code-WorkLoad/memory/**)",
       "Bash(grep -n \"^    </Card>$\" src/components/production/ProductionSimulationPage.tsx)",
-      "Bash(grep -n \"remarks?: LayoutRemark\\\\[\\\\],\\\\|mpp_shifttime\\\\|mpp_pixelspermeter\\\\|mpp_rpc\\\\|shiftTime: 480\\\\|rpc: 12\\\\|movement: { walkingSpeed: 60\\\\|taskPriority: 'quickest'\\\\|mpp_taskpriority\\\\|mpp_walkingspeed\\\\|mpp_lunch\\\\|mpp_meeting\\\\|lunchTime: 30\\\\|lunchStartAt: 240\\\\|meetingTime: 15\\\\|meetingStartAt: 420\")"
+      "Bash(grep -n \"remarks?: LayoutRemark\\\\[\\\\],\\\\|mpp_shifttime\\\\|mpp_pixelspermeter\\\\|mpp_rpc\\\\|shiftTime: 480\\\\|rpc: 12\\\\|movement: { walkingSpeed: 60\\\\|taskPriority: 'quickest'\\\\|mpp_taskpriority\\\\|mpp_walkingspeed\\\\|mpp_lunch\\\\|mpp_meeting\\\\|lunchTime: 30\\\\|lunchStartAt: 240\\\\|meetingTime: 15\\\\|meetingStartAt: 420\")",
+      "Bash(grep -n \"  /\\\\*\\\\* Optional so configs saved before this existed still load. \\\\*/\" -A 2 src/types.ts)",
+      "Bash(node \"C:/Users/DENI~1.YUS/AppData/Local/Temp/claude/c--Users-deni-yusup-powerapps-code-WorkLoad/6aef9193-7703-4c6d-9d7f-50697731bc86/scratchpad/prod.cjs\")"
     ]
   }
 }

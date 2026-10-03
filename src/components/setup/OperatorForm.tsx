@@ -4,6 +4,9 @@ import { availableTimeMinutes, extraBreakMinutes } from '../../lib/calculations'
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { Field, NumberInput, SelectInput } from '../ui/Field';
+import { Toggle } from '../ui/Toggle';
+import { DOFF_PRIORITY_TOOLTIP } from '../ui/doffPriorityText';
+import { BUILT_IN_DEFAULTS } from '../../lib/defaultValuesStore';
 
 const TASK_PRIORITY_OPTIONS: { value: TaskPriorityMode; label: string }[] = [
   { value: 'nearest', label: 'Nearest Task' },
@@ -83,6 +86,30 @@ export function OperatorForm({
       >
         <NumberInput value={available} readOnly />
       </Field>
+      <div className="operator-form-grid operator-doff-priority">
+        <Field label="Doff Priority" tooltip={DOFF_PRIORITY_TOOLTIP}>
+          <Toggle
+            checked={!!operator.doffPriority}
+            onChange={(doffPriority) =>
+              onChange({
+                ...operator,
+                doffPriority,
+                // Lock in the value the field already shows, so the simulation uses the same number.
+                minRemainForDoffPriority: operator.minRemainForDoffPriority ?? BUILT_IN_DEFAULTS.minRemainForDoffPriority,
+              })
+            }
+            ariaLabel="Doff Priority"
+          />
+        </Field>
+        <Field label="Min Remain Task for Doff Priority (min)">
+          <NumberInput
+            value={operator.minRemainForDoffPriority ?? BUILT_IN_DEFAULTS.minRemainForDoffPriority}
+            min={0}
+            readOnly={!operator.doffPriority}
+            onChange={(v) => set('minRemainForDoffPriority')(Number.isFinite(v) ? v : 0)}
+          />
+        </Field>
+      </div>
     </Card>
   );
 }

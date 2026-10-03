@@ -15,6 +15,8 @@ export interface DefaultValues {
   rpc: number;
   walkingSpeed: number;
   pixelsPerMeter: number;
+  doffPriority: boolean;
+  minRemainForDoffPriority: number;
 }
 
 /** Used for any parameter WL_DefaultValues has no (valid) row for yet. */
@@ -28,6 +30,8 @@ export const BUILT_IN_DEFAULTS: DefaultValues = {
   rpc: 12,
   walkingSpeed: 60,
   pixelsPerMeter: 20,
+  doffPriority: false,
+  minRemainForDoffPriority: 5,
 };
 
 /** WL_DefaultValues.mpp_parameters name for each setting (matched case-insensitively). */
@@ -41,6 +45,8 @@ const PARAMETER_NAMES: Record<keyof DefaultValues, string> = {
   rpc: 'RPC',
   walkingSpeed: 'WalkingSpeed',
   pixelsPerMeter: 'LayoutScale',
+  doffPriority: 'DoffPriority',
+  minRemainForDoffPriority: 'MinRemainTaskForDoffPriority',
 };
 
 const KEYS = Object.keys(PARAMETER_NAMES) as (keyof DefaultValues)[];
@@ -57,6 +63,10 @@ function rowsByKey(rows: Mpp_wl_defaultvalues[]): Map<keyof DefaultValues, Mpp_w
 
 function parseValue<K extends keyof DefaultValues>(key: K, raw: string | undefined): DefaultValues[K] | undefined {
   const text = (raw ?? '').trim();
+  if (key === 'doffPriority') {
+    const flag = text.toLowerCase();
+    return (flag === 'yes' ? true : flag === 'no' ? false : undefined) as DefaultValues[K] | undefined;
+  }
   if (key === 'taskPriority') {
     const mode = text.toLowerCase();
     return (mode === 'nearest' || mode === 'quickest' ? mode : undefined) as DefaultValues[K] | undefined;
@@ -85,11 +95,16 @@ export async function loadDefaultValuesOrBuiltIn(): Promise<DefaultValues> {
   }
 }
 
+function formatValue(key: keyof DefaultValues, value: DefaultValues[keyof DefaultValues]): string {
+  if (key === 'doffPriority') return value ? 'Yes' : 'No';
+  return String(value);
+}
+
 /** Upserts one WL_DefaultValues row per parameter. */
 export async function saveDefaultValues(values: DefaultValues): Promise<void> {
   const rows = rowsByKey(await fetchAllPages(Mpp_wl_defaultvaluesService.getAll, {}));
   for (const key of KEYS) {
-    const value = String(values[key]);
+    const value = formatValue(key, values[key]);
     const row = rows.get(key);
     if (row && (row.mpp_value ?? '').trim() === value) continue;
     const result = row

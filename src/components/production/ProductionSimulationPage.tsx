@@ -31,6 +31,8 @@ import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Field, NumberInput, SelectInput } from '../ui/Field';
 import { SearchableSelect } from '../ui/SearchableSelect';
+import { Toggle } from '../ui/Toggle';
+import { DOFF_PRIORITY_TOOLTIP } from '../ui/doffPriorityText';
 import { BlockingProgressOverlay } from '../ui/BlockingProgressOverlay';
 import { LayoutBuilder, type MachineAppearance } from '../setup/LayoutBuilder';
 import { ProductionRunView } from './ProductionRunView';
@@ -1757,6 +1759,17 @@ function ProductionSetupEditor({
           </Field>
           <Field label="RPC %" tooltip="Rest & Personal Care allowance: added on top of every activity's time when it's actually serviced (shown as its own segment in the timeline), e.g. 12% turns a 10-minute activity into 11.2 minutes.">
             <NumberInput value={setup.rpc ?? 12} min={0} onChange={(v) => onHeaderChange({ rpc: v })} />
+          </Field>
+          <Field label="Doff Priority" tooltip={DOFF_PRIORITY_TOOLTIP}>
+            <Toggle checked={setup.doffPriority} onChange={(v) => onHeaderChange({ doffPriority: v })} ariaLabel="Doff Priority" />
+          </Field>
+          <Field label="Min Remain Task for Doff Priority (min)">
+            <NumberInput
+              value={setup.minRemainForDoffPriority}
+              min={0}
+              readOnly={!setup.doffPriority}
+              onChange={(v) => onHeaderChange({ minRemainForDoffPriority: Number.isFinite(v) ? v : 0 })}
+            />
           </Field>
           <Field label="Walking Speed (m/min)">
             <NumberInput value={setup.movement.walkingSpeed} min={0} onChange={(v) => onHeaderChange({ movement: { ...setup.movement, walkingSpeed: v } })} />

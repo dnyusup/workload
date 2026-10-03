@@ -39,6 +39,8 @@ function defaultConfig(): AppConfig {
       meetingTime: BUILT_IN_DEFAULTS.meetingTime,
       meetingStartAt: BUILT_IN_DEFAULTS.meetingStartAt,
       taskPriority: BUILT_IN_DEFAULTS.taskPriority,
+      doffPriority: BUILT_IN_DEFAULTS.doffPriority,
+      minRemainForDoffPriority: BUILT_IN_DEFAULTS.minRemainForDoffPriority,
     },
     activities: defaultActivities(derived.spoolWeight, defaultSpec.fracturePerTon),
     movement: { walkingSpeed: BUILT_IN_DEFAULTS.walkingSpeed, pixelsPerMeter: BUILT_IN_DEFAULTS.pixelsPerMeter },

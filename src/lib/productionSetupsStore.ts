@@ -145,6 +145,8 @@ export async function loadProductionSetup(id: string, constructionLabelById: Map
     taskPriority: (header.mpp_taskpriority as TaskPriorityMode) ?? 'quickest',
     movement: { walkingSpeed: header.mpp_walkingspeed ?? 60, pixelsPerMeter: header.mpp_pixelspermeter ?? 20 },
     rpc: header.mpp_rpc ?? 12,
+    doffPriority: (header.mpp_doffpriority ?? '').trim().toLowerCase() === 'yes',
+    minRemainForDoffPriority: header.mpp_minremaintaskfordoffpriority ?? BUILT_IN_DEFAULTS.minRemainForDoffPriority,
     updatedAt: header.modifiedon ? new Date(header.modifiedon).getTime() : Date.now(),
   };
 }
@@ -176,6 +178,8 @@ export async function createProductionSetup(
     mpp_walkingspeed: defaults.walkingSpeed,
     mpp_pixelspermeter: defaults.pixelsPerMeter,
     mpp_rpc: defaults.rpc,
+    mpp_doffpriority: defaults.doffPriority ? 'Yes' : 'No',
+    mpp_minremaintaskfordoffpriority: defaults.minRemainForDoffPriority,
     // Active state, matching WL_Layouts' `0 | 1` statecode enum.
     statecode: 0,
   });
@@ -216,6 +220,8 @@ export async function createProductionSetup(
     taskPriority: defaults.taskPriority,
     movement: { walkingSpeed: defaults.walkingSpeed, pixelsPerMeter: defaults.pixelsPerMeter },
     rpc: defaults.rpc,
+    doffPriority: defaults.doffPriority,
+    minRemainForDoffPriority: defaults.minRemainForDoffPriority,
     updatedAt: Date.now(),
   };
 }
@@ -225,7 +231,17 @@ export async function updateProductionSetupHeader(
   patch: Partial<
     Pick<
       ProductionSetup,
-      'name' | 'shiftTime' | 'lunchTime' | 'lunchStartAt' | 'meetingTime' | 'meetingStartAt' | 'taskPriority' | 'movement' | 'rpc'
+      | 'name'
+      | 'shiftTime'
+      | 'lunchTime'
+      | 'lunchStartAt'
+      | 'meetingTime'
+      | 'meetingStartAt'
+      | 'taskPriority'
+      | 'movement'
+      | 'rpc'
+      | 'doffPriority'
+      | 'minRemainForDoffPriority'
     >
   >,
 ): Promise<void> {
@@ -238,6 +254,8 @@ export async function updateProductionSetupHeader(
   if (patch.meetingStartAt !== undefined) fields.mpp_meetingstartat = patch.meetingStartAt;
   if (patch.taskPriority !== undefined) fields.mpp_taskpriority = patch.taskPriority;
   if (patch.rpc !== undefined) fields.mpp_rpc = patch.rpc;
+  if (patch.doffPriority !== undefined) fields.mpp_doffpriority = patch.doffPriority ? 'Yes' : 'No';
+  if (patch.minRemainForDoffPriority !== undefined) fields.mpp_minremaintaskfordoffpriority = patch.minRemainForDoffPriority;
   if (patch.movement !== undefined) {
     fields.mpp_walkingspeed = patch.movement.walkingSpeed;
     fields.mpp_pixelspermeter = patch.movement.pixelsPerMeter;

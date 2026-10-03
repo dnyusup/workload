@@ -149,6 +149,14 @@
           "x-ms-schema-name": "mpp_creator_email",
           "maxLength": 100
         },
+        "mpp_doffpriority": {
+          "type": "string",
+          "title": "DoffPriority",
+          "x-ms-dataverse-attribute": "mpp_doffpriority",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "mpp_DoffPriority",
+          "maxLength": 100
+        },
         "mpp_layoutsnapshotjson": {
           "type": "string",
           "title": "layoutsnapshotjson",
@@ -184,6 +192,13 @@
           "x-ms-dataverse-attribute": "mpp_meetingtime",
           "x-ms-dataverse-type": "IntegerType",
           "x-ms-schema-name": "mpp_meetingtime"
+        },
+        "mpp_minremaintaskfordoffpriority": {
+          "type": "string",
+          "title": "MinRemainTaskforDoffPriority",
+          "x-ms-dataverse-attribute": "mpp_minremaintaskfordoffpriority",
+          "x-ms-dataverse-type": "DecimalType",
+          "x-ms-schema-name": "mpp_MinRemainTaskforDoffPriority"
         },
         "mpp_name": {
           "type": "string",

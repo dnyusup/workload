@@ -4,13 +4,15 @@ import { BUILT_IN_DEFAULTS, loadDefaultValues, saveDefaultValues, type DefaultVa
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Field, NumberInput, SelectInput } from '../ui/Field';
+import { Toggle } from '../ui/Toggle';
+import { DOFF_PRIORITY_TOOLTIP } from '../ui/doffPriorityText';
 
 const TASK_PRIORITY_OPTIONS: { value: TaskPriorityMode; label: string }[] = [
   { value: 'nearest', label: 'Nearest Task' },
   { value: 'quickest', label: 'Quickest Task' },
 ];
 
-const NUMBER_FIELDS: { key: Exclude<keyof DefaultValues, 'taskPriority'>; label: string; min: number }[] = [
+const NUMBER_FIELDS: { key: Exclude<keyof DefaultValues, 'taskPriority' | 'doffPriority' | 'minRemainForDoffPriority'>; label: string; min: number }[] = [
   { key: 'shiftTime', label: 'Shift Time (min)', min: 0 },
   { key: 'lunchTime', label: 'Lunch Time (min)', min: 0 },
   { key: 'lunchStartAt', label: 'Lunch starts at minute', min: 0 },
@@ -98,6 +100,17 @@ function DefaultValuesCard() {
                 <NumberInput value={draft[key]} min={min} onChange={(v) => set(key, Number.isFinite(v) ? v : 0)} />
               </Field>
             ))}
+            <Field label="Doff Priority" tooltip={DOFF_PRIORITY_TOOLTIP}>
+              <Toggle checked={draft.doffPriority} onChange={(v) => set('doffPriority', v)} ariaLabel="Doff Priority" />
+            </Field>
+            <Field label="Min Remain Task for Doff Priority (min)">
+              <NumberInput
+                value={draft.minRemainForDoffPriority}
+                min={0}
+                readOnly={!draft.doffPriority}
+                onChange={(v) => set('minRemainForDoffPriority', Number.isFinite(v) ? v : 0)}
+              />
+            </Field>
           </div>
           {message && <p className="data-manager-hint">{message}</p>}
         </>

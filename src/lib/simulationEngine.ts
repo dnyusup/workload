@@ -10,6 +10,8 @@ import type {
   MachineTimelineSegment,
   OperatorRuntimeState,
   PendingTask,
+  ServiceSegment,
+  SuspendedVisit,
   OperatorTimelineKind,
   OperatorTimelineSegment,
   SimMetrics,
@@ -21,6 +23,7 @@ import { buildServiceSegments } from './machineZones';
 import { computeWalkingWaypoints, createRoutingRowCache, type RoutingRowCache } from './operatorRouting';
 import { createRng, randomSeed } from './rng';
 import { forecastCycleLength, frequencyTypeIsDue, triggerEventOf, type TriggerEvent } from './frequencyTypes';
+import { isDoffingActivity, nextTaskOf, remainingVisitMinutes, snapshotVisit } from './doffPriority';
 import { buildWallGraph, type WallGraph } from './wallRouting';
 
 /** How far operators keep from a wall's end when walking around it. */
@@ -101,6 +104,10 @@ export class SimulationEngine {
   private eventsSinceLastDoff = new Map<string, Set<TriggerEvent>>();
   /** Machines whose first Doffing of this shift has already come due (FirstDoffOnShift). */
   private doffedThisShift = new Set<string>();
+  /** Doffing priority: per machine, the rest of a visit the operator left for Doffing. */
+  private suspendedVisits = new Map<string, SuspendedVisit>();
+  /** Doffing priority: the operator just left a visit and does every waiting Doffing first. */
+  private doffFirst = false;
 
   constructor(config: AppConfig) {
     this.config = config;
@@ -652,9 +659,16 @@ export class SimulationEngine {
   private pickNextTarget(): MachineRuntimeState | null {
     // Machines still 'running' can be candidates too — that's a Run-condition task pending,
     // which the operator services without stopping the machine's production.
-    const candidates = this.machines.filter(
-      (m) => (m.status === 'needs-service' || m.status === 'running') && m.pendingTasks.length > 0,
+    let candidates = this.machines.filter(
+      (m) => (m.status === 'needs-service' || m.status === 'running') && (m.pendingTasks.length > 0 || this.suspendedVisits.has(m.id)),
     );
+    // Right after leaving a visit for Doffing priority: every waiting Doffing comes first, then
+    // back to plain Task Priority (with the suspended visit competing on its remaining time).
+    if (this.doffFirst) {
+      const doffing = candidates.filter((m) => m.pendingTasks.some((t) => isDoffingActivity(t.activity)));
+      if (doffing.length > 0) candidates = doffing;
+      else this.doffFirst = false;
+    }
     if (candidates.length === 0) return null;
     const score =
       this.config.operator.taskPriority === 'quickest'
@@ -696,19 +710,7 @@ export class SimulationEngine {
   private estimateServiceEtaMin(machine: MachineRuntimeState): number {
     const speed = this.config.movement.walkingSpeed > 0 ? this.config.movement.walkingSpeed : 1;
     const pxPerM = this.config.movement.pixelsPerMeter;
-    const segments = buildServiceSegments(
-      machine.pendingTasks,
-      machine.x,
-      machine.y,
-      machine.orientation,
-      machine.pairSide,
-      this.config.movement.walkingSpeed,
-      pxPerM,
-      machine.widthPx,
-      machine.heightPx,
-      machine.axis,
-      this.config.rpcPercent,
-    );
+    const segments = this.visitSegments(machine, machine.pendingTasks);
     if (segments.length === 0) {
       return this.walkingDistanceMeters(this.operator.x, this.operator.y, machine.x, machine.y) / speed;
     }
@@ -721,9 +723,12 @@ export class SimulationEngine {
     return total;
   }
 
-  private startWalkingTo(machine: MachineRuntimeState) {
-    const segments = buildServiceSegments(
-      machine.pendingTasks,
+  /** Everything a visit to this machine would do now: the rest of a suspended visit first, then
+   * the given pending tasks. */
+  private visitSegments(machine: MachineRuntimeState, tasks: PendingTask[]): ServiceSegment[] {
+    const suspended = this.suspendedVisits.get(machine.id)?.segments ?? [];
+    const pending = buildServiceSegments(
+      tasks,
       machine.x,
       machine.y,
       machine.orientation,
@@ -735,6 +740,11 @@ export class SimulationEngine {
       machine.axis,
       this.config.rpcPercent,
     );
+    return [...suspended, ...pending];
+  }
+
+  private startWalkingTo(machine: MachineRuntimeState) {
+    const segments = this.visitSegments(machine, machine.pendingTasks);
     const firstStop = segments[0] ?? { x: machine.x, y: machine.y };
     // Route the hop through inter-row aisles rather than a straight line, so it doesn't visually
     // cut through whatever machine row sits between the operator and its target (heuristic, not
@@ -799,6 +809,44 @@ export class SimulationEngine {
     timeline.push(segment);
   }
 
+  /** Doffing priority: leave the current visit when another machine needs Doffing and at least the
+   * configured minutes of this visit are still left. Never interrupts Doffing work itself. */
+  private shouldSuspendForDoffing(): boolean {
+    const { doffPriority, minRemainForDoffPriority } = this.config.operator;
+    if (!doffPriority) return false;
+    const task = this.serviceTaskForCurrentZone();
+    if (!task || isDoffingActivity(task.activity)) return false;
+    const remaining = remainingVisitMinutes(this.operator, this.config.movement.pixelsPerMeter, this.config.movement.walkingSpeed);
+    if (remaining < (minRemainForDoffPriority ?? 0)) return false;
+    return this.machines.some(
+      (m) =>
+        m.id !== this.operator.targetMachineId &&
+        (m.status === 'needs-service' || m.status === 'running') &&
+        m.pendingTasks.some((t) => isDoffingActivity(t.activity)),
+    );
+  }
+
+  private suspendVisitForDoffing(atMin: number) {
+    const machine = this.machines.find((m) => m.id === this.operator.targetMachineId);
+    if (machine) {
+      this.suspendedVisits.set(machine.id, snapshotVisit(this.operator));
+      // A stopped machine stays stopped, now waiting for the operator to come back.
+      if (machine.status === 'being-serviced') {
+        machine.status = 'needs-service';
+        machine.queuedSince = atMin;
+      }
+      this.addLog(atMin, `Paused work on Machine ${machine.label} for Doffing priority`);
+    }
+    this.doffFirst = true;
+    this.operator.phase = 'idle';
+    this.operator.targetMachineId = null;
+    this.operator.targetMachineLabel = null;
+    this.operator.serviceTasks = [];
+    this.operator.serviceSegments = [];
+    this.operator.serviceSubPhase = null;
+    this.operator.currentZoneLabel = null;
+  }
+
   private serviceTaskForCurrentZone(): PendingTask | undefined {
     const activityLabel = this.operator.currentZoneLabel?.split(' — ')[0];
     return activityLabel
@@ -830,7 +878,9 @@ export class SimulationEngine {
     const activeTask = isOperatorWorking ? currentServiceTask ?? this.operator.serviceTasks[0] : undefined;
     const isRpcZone = isOperatorAtMachine && (this.operator.currentZoneLabel?.endsWith(' — RPC') ?? false);
     const activeActivityKey = activeTask ? (isRpcZone ? `rpc:${activeTask.activity}` : activeTask.activity) : undefined;
-    const waitingActivity = machine.pendingTasks[0]?.activity;
+    const suspendedVisit = this.suspendedVisits.get(machine.id);
+    const waitingTask = machine.pendingTasks[0] ?? (suspendedVisit ? nextTaskOf(suspendedVisit) : undefined);
+    const waitingActivity = waitingTask?.activity;
     // Still 'running' + an active task means a Run-condition activity: the machine never stopped,
     // so the timeline records both facts together (rendered as a split running/activity bar).
     const kind: MachineTimelineKind = machine.status === 'running'
@@ -842,7 +892,7 @@ export class SimulationEngine {
         ? (isRpcZone ? `Running + ${activeTask.label} (RPC)` : `Running + ${activeTask.label}`)
         : activeTask
           ? (isRpcZone ? `${activeTask.label} (RPC)` : activeTask.label)
-          : (waitingActivity ? `Waiting ${machine.pendingTasks[0]?.label}` : 'Waiting servis');
+          : (waitingActivity ? `Waiting ${waitingTask?.label}` : 'Waiting servis');
     const timeline = machine.timeline;
     const previous = timeline[timeline.length - 1];
     if (previous && previous.endMin >= startMin - 1e-9 && previous.kind === kind) {
@@ -927,6 +977,11 @@ export class SimulationEngine {
         if (this.operator.walkProgress >= 1 - 1e-9) {
           this.advanceWalkOrFinish();
         }
+        continue;
+      }
+
+      if (this.operator.phase === 'servicing' && this.shouldSuspendForDoffing()) {
+        this.suspendVisitForDoffing(clockCursor);
         continue;
       }
 
@@ -1078,22 +1133,11 @@ export class SimulationEngine {
     this.operator.y = this.operator.toY;
     const machine = this.machines.find((m) => m.id === this.operator.targetMachineId);
     const tasks = machine ? machine.pendingTasks.splice(0, machine.pendingTasks.length) : [];
-    this.operator.serviceTasks = tasks;
-    const segments = machine
-      ? buildServiceSegments(
-          tasks,
-          machine.x,
-          machine.y,
-          machine.orientation,
-          machine.pairSide,
-          this.config.movement.walkingSpeed,
-          this.config.movement.pixelsPerMeter,
-          machine.widthPx,
-          machine.heightPx,
-          machine.axis,
-          this.config.rpcPercent,
-        )
-      : [];
+    const suspended = machine ? this.suspendedVisits.get(machine.id) : undefined;
+    // Resume a suspended visit exactly where it stopped, then whatever came due since.
+    const segments = machine ? this.visitSegments(machine, tasks) : [];
+    this.operator.serviceTasks = [...(suspended?.tasks ?? []), ...tasks];
+    if (machine) this.suspendedVisits.delete(machine.id);
     if (segments.length === 0) {
       this.finishService(this.metrics.clockMin);
       return;

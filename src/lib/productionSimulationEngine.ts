@@ -12,6 +12,8 @@ import type {
   ProductionSetup,
   ProductionSimMetrics,
   ProductionSimulationState,
+  ServiceSegment,
+  SuspendedVisit,
 } from '../types';
 import { applyRpc, availableTimeMinutes, deriveMachineSpec, distanceMeters } from './calculations';
 import { machineWidthPx, machineHeightPx } from './layoutConstants';
@@ -24,6 +26,7 @@ const WALL_CLEARANCE_METERS = 0.5;
 import { activityFamily, assignedOperatorIdForActivity, isGroupMachine } from './productionActivityRouting';
 import type { ResolvedConstruction } from './productionConstructionResolver';
 import { frequencyTypeIsDue, triggerEventOf, type TriggerEvent } from './frequencyTypes';
+import { isDoffingActivity, nextTaskOf, remainingVisitMinutes, snapshotVisit } from './doffPriority';
 
 function emptyCounts(activities: ActivityConfig[]): Record<ActivityKey, number> {
   return Object.fromEntries(activities.map((a) => [a.key, 0]));
@@ -111,6 +114,10 @@ export class ProductionSimulationEngine {
   private eventsSinceLastDoff = new Map<string, Set<TriggerEvent>>();
   /** Machines whose first Doffing of this shift has already come due (FirstDoffOnShift). */
   private doffedThisShift = new Set<string>();
+  /** Doffing priority: per machine, the rest of a visit an operator left for Doffing. */
+  private suspendedVisits = new Map<string, SuspendedVisit>();
+  /** Doffing priority: operators that just left a visit and do every waiting Doffing first. */
+  private doffFirstOperatorIds = new Set<string>();
   private routeCache: RoutingRowCache = createRoutingRowCache();
   /** Visibility graph around the layout's walls (null when there are none). */
   private wallGraph: WallGraph | null = null;
@@ -702,7 +709,7 @@ export class ProductionSimulationEngine {
   private estimateServiceEtaMin(operator: ProductionOperatorRuntimeState, machine: ProdMachine, myTasks: PendingTask[]): number {
     const speed = this.setup.movement.walkingSpeed > 0 ? this.setup.movement.walkingSpeed : 1;
     const pxPerM = this.setup.movement.pixelsPerMeter;
-    const segments = buildServiceSegments(myTasks, machine.x, machine.y, machine.orientation, machine.pairSide, this.setup.movement.walkingSpeed, pxPerM, machine.widthPx, machine.heightPx, machine.axis, this.setup.rpc);
+    const segments = this.visitSegments(operator, machine, myTasks);
     if (segments.length === 0) return this.walkingDistanceMeters(operator.x, operator.y, machine.x, machine.y) / speed;
     let total = this.walkingDistanceMeters(operator.x, operator.y, segments[0].x, segments[0].y) / speed;
     total += segments[0].dwellMin;
@@ -738,11 +745,18 @@ export class ProductionSimulationEngine {
   }
 
   private pickNextTarget(operator: ProductionOperatorRuntimeState): ProdMachine | null {
-    const candidates = (this.machinesByOperator.get(operator.id) ?? []).filter((m) => {
+    let candidates = (this.machinesByOperator.get(operator.id) ?? []).filter((m) => {
       if (m.status !== 'needs-service' && m.status !== 'running') return false;
       if (m.lockedByOperatorId && m.lockedByOperatorId !== operator.id) return false;
-      return this.tasksFor(operator.id, m).length > 0;
+      return this.tasksFor(operator.id, m).length > 0 || this.canResume(operator.id, m);
     });
+    // Right after leaving a visit for Doffing priority: every waiting Doffing comes first, then
+    // back to plain Task Priority (with the suspended visit competing on its remaining time).
+    if (this.doffFirstOperatorIds.has(operator.id)) {
+      const doffing = candidates.filter((m) => this.tasksFor(operator.id, m).some((t) => isDoffingActivity(t.activity)));
+      if (doffing.length > 0) candidates = doffing;
+      else this.doffFirstOperatorIds.delete(operator.id);
+    }
     if (candidates.length === 0) return null;
     const score = (m: ProdMachine) =>
       this.setup.taskPriority === 'quickest'
@@ -763,7 +777,7 @@ export class ProductionSimulationEngine {
   private startWalkingTo(operator: ProductionOperatorRuntimeState, machine: ProdMachine) {
     machine.lockedByOperatorId = operator.id;
     const myTasks = this.tasksFor(operator.id, machine);
-    const segments = buildServiceSegments(myTasks, machine.x, machine.y, machine.orientation, machine.pairSide, this.setup.movement.walkingSpeed, this.setup.movement.pixelsPerMeter, machine.widthPx, machine.heightPx, machine.axis, this.setup.rpc);
+    const segments = this.visitSegments(operator, machine, myTasks);
     const firstStop = segments[0] ?? { x: machine.x, y: machine.y };
     const route = computeWalkingWaypoints({ x: operator.x, y: operator.y }, { x: firstStop.x, y: firstStop.y }, this.machines, this.setup.movement.pixelsPerMeter, this.routeCache, this.wallGraph);
     const [firstHop, ...remainingHops] = route.slice(1);
@@ -799,6 +813,64 @@ export class ProductionSimulationEngine {
   private nextPendingBreak(operatorId: string, clockCursor: number): BreakDef | null {
     const breaks = this.breaksByOperator.get(operatorId) ?? [];
     return breaks.find((b) => !b.done && clockCursor >= b.startAt) ?? null;
+  }
+
+  /** A suspended visit on this machine this operator may pick back up: its own (dedicated
+   * machines), or any pool member's (MachinesGroup). */
+  private canResume(operatorId: string, machine: ProdMachine): boolean {
+    const visit = this.suspendedVisits.get(machine.id);
+    if (!visit) return false;
+    return visit.ownerOperatorId ? visit.ownerOperatorId === operatorId : !!this.operatorPoolByMachineId.get(machine.id)?.has(operatorId);
+  }
+
+  /** Everything this operator's visit to the machine would do now: the rest of a suspended visit
+   * they may resume first, then the given pending tasks. */
+  private visitSegments(operator: ProductionOperatorRuntimeState, machine: ProdMachine, tasks: PendingTask[]): ServiceSegment[] {
+    const suspended = this.canResume(operator.id, machine) ? this.suspendedVisits.get(machine.id)?.segments ?? [] : [];
+    return [...suspended, ...buildServiceSegments(tasks, machine.x, machine.y, machine.orientation, machine.pairSide, this.setup.movement.walkingSpeed, this.setup.movement.pixelsPerMeter, machine.widthPx, machine.heightPx, machine.axis, this.setup.rpc)];
+  }
+
+  /** Doffing priority: leave the current visit when another of this operator's machines needs
+   * Doffing and at least the configured minutes of this visit are still left. Never interrupts
+   * Doffing work itself. */
+  private shouldSuspendForDoffing(operator: ProductionOperatorRuntimeState): boolean {
+    if (!this.setup.doffPriority) return false;
+    const task = this.serviceTaskForCurrentZone(operator);
+    if (!task || isDoffingActivity(task.activity)) return false;
+    const remaining = remainingVisitMinutes(operator, this.setup.movement.pixelsPerMeter, this.setup.movement.walkingSpeed);
+    if (remaining < this.setup.minRemainForDoffPriority) return false;
+    return (this.machinesByOperator.get(operator.id) ?? []).some(
+      (m) =>
+        m.id !== operator.targetMachineId &&
+        (m.status === 'needs-service' || m.status === 'running') &&
+        (!m.lockedByOperatorId || m.lockedByOperatorId === operator.id) &&
+        this.tasksFor(operator.id, m).some((t) => isDoffingActivity(t.activity)),
+    );
+  }
+
+  private suspendVisitForDoffing(operator: ProductionOperatorRuntimeState, atMin: number) {
+    const machine = operator.targetMachineId ? this.machineById.get(operator.targetMachineId) : undefined;
+    if (machine) {
+      this.suspendedVisits.set(machine.id, {
+        ...snapshotVisit(operator),
+        ownerOperatorId: this.operatorPoolByMachineId.has(machine.id) ? undefined : operator.id,
+      });
+      // A stopped machine stays stopped, now waiting for its work to be picked back up.
+      if (machine.status === 'being-serviced') {
+        machine.status = 'needs-service';
+        machine.queuedSince = atMin;
+      }
+      if (machine.lockedByOperatorId === operator.id) machine.lockedByOperatorId = null;
+      this.addLog(atMin, `${operator.label} paused work on Machine ${machine.label} for Doffing priority`);
+    }
+    this.doffFirstOperatorIds.add(operator.id);
+    operator.phase = 'idle';
+    operator.targetMachineId = null;
+    operator.targetMachineLabel = null;
+    operator.serviceTasks = [];
+    operator.serviceSegments = [];
+    operator.serviceSubPhase = null;
+    operator.currentZoneLabel = null;
   }
 
   private serviceTaskForCurrentZone(operator: ProductionOperatorRuntimeState): PendingTask | undefined {
@@ -908,10 +980,11 @@ export class ProductionSimulationEngine {
       const taken = new Set(tasks);
       machine.pendingTasks = machine.pendingTasks.filter((t) => !taken.has(t));
     }
-    operator.serviceTasks = tasks;
-    const segments = machine
-      ? buildServiceSegments(tasks, machine.x, machine.y, machine.orientation, machine.pairSide, this.setup.movement.walkingSpeed, this.setup.movement.pixelsPerMeter, machine.widthPx, machine.heightPx, machine.axis, this.setup.rpc)
-      : [];
+    // Resume a suspended visit exactly where it stopped, then whatever came due since.
+    const suspended = machine && this.canResume(operator.id, machine) ? this.suspendedVisits.get(machine.id) : undefined;
+    const segments = machine ? this.visitSegments(operator, machine, tasks) : [];
+    operator.serviceTasks = [...(suspended?.tasks ?? []), ...tasks];
+    if (machine && suspended) this.suspendedVisits.delete(machine.id);
     if (segments.length === 0) {
       this.finishService(operator, this.metrics.clockMin);
       return;
@@ -1016,7 +1089,9 @@ export class ProductionSimulationEngine {
     const activeTask = isWorking ? currentServiceTask ?? servicingOperator!.serviceTasks[0] : undefined;
     const isRpcZone = isWorking && (servicingOperator?.currentZoneLabel?.endsWith(' — RPC') ?? false);
     const activeActivityKey = activeTask ? (isRpcZone ? `rpc:${activeTask.activity}` : activeTask.activity) : undefined;
-    const waitingActivity = machine.pendingTasks[0]?.activity;
+    const suspendedVisit = this.suspendedVisits.get(machine.id);
+    const waitingTask = machine.pendingTasks[0] ?? (suspendedVisit ? nextTaskOf(suspendedVisit) : undefined);
+    const waitingActivity = waitingTask?.activity;
     const kind: MachineTimelineKind = machine.status === 'running'
       ? (activeActivityKey ? `running:${activeActivityKey}` : 'running')
       : activeActivityKey ?? (waitingActivity ? `waiting:${waitingActivity}` : 'waiting');
@@ -1026,7 +1101,7 @@ export class ProductionSimulationEngine {
         ? (isRpcZone ? `Running + ${activeTask.label} (RPC)` : `Running + ${activeTask.label}`)
         : activeTask
           ? (isRpcZone ? `${activeTask.label} (RPC)` : activeTask.label)
-          : (waitingActivity ? `Waiting ${machine.pendingTasks[0]?.label}` : 'Waiting');
+          : (waitingActivity ? `Waiting ${waitingTask?.label}` : 'Waiting');
     const timeline = machine.timeline;
     const previous = timeline[timeline.length - 1];
     if (previous && previous.endMin >= startMin - 1e-9 && previous.kind === kind) {
@@ -1094,6 +1169,11 @@ export class ProductionSimulationEngine {
         remaining -= step;
         clockCursor += step;
         if (operator.walkProgress >= 1 - 1e-9) this.advanceWalkOrFinish(operator);
+        continue;
+      }
+
+      if (operator.phase === 'servicing' && this.shouldSuspendForDoffing(operator)) {
+        this.suspendVisitForDoffing(operator, clockCursor);
         continue;
       }
 

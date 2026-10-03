@@ -16,11 +16,13 @@ export type Mpp_wl_productionsetupsesstatuscode = keyof typeof Mpp_wl_production
 export interface Mpp_wl_productionsetupsesBase {
   importsequencenumber?: number;
   mpp_creator_email?: string;
+  mpp_doffpriority?: string;
   mpp_layoutsnapshotjson?: string;
   mpp_lunchstartat?: number;
   mpp_lunchtime?: number;
   mpp_meetingstartat?: number;
   mpp_meetingtime?: number;
+  mpp_minremaintaskfordoffpriority?: number;
   mpp_name: string;
   mpp_pixelspermeter?: number;
   mpp_planningtype?: string;

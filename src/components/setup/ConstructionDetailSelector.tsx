@@ -177,6 +177,8 @@ export function ConstructionDetailSelector({
           lunchStartAt: defaults.lunchStartAt,
           meetingTime: defaults.meetingTime,
           meetingStartAt: defaults.meetingStartAt,
+          doffPriority: defaults.doffPriority,
+          minRemainForDoffPriority: defaults.minRemainForDoffPriority,
         },
         movement: { walkingSpeed: defaults.walkingSpeed, pixelsPerMeter: defaults.pixelsPerMeter },
         rpcPercent: defaults.rpc,
