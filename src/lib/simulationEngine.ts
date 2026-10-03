@@ -24,6 +24,7 @@ import { computeWalkingWaypoints, createRoutingRowCache, type RoutingRowCache } 
 import { createRng, randomSeed } from './rng';
 import { forecastCycleLength, frequencyTypeIsDue, triggerEventOf, type TriggerEvent } from './frequencyTypes';
 import { isDoffingActivity, nextTaskOf, remainingVisitMinutes, snapshotVisit } from './doffPriority';
+import { pickLowestScore } from './bestCandidate';
 import { buildWallGraph, type WallGraph } from './wallRouting';
 
 /** How far operators keep from a wall's end when walking around it. */
@@ -670,20 +671,19 @@ export class SimulationEngine {
       else this.doffFirst = false;
     }
     if (candidates.length === 0) return null;
-    const score =
-      this.config.operator.taskPriority === 'quickest'
-        ? (m: MachineRuntimeState) => this.estimateServiceEtaMin(m)
-        : (m: MachineRuntimeState) => this.walkingDistanceMeters(this.operator.x, this.operator.y, m.x, m.y);
-    let best = candidates[0];
-    let bestScore = score(best);
-    for (const c of candidates.slice(1)) {
-      const s = score(c);
-      if (s < bestScore) {
-        best = c;
-        bestScore = s;
-      }
+    const pxPerM = this.config.movement.pixelsPerMeter;
+    if (this.config.operator.taskPriority === 'quickest') {
+      return pickLowestScore(
+        candidates,
+        (m) => this.estimateServiceEtaMin(m, true),
+        (m) => this.estimateServiceEtaMin(m),
+      );
     }
-    return best;
+    return pickLowestScore(
+      candidates,
+      (m) => distanceMeters(this.operator.x, this.operator.y, m.x, m.y, pxPerM),
+      (m) => this.walkingDistanceMeters(this.operator.x, this.operator.y, m.x, m.y),
+    );
   }
 
   /** Real walking distance (meters) between two points, following the same corridor route the
@@ -706,15 +706,21 @@ export class SimulationEngine {
   }
 
   /** Total time (walking + all zone dwells/moves) from the operator's current position until every
-   * pending task on this machine would be finished — used to rank machines under 'quickest' priority. */
-  private estimateServiceEtaMin(machine: MachineRuntimeState): number {
+   * pending task on this machine would be finished — used to rank machines under 'quickest' priority.
+   * `straightFirstLeg`: measure the walk to the machine as a straight line — a cheap lower bound of
+   * the routed estimate, used to skip routing for candidates that can't win (see pickLowestScore). */
+  private estimateServiceEtaMin(machine: MachineRuntimeState, straightFirstLeg = false): number {
     const speed = this.config.movement.walkingSpeed > 0 ? this.config.movement.walkingSpeed : 1;
     const pxPerM = this.config.movement.pixelsPerMeter;
+    const walk = (toX: number, toY: number) =>
+      straightFirstLeg
+        ? distanceMeters(this.operator.x, this.operator.y, toX, toY, pxPerM)
+        : this.walkingDistanceMeters(this.operator.x, this.operator.y, toX, toY);
     const segments = this.visitSegments(machine, machine.pendingTasks);
     if (segments.length === 0) {
-      return this.walkingDistanceMeters(this.operator.x, this.operator.y, machine.x, machine.y) / speed;
+      return walk(machine.x, machine.y) / speed;
     }
-    let total = this.walkingDistanceMeters(this.operator.x, this.operator.y, segments[0].x, segments[0].y) / speed;
+    let total = walk(segments[0].x, segments[0].y) / speed;
     total += segments[0].dwellMin;
     for (let i = 1; i < segments.length; i += 1) {
       total += distanceMeters(segments[i - 1].x, segments[i - 1].y, segments[i].x, segments[i].y, pxPerM) / speed;

@@ -27,6 +27,7 @@ import { activityFamily, assignedOperatorIdForActivity, isGroupMachine } from '.
 import type { ResolvedConstruction } from './productionConstructionResolver';
 import { frequencyTypeIsDue, triggerEventOf, type TriggerEvent } from './frequencyTypes';
 import { isDoffingActivity, nextTaskOf, remainingVisitMinutes, snapshotVisit } from './doffPriority';
+import { pickLowestScore } from './bestCandidate';
 
 function emptyCounts(activities: ActivityConfig[]): Record<ActivityKey, number> {
   return Object.fromEntries(activities.map((a) => [a.key, 0]));
@@ -727,12 +728,16 @@ export class ProductionSimulationEngine {
     return total;
   }
 
-  private estimateServiceEtaMin(operator: ProductionOperatorRuntimeState, machine: ProdMachine, myTasks: PendingTask[]): number {
+  /** `straightFirstLeg`: measure the walk to the machine as a straight line — a cheap lower bound of
+   * the routed estimate, used to skip routing for candidates that can't win (see pickLowestScore). */
+  private estimateServiceEtaMin(operator: ProductionOperatorRuntimeState, machine: ProdMachine, myTasks: PendingTask[], straightFirstLeg = false): number {
     const speed = this.setup.movement.walkingSpeed > 0 ? this.setup.movement.walkingSpeed : 1;
     const pxPerM = this.setup.movement.pixelsPerMeter;
+    const walk = (toX: number, toY: number) =>
+      straightFirstLeg ? distanceMeters(operator.x, operator.y, toX, toY, pxPerM) : this.walkingDistanceMeters(operator.x, operator.y, toX, toY);
     const segments = this.visitSegments(operator, machine, myTasks);
-    if (segments.length === 0) return this.walkingDistanceMeters(operator.x, operator.y, machine.x, machine.y) / speed;
-    let total = this.walkingDistanceMeters(operator.x, operator.y, segments[0].x, segments[0].y) / speed;
+    if (segments.length === 0) return walk(machine.x, machine.y) / speed;
+    let total = walk(segments[0].x, segments[0].y) / speed;
     total += segments[0].dwellMin;
     for (let i = 1; i < segments.length; i += 1) {
       total += distanceMeters(segments[i - 1].x, segments[i - 1].y, segments[i].x, segments[i].y, pxPerM) / speed;
@@ -779,20 +784,19 @@ export class ProductionSimulationEngine {
       else this.doffFirstOperatorIds.delete(operator.id);
     }
     if (candidates.length === 0) return null;
-    const score = (m: ProdMachine) =>
-      this.setup.taskPriority === 'quickest'
-        ? this.estimateServiceEtaMin(operator, m, this.tasksFor(operator.id, m))
-        : this.walkingDistanceMeters(operator.x, operator.y, m.x, m.y);
-    let best = candidates[0];
-    let bestScore = score(best);
-    for (const c of candidates.slice(1)) {
-      const s = score(c);
-      if (s < bestScore) {
-        best = c;
-        bestScore = s;
-      }
+    const pxPerM = this.setup.movement.pixelsPerMeter;
+    if (this.setup.taskPriority === 'quickest') {
+      return pickLowestScore(
+        candidates,
+        (m) => this.estimateServiceEtaMin(operator, m, this.tasksFor(operator.id, m), true),
+        (m) => this.estimateServiceEtaMin(operator, m, this.tasksFor(operator.id, m)),
+      );
     }
-    return best;
+    return pickLowestScore(
+      candidates,
+      (m) => distanceMeters(operator.x, operator.y, m.x, m.y, pxPerM),
+      (m) => this.walkingDistanceMeters(operator.x, operator.y, m.x, m.y),
+    );
   }
 
   private startWalkingTo(operator: ProductionOperatorRuntimeState, machine: ProdMachine) {
