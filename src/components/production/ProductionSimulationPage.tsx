@@ -72,6 +72,18 @@ function dedicatedOperatorIds(a: ProductionMachineAssignment | undefined): strin
   );
 }
 
+/** The value every given assignment shares; undefined when they differ or none is set. */
+function sharedValue<T>(values: (T | undefined)[]): T | undefined {
+  const distinct = new Set(values);
+  return distinct.size === 1 ? values[0] : undefined;
+}
+
+function doffPriorityText(a: ProductionMachineAssignment | undefined): string {
+  if (a?.doffPriority === undefined && a?.minRemainForDoffPriority === undefined) return '—';
+  const flag = a?.doffPriority === undefined ? 'Setup' : a.doffPriority ? 'Yes' : 'No';
+  return a?.minRemainForDoffPriority === undefined ? flag : `${flag} · ${a.minRemainForDoffPriority} min`;
+}
+
 function withoutOperator(ids: string[] | undefined, operatorId: string): string[] | undefined {
   const remaining = ids?.filter((id) => id !== operatorId);
   return remaining && remaining.length > 0 ? remaining : undefined;
@@ -680,6 +692,9 @@ function ProductionSetupEditor({
   const [appliedDiesChangeOperatorId, setAppliedDiesChangeOperatorId] = useState('');
   const [appliedDefectRepairingOperatorId, setAppliedDefectRepairingOperatorId] = useState('');
   const [bulkPlanningType, setBulkPlanningType] = useState<PlanningType | ''>('');
+  /** Machine-level Doff Priority; undefined = follow the setup's. */
+  const [bulkDoffPriority, setBulkDoffPriority] = useState<boolean | undefined>(undefined);
+  const [bulkMinRemain, setBulkMinRemain] = useState<number | undefined>(undefined);
   const [bulkGroupName, setBulkGroupName] = useState('');
   const [appliedGroupName, setAppliedGroupName] = useState('');
   const [bulkGroupOperatorIds, setBulkGroupOperatorIds] = useState<string[]>([]);
@@ -795,6 +810,8 @@ function ProductionSetupEditor({
     setAppliedDiesChangeOperatorId(diesChange);
     setAppliedDefectRepairingOperatorId(defectRepairing);
     setBulkPlanningType(commonPlanningType(selectedMachineIds));
+    setBulkDoffPriority(sharedValue(selectedAssignments.map((a) => a.doffPriority)));
+    setBulkMinRemain(sharedValue(selectedAssignments.map((a) => a.minRemainForDoffPriority)));
     const groupName = commonValue((a) => a.groupName, selectedAssignments);
     const groupOperatorKey = commonValue((a) => operatorSetKey(a.assignedOperatorIds));
     const groupOperatorIds = groupOperatorKey ? groupOperatorKey.split(';') : [];
@@ -854,6 +871,7 @@ function ProductionSetupEditor({
       `Area: ${area ?? '—'}`,
       `Group: ${a?.groupName ?? '—'}`,
       `Planning Type: ${a?.planningType ? planningTypeLabel(a.planningType) : '—'}`,
+      `Doff Priority: ${doffPriorityText(a) === '—' ? 'follow setup' : doffPriorityText(a)}`,
       ...(groupMachine
         ? [`Operators: ${handlers.map((id) => operatorLabel(id)).join(', ') || '—'}`]
         : slots.map((slot, i) => `${slot.label}: ${operatorLabel(handlers[i])}`)),
@@ -978,7 +996,11 @@ function ProductionSetupEditor({
       groupName: undefined,
       planningType: undefined,
       assignedOperatorIds: undefined,
+      doffPriority: undefined,
+      minRemainForDoffPriority: undefined,
     });
+    setBulkDoffPriority(undefined);
+    setBulkMinRemain(undefined);
     setBulkConstructionId('');
     setAppliedConstructionId('');
     setBulkGroupName('');
@@ -1119,6 +1141,13 @@ function ProductionSetupEditor({
     if (!keepsGroup) resetGroupOperatorFields();
   };
 
+  /** undefined for both = follow the setup's Doff Priority again. */
+  const applyMachineDoffPriority = (doffPriority: boolean | undefined, minRemain: number | undefined) => {
+    void applyBulk({ doffPriority, minRemainForDoffPriority: minRemain });
+    setBulkDoffPriority(doffPriority);
+    setBulkMinRemain(minRemain);
+  };
+
   const applyGroupName = (groupName: string) => {
     void applyBulk({ groupName: groupName.trim() || undefined });
     setBulkGroupName(groupName.trim());
@@ -1179,6 +1208,8 @@ function ProductionSetupEditor({
       'DiesChange',
       'DefectRepairing',
       'Operators',
+      'Doff Priority',
+      'Min Remain Task',
     ];
     const rows = setup.layout.map((m) => {
       const a = assignmentByMachine.get(m.id);
@@ -1193,6 +1224,8 @@ function ProductionSetupEditor({
         operatorLabelOrBlank(a?.diesChangeOperatorId),
         operatorLabelOrBlank(a?.defectRepairingOperatorId),
         (a?.assignedOperatorIds ?? []).map((id) => operatorLabelOrBlank(id)).filter(Boolean).join(';'),
+        a?.doffPriority === undefined ? '' : a.doffPriority ? 'Yes' : 'No',
+        a?.minRemainForDoffPriority ?? '',
       ];
     });
     downloadCsv(`${setup.name.replace(/[^a-z0-9]+/gi, '_') || 'production-setup'}.csv`, headers, rows);
@@ -1222,6 +1255,8 @@ function ProductionSetupEditor({
       groupName: header.indexOf('group name'),
       planningType: header.indexOf('planning type'),
       operators: header.indexOf('operators'),
+      doffPriority: header.indexOf('doff priority'),
+      minRemain: header.indexOf('min remain task'),
     };
     if (colIndex.machine === -1) {
       setImportMessage('CSV must have a "Machine" column.');
@@ -1267,6 +1302,19 @@ function ProductionSetupEditor({
         if (!value) patch.planningType = undefined;
         else if (planningType) patch.planningType = planningType;
         else errors.push(`Row ${rowNum}: planning type "${value}" must be DedicatedMachines or MachinesGroup.`);
+      }
+      if (colIndex.doffPriority !== -1) {
+        const value = (cols[colIndex.doffPriority] ?? '').trim().toLowerCase();
+        if (!value) patch.doffPriority = undefined;
+        else if (value === 'yes' || value === 'no') patch.doffPriority = value === 'yes';
+        else errors.push(`Row ${rowNum}: Doff Priority "${cols[colIndex.doffPriority]}" must be Yes, No or blank.`);
+      }
+      if (colIndex.minRemain !== -1) {
+        const value = (cols[colIndex.minRemain] ?? '').trim();
+        const parsed = Number(value);
+        if (!value) patch.minRemainForDoffPriority = undefined;
+        else if (Number.isFinite(parsed) && parsed >= 0) patch.minRemainForDoffPriority = parsed;
+        else errors.push(`Row ${rowNum}: Min Remain Task "${value}" must be a number of minutes or blank.`);
       }
       if (colIndex.operators !== -1) {
         const labels = (cols[colIndex.operators] ?? '').split(';').map((label) => label.trim()).filter(Boolean);
@@ -1420,6 +1468,11 @@ function ProductionSetupEditor({
   const planningTypeDirty = bulkPlanningType !== appliedPlanningType;
   const groupNameDirty = bulkGroupName.trim() !== appliedGroupName;
   const groupOperatorsDirty = operatorSetKey(bulkGroupOperatorIds) !== operatorSetKey(appliedGroupOperatorIds);
+  const selectedAssignmentsNow = selectedMachineIds.map((id) => assignmentByMachine.get(id));
+  const appliedDoffPriority = sharedValue(selectedAssignmentsNow.map((a) => a?.doffPriority));
+  const appliedMinRemain = sharedValue(selectedAssignmentsNow.map((a) => a?.minRemainForDoffPriority));
+  const doffPriorityDirty = bulkDoffPriority !== appliedDoffPriority || bulkMinRemain !== appliedMinRemain;
+  const effectiveDoffPriority = bulkDoffPriority ?? setup.doffPriority;
 
   const removeButton = (title: string, onClick: () => void) => (
     <Button
@@ -1724,6 +1777,41 @@ function ProductionSetupEditor({
       {!appliedPlanningType && selectedMachineIds.length > 0 && (
         <p className="data-manager-hint">Apply a Planning Type to assign operators to the selection.</p>
       )}
+      <div className="production-assign-row production-assign-doff">
+        <span className="production-assign-doff-label" title={DOFF_PRIORITY_TOOLTIP}>
+          Doff Priority
+        </span>
+        <Toggle checked={effectiveDoffPriority} onChange={setBulkDoffPriority} ariaLabel="Doff Priority for selection" />
+        <input
+          className="input"
+          type="number"
+          min={0}
+          placeholder={`${setup.minRemainForDoffPriority} (setup)`}
+          value={bulkMinRemain ?? ''}
+          disabled={!effectiveDoffPriority}
+          title="Min Remain Task for Doff Priority (min) — blank follows the setup"
+          aria-label="Min Remain Task for Doff Priority (min)"
+          onChange={(e) => {
+            const parsed = parseFloat(e.target.value);
+            setBulkMinRemain(Number.isFinite(parsed) ? Math.max(0, parsed) : undefined);
+          }}
+        />
+        <Button
+          variant="secondary"
+          className={doffPriorityDirty ? 'btn-pending' : ''}
+          onClick={() => applyMachineDoffPriority(bulkDoffPriority, bulkMinRemain)}
+          disabled={selectedMachineIds.length === 0}
+          title="Apply Doff Priority to selection"
+        >
+          Apply
+        </Button>
+        {removeButton("Follow the setup's Doff Priority again", () => applyMachineDoffPriority(undefined, undefined))}
+      </div>
+      {selectedMachineIds.length > 0 && bulkDoffPriority === undefined && bulkMinRemain === undefined && (
+        <p className="data-manager-hint">
+          Doff Priority follows the setup ({setup.doffPriority ? `Yes, ${setup.minRemainForDoffPriority} min` : 'No'}).
+        </p>
+      )}
     </Card>
   );
 
@@ -1959,6 +2047,7 @@ function ProductionSetupEditor({
                 <th>Dies Change</th>
                 <th>Defect Repairing</th>
                 <th>Operators</th>
+                <th title="Machine's own Doff Priority; — = follows the setup">Doff Priority</th>
               </tr>
             </thead>
             <tbody>
@@ -1988,6 +2077,7 @@ function ProductionSetupEditor({
                         </span>
                       )}
                     </td>
+                    <td>{doffPriorityText(a)}</td>
                   </tr>
                 );
               })}

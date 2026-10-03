@@ -20,11 +20,13 @@ export interface Mpp_wl_productionsetupmachinesesBase {
   mpp_defectrepairingoperatorid?: string;
   mpp_dieschangeoperatorid?: string;
   mpp_doffingoperatorid?: string;
+  mpp_doffpriority?: string;
   mpp_fracturerepairingoperatorid?: string;
   mpp_groupname?: string;
   mpp_loadingoperatorid?: string;
   mpp_machineid: string;
   mpp_machinelabel?: string;
+  mpp_minremaintaskfordoffpriority?: number;
   mpp_planningtype?: string;
   mpp_productionsetupid?: string;
   mpp_wl_productionsetupmachinesid: string;

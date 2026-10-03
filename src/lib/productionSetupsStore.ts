@@ -41,6 +41,11 @@ function parseAssignedOperators(value: string | undefined | null): string[] | un
   return ids.length > 0 ? ids : undefined;
 }
 
+function parseYesNo(value: string | undefined | null): boolean | undefined {
+  const flag = (value ?? '').trim().toLowerCase();
+  return flag === 'yes' ? true : flag === 'no' ? false : undefined;
+}
+
 function parsePlanningType(value: string | undefined | null): PlanningType | undefined {
   return value === 'MachinesGroup' || value === 'DedicatedMachines' ? value : undefined;
 }
@@ -58,6 +63,8 @@ function machineRowToAssignment(row: Mpp_wl_productionsetupmachineses, construct
     groupName: row.mpp_groupname?.trim() || undefined,
     planningType: parsePlanningType(row.mpp_planningtype),
     assignedOperatorIds: parseAssignedOperators(row.mpp_assignedopr),
+    doffPriority: parseYesNo(row.mpp_doffpriority),
+    minRemainForDoffPriority: row.mpp_minremaintaskfordoffpriority ?? undefined,
   };
 }
 
@@ -373,7 +380,7 @@ export async function updateMachineAssignments(
     async ({ machineId, patch }) => {
       const rowId = rowIdByMachineId?.get(machineId);
       if (!rowId) return;
-      const fields: Record<string, string | null> = {};
+      const fields: Record<string, string | number | null> = {};
       if ('constructionDetailId' in patch) fields.mpp_constructiondetailid = patch.constructionDetailId ?? null;
       if ('doffingOperatorId' in patch) fields.mpp_doffingoperatorid = patch.doffingOperatorId ?? null;
       if ('loadingOperatorId' in patch) fields.mpp_loadingoperatorid = patch.loadingOperatorId ?? null;
@@ -385,6 +392,10 @@ export async function updateMachineAssignments(
       if ('assignedOperatorIds' in patch) {
         fields.mpp_assignedopr = patch.assignedOperatorIds?.length ? patch.assignedOperatorIds.join(ASSIGNED_OPERATOR_SEPARATOR) : null;
       }
+      if ('doffPriority' in patch) {
+        fields.mpp_doffpriority = patch.doffPriority === undefined ? null : patch.doffPriority ? 'Yes' : 'No';
+      }
+      if ('minRemainForDoffPriority' in patch) fields.mpp_minremaintaskfordoffpriority = patch.minRemainForDoffPriority ?? null;
       if (Object.keys(fields).length === 0) return;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await Mpp_wl_productionsetupmachinesesService.update(rowId, fields as any);

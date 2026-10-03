@@ -181,6 +181,14 @@
           "x-ms-schema-name": "mpp_doffingoperatorid",
           "maxLength": 100
         },
+        "mpp_doffpriority": {
+          "type": "string",
+          "title": "DoffPriority",
+          "x-ms-dataverse-attribute": "mpp_doffpriority",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "mpp_DoffPriority",
+          "maxLength": 100
+        },
         "mpp_fracturerepairingoperatorid": {
           "type": "string",
           "title": "fracturerepairingoperatorid",
@@ -222,6 +230,13 @@
           "x-ms-dataverse-type": "StringType",
           "x-ms-schema-name": "mpp_machinelabel",
           "maxLength": 100
+        },
+        "mpp_minremaintaskfordoffpriority": {
+          "type": "string",
+          "title": "minremaintaskfordoffpriority",
+          "x-ms-dataverse-attribute": "mpp_minremaintaskfordoffpriority",
+          "x-ms-dataverse-type": "DecimalType",
+          "x-ms-schema-name": "mpp_minremaintaskfordoffpriority"
         },
         "mpp_planningtype": {
           "type": "string",

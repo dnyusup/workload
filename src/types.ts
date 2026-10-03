@@ -445,6 +445,10 @@ export interface ProductionMachineAssignment {
   /** MachinesGroup only — every operator that may handle this machine. Any of them takes whatever
    * task comes due on it; the per-activity *OperatorId slots above stay empty. */
   assignedOperatorIds?: string[];
+  /** Whether this machine's Doffing may interrupt an operator's other work, and the least visit
+   * time that must still be left for it to; undefined = follow the setup's own settings. */
+  doffPriority?: boolean;
+  minRemainForDoffPriority?: number;
 }
 
 /** DedicatedMachines: each activity on a machine is routed to its own assigned operator.

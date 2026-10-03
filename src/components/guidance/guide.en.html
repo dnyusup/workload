@@ -100,6 +100,7 @@
             <li><em>Machines Group</em> → add several operators. Any of them may do any task on those machines.</li>
           </ul>
         </li>
+        <li><strong>Doff Priority</strong> (optional): a toggle and Min Remain Task for the selected machines only. The remove button sets them back to follow the setup.</li>
       </ol>
       <div class="note warn"><p>Changing a machine's Planning Type removes the previous type's operators from it (you're asked to confirm).</p></div>
       <p>The <strong>Man Occupation (1 operator)</strong> panel shows the selected machines' workload if one operator handled them. Per-activity rows appear only for Dedicated + Split Task.</p>
@@ -113,7 +114,8 @@
       <h3>Canvas &amp; Machine Assignments</h3>
       <ul>
         <li><strong>Construction Detail View</strong> colors machines by Construction. <strong>Operator View</strong> splits each machine body by operator. Hover a legend entry to highlight its machines.</li>
-        <li>The <strong>Machine Assignments</strong> table lists every column per machine. Use <span class="ui">Export CSV</span>, edit in Excel, then <span class="ui">Import CSV</span>. The Operators column takes operator names separated by <code>;</code>.</li>
+        <li>The <strong>Machine Assignments</strong> table lists every column per machine: Construction, Group Name, Planning Type, the operator per activity, Operators (Machines Group; hover to see the list), and the machine's Doff Priority ("—" = follows the setup).</li>
+        <li>Use <span class="ui">Export CSV</span>, edit in Excel, then <span class="ui">Import CSV</span>. The Operators column takes operator names separated by <code>;</code>. Doff Priority takes <code>Yes</code>, <code>No</code> or blank; Min Remain Task takes minutes or blank (blank = follow the setup).</li>
       </ul>
 
       <h3>Running the simulation</h3>
@@ -200,6 +202,7 @@
 
       <h3>Doff Priority</h3>
       <p>When <strong>Yes</strong>: if the operator is working a machine and another machine needs Doffing while at least <em>Min Remain Task</em> minutes of the visit are left, that work is paused. The operator does all waiting Doffings (by Task Priority), then picks again by Task Priority. Paused work is judged by its remaining time and resumes where it stopped. Doffing work itself is never paused.</p>
+      <p>In Production Simulation each machine can have its own Doff Priority and Min Remain Task (in Assign Selection). The setting of the machine that <em>needs Doffing</em> is used; when it's blank, the setup's applies. A machine with Doff Priority No never interrupts other work and isn't put first.</p>
       <div class="note"><p>Doff Priority cuts Doffing waiting time but adds operator walking. Raise Min Remain Task if pauses happen too often.</p></div>
     </section>
 
@@ -233,7 +236,7 @@
         <dt>Manhour/ton, Machhours/ton</dt><dd>Operator hours or machine hours per ton of output.</dd>
         <dt>Planning Type</dt><dd>Dedicated Machines or Machines Group, per machine.</dd>
         <dt>Group Name</dt><dd>A free-text label to group machines.</dd>
-        <dt>Doff Priority / Min Remain Task</dt><dd>Pausing work for Doffing when at least Min Remain Task minutes of the visit are left.</dd>
+        <dt>Doff Priority / Min Remain Task</dt><dd>Pausing work for Doffing when at least Min Remain Task minutes of the visit are left. Set per setup, and in Production Simulation per machine too.</dd>
         <dt>WLM / Output model</dt><dd>A simulation result saved in WL_Outputmodels, with versions.</dd>
         <dt>Inherited condition</dt><dd>Starting machine conditions + seed from a saved result, to replay a simulation.</dd>
       </dl>

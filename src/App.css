@@ -5178,3 +5178,14 @@
     white-space: normal;
   }
 }
+
+.production-assign-doff .production-assign-doff-label {
+  flex: none;
+  color: #94a3b8;
+  font-size: 0.78rem;
+  cursor: help;
+}
+
+.production-assign-doff .input {
+  max-width: 120px;
+}

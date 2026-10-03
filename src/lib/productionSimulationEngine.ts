@@ -118,6 +118,8 @@ export class ProductionSimulationEngine {
   private suspendedVisits = new Map<string, SuspendedVisit>();
   /** Doffing priority: operators that just left a visit and do every waiting Doffing first. */
   private doffFirstOperatorIds = new Set<string>();
+  /** False when neither the setup nor any machine turns Doff Priority on — skips the per-step check. */
+  private readonly anyDoffPriority: boolean;
   private routeCache: RoutingRowCache = createRoutingRowCache();
   /** Visibility graph around the layout's walls (null when there are none). */
   private wallGraph: WallGraph | null = null;
@@ -149,6 +151,7 @@ export class ProductionSimulationEngine {
 
   constructor(setup: ProductionSetup, resolved: Map<string, ResolvedConstruction>, resolveErrors: string[] = []) {
     this.setup = setup;
+    this.anyDoffPriority = setup.doffPriority || setup.assignments.some((a) => a.doffPriority === true);
     this.wallGraph = buildWallGraph(setup.walls ?? [], WALL_CLEARANCE_METERS * (setup.movement.pixelsPerMeter || 20));
     this.warnings.push(...resolveErrors);
 
@@ -753,7 +756,7 @@ export class ProductionSimulationEngine {
     // Right after leaving a visit for Doffing priority: every waiting Doffing comes first, then
     // back to plain Task Priority (with the suspended visit competing on its remaining time).
     if (this.doffFirstOperatorIds.has(operator.id)) {
-      const doffing = candidates.filter((m) => this.tasksFor(operator.id, m).some((t) => isDoffingActivity(t.activity)));
+      const doffing = candidates.filter((m) => this.hasPriorityDoffing(operator, m));
       if (doffing.length > 0) candidates = doffing;
       else this.doffFirstOperatorIds.delete(operator.id);
     }
@@ -830,22 +833,38 @@ export class ProductionSimulationEngine {
     return [...suspended, ...buildServiceSegments(tasks, machine.x, machine.y, machine.orientation, machine.pairSide, this.setup.movement.walkingSpeed, this.setup.movement.pixelsPerMeter, machine.widthPx, machine.heightPx, machine.axis, this.setup.rpc)];
   }
 
+  /** Doff Priority of the machine that needs Doffing: its own setting where set, else the setup's. */
+  private doffPriorityOf(machine: ProdMachine): { enabled: boolean; minRemain: number } {
+    const assignment = this.assignmentByMachineId.get(machine.id);
+    return {
+      enabled: assignment?.doffPriority ?? this.setup.doffPriority,
+      minRemain: assignment?.minRemainForDoffPriority ?? this.setup.minRemainForDoffPriority,
+    };
+  }
+
+  /** Whether this machine of the operator's has a waiting Doffing that has priority. */
+  private hasPriorityDoffing(operator: ProductionOperatorRuntimeState, machine: ProdMachine): boolean {
+    return (
+      (machine.status === 'needs-service' || machine.status === 'running') &&
+      (!machine.lockedByOperatorId || machine.lockedByOperatorId === operator.id) &&
+      this.doffPriorityOf(machine).enabled &&
+      this.tasksFor(operator.id, machine).some((t) => isDoffingActivity(t.activity))
+    );
+  }
+
   /** Doffing priority: leave the current visit when another of this operator's machines needs
-   * Doffing and at least the configured minutes of this visit are still left. Never interrupts
-   * Doffing work itself. */
+   * Doffing with priority and at least that machine's minimum minutes of this visit are still left.
+   * Never interrupts Doffing work itself. */
   private shouldSuspendForDoffing(operator: ProductionOperatorRuntimeState): boolean {
-    if (!this.setup.doffPriority) return false;
+    if (!this.anyDoffPriority) return false;
     const task = this.serviceTaskForCurrentZone(operator);
     if (!task || isDoffingActivity(task.activity)) return false;
-    const remaining = remainingVisitMinutes(operator, this.setup.movement.pixelsPerMeter, this.setup.movement.walkingSpeed);
-    if (remaining < this.setup.minRemainForDoffPriority) return false;
-    return (this.machinesByOperator.get(operator.id) ?? []).some(
-      (m) =>
-        m.id !== operator.targetMachineId &&
-        (m.status === 'needs-service' || m.status === 'running') &&
-        (!m.lockedByOperatorId || m.lockedByOperatorId === operator.id) &&
-        this.tasksFor(operator.id, m).some((t) => isDoffingActivity(t.activity)),
+    const candidates = (this.machinesByOperator.get(operator.id) ?? []).filter(
+      (m) => m.id !== operator.targetMachineId && this.hasPriorityDoffing(operator, m),
     );
+    if (candidates.length === 0) return false;
+    const remaining = remainingVisitMinutes(operator, this.setup.movement.pixelsPerMeter, this.setup.movement.walkingSpeed);
+    return candidates.some((m) => remaining >= this.doffPriorityOf(m).minRemain);
   }
 
   private suspendVisitForDoffing(operator: ProductionOperatorRuntimeState, atMin: number) {

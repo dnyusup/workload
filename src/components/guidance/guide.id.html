@@ -100,6 +100,7 @@
             <li><em>Machines Group</em> → tambahkan beberapa operator. Siapa pun di antara mereka bisa mengerjakan tugas apa pun di mesin itu.</li>
           </ul>
         </li>
+        <li><strong>Doff Priority</strong> (opsional): toggle dan Min Remain Task khusus mesin terpilih. Tombol hapus mengembalikannya agar ikut setting setup.</li>
       </ol>
       <div class="note warn"><p>Mengganti Planning Type menghapus operator dari tipe sebelumnya di mesin itu (ada konfirmasi dulu).</p></div>
       <p>Panel <strong>Man Occupation (1 operator)</strong> menunjukkan beban mesin terpilih bila dikerjakan satu operator. Baris per aktivitas hanya tampil untuk Dedicated + Split Task.</p>
@@ -113,7 +114,8 @@
       <h3>Kanvas &amp; Machine Assignments</h3>
       <ul>
         <li><strong>Construction Detail View</strong> mewarnai mesin per Construction. <strong>Operator View</strong> membagi badan mesin per operator. Arahkan kursor ke legend untuk menyorot mesinnya.</li>
-        <li>Tabel <strong>Machine Assignments</strong> menampilkan semua kolom per mesin. Gunakan <span class="ui">Export CSV</span>, edit di Excel, lalu <span class="ui">Import CSV</span>. Kolom Operators diisi nama operator dipisah <code>;</code>.</li>
+        <li>Tabel <strong>Machine Assignments</strong> menampilkan semua kolom per mesin: Construction, Group Name, Planning Type, operator per aktivitas, Operators (Machines Group; arahkan kursor untuk melihat daftarnya), dan Doff Priority mesin ("—" = ikut setup).</li>
+        <li>Gunakan <span class="ui">Export CSV</span>, edit di Excel, lalu <span class="ui">Import CSV</span>. Kolom Operators diisi nama operator dipisah <code>;</code>. Kolom Doff Priority diisi <code>Yes</code>, <code>No</code>, atau kosong; Min Remain Task diisi angka menit atau kosong (kosong = ikut setup).</li>
       </ul>
 
       <h3>Menjalankan simulasi</h3>
@@ -200,6 +202,7 @@
 
       <h3>Doff Priority</h3>
       <p>Kalau <strong>Yes</strong>: saat operator sedang mengerjakan mesin dan mesin lain butuh Doffing, sementara sisa kunjungannya masih ≥ <em>Min Remain Task</em> menit, pekerjaan itu ditunda. Operator mengerjakan semua Doffing yang menunggu (sesuai Task Priority), lalu memilih lagi sesuai Task Priority. Pekerjaan yang ditunda dinilai dari sisa waktunya dan dilanjutkan dari titik terakhir. Pekerjaan Doffing sendiri tidak pernah ditunda.</p>
+      <p>Di Production Simulation, setiap mesin bisa punya Doff Priority dan Min Remain Task sendiri (di Assign Selection). Yang dipakai adalah setting mesin yang <em>butuh Doffing</em>; kalau kosong, mengikuti setting setup. Mesin dengan Doff Priority No tidak menyela pekerjaan lain dan tidak didahulukan.</p>
       <div class="note"><p>Doff Priority mengurangi waktu tunggu Doffing, tapi menambah waktu jalan operator. Naikkan Min Remain Task bila penundaan terlalu sering.</p></div>
     </section>
 
@@ -233,7 +236,7 @@
         <dt>Manhour/ton, Machhours/ton</dt><dd>Jam operator atau jam mesin per ton output.</dd>
         <dt>Planning Type</dt><dd>Dedicated Machines atau Machines Group, per mesin.</dd>
         <dt>Group Name</dt><dd>Label bebas untuk mengelompokkan mesin.</dd>
-        <dt>Doff Priority / Min Remain Task</dt><dd>Menunda pekerjaan demi Doffing bila sisa kunjungan ≥ Min Remain Task menit.</dd>
+        <dt>Doff Priority / Min Remain Task</dt><dd>Menunda pekerjaan demi Doffing bila sisa kunjungan ≥ Min Remain Task menit. Diatur per setup, dan di Production Simulation bisa juga per mesin.</dd>
         <dt>WLM / Output model</dt><dd>Hasil simulasi yang disimpan di WL_Outputmodels, dengan versi.</dd>
         <dt>Inherited condition</dt><dd>Kondisi awal mesin + seed dari hasil tersimpan untuk memutar ulang simulasi.</dd>
       </dl>
