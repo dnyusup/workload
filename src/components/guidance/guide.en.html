@@ -1,0 +1,241 @@
+<nav class="guide-toc" aria-label="Contents">
+  <p>Contents</p>
+  <ol>
+    <li><a href="#en-overview">Overview &amp; roles</a></li>
+    <li><a href="#en-workload">Work Load Simulator</a></li>
+    <li><a href="#en-layout">Layout Builder</a></li>
+    <li><a href="#en-production">Production Simulation</a></li>
+    <li><a href="#en-data">Master data</a></li>
+    <li><a href="#en-admin">Admin menus</a></li>
+    <li><a href="#en-rules">Simulation rules</a></li>
+    <li><a href="#en-glossary">Glossary</a></li>
+  </ol>
+</nav>
+<article class="guide-article">
+    <section>
+      <p class="lede">This app simulates operator workload on the production floor: how many machines one operator can handle, their man occupation, and the output of one shift.</p>
+    </section>
+
+    <section>
+      <h2 id="en-overview">Overview &amp; roles</h2>
+      <p>There are two simulators. The <span class="ui">Work Load Simulator</span> models one operator handling a set of machines that all run one Construction Detail. <span class="ui">Production Simulation</span> models many operators and many Constructions at once on a plant layout.</p>
+      <p>The sidebar shows menus according to your role:</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Menu</th><th>Purpose</th><th>Roles</th></tr></thead>
+        <tbody>
+          <tr><td>Work Load Simulator</td><td>Set up and run a single-operator simulation</td><td>Admin, Contribute, Guest</td></tr>
+          <tr><td>Layout Builder</td><td>Create and save machine layouts</td><td>Admin, Contribute</td></tr>
+          <tr><td>Production Simulation</td><td>Multi-operator Production Setups and their simulation</td><td>Admin, Contribute</td></tr>
+          <tr><td>WL_Products</td><td>Product / Construction Detail specifications</td><td>Admin</td></tr>
+          <tr><td>WL_Activities</td><td>Activity times and frequencies per Construction</td><td>Admin</td></tr>
+          <tr><td>WL_Outputmodels</td><td>Saved simulation results (WLM)</td><td>Admin</td></tr>
+          <tr><td>Manage Users</td><td>Grant Admin / Contribute access</td><td>Admin</td></tr>
+          <tr><td>Setting</td><td>Default values for new setups</td><td>Admin</td></tr>
+        </tbody>
+      </table></div>
+      <p>Anyone signed in who isn't listed in Manage Users is a <span class="ui">Guest</span>.</p>
+    </section>
+
+    <section>
+      <h2 id="en-workload">Work Load Simulator</h2>
+      <p>The flow has two stages: <span class="ui">1. Setup</span> then <span class="ui">2. Simulation</span>. Setup has two steps: <span class="ui">Setup</span> and <span class="ui">Machine Layout</span>.</p>
+
+      <h3>Step 1 — Setup</h3>
+      <ol class="steps">
+        <li><strong>Pick a Construction Detail</strong> at the top (filter by Area, Mach, Product). The app fills Machine Specification from WL_Products and the Activity Table from WL_Activities. Operator settings (Task Priority, shift, lunch, meeting, RPC, Walking Speed, Layout Scale, Doff Priority) come from <span class="ui">Setting → Default Values</span>.</li>
+        <li><strong>Machine Specification</strong>: LayLength, NoOfWires, Speed, SpoolLength, LinearDensity, Fracture/Dies/Defect per ton, POlength. Spool Weight and Runtime/spool are derived from these.</li>
+        <li><strong>Operator Activities</strong>: Task Priority, Shift Time, Lunch/Meeting (duration and start minute), extra breaks (<span class="ui">+ Add activity</span>), Available Time, and at the bottom <span class="ui">Doff Priority</span> and <span class="ui">Min Remain Task for Doff Priority</span>.</li>
+        <li><strong>Output Estimate</strong>: estimated output and man occupation before running. Set <span class="ui"># Assigned Machines</span>, or click <span class="ui">Optimize Man Occupation</span> to find the most machines that leave no backlog.</li>
+        <li><strong>Activity Table</strong>: Time, Frequency Type, Numerator, Denominator and Mach Condition per activity. <span class="ui">RPC %</span> sits right of the table title. Add sub-activities with <span class="ui">+ Sub Doffing</span> or <span class="ui">+ Sub Loading</span>.</li>
+        <li><strong>Movement Params</strong>: Walking Speed (m/min) and Layout Scale (px per meter).</li>
+      </ol>
+      <div class="note"><p>The circular-arrow button resets every field to how it was when the Construction Detail was picked.</p></div>
+
+      <h3>Step 2 — Machine Layout</h3>
+      <ol class="steps">
+        <li>Pick a saved layout from Layout Builder, or build one on the canvas.</li>
+        <li>Select machines and <span class="ui">Assign</span>. The number assigned must equal # Assigned Machines.</li>
+        <li>Optional: set an operator start point. Without one, the operator starts at the first machine.</li>
+        <li>Click <span class="ui">Validate &amp; Start Simulation</span>.</li>
+      </ol>
+
+      <h3>Simulation stage</h3>
+      <ul>
+        <li><span class="ui">▶ Play</span>, <span class="ui">⏸ Pause</span>, speed buttons and <span class="ui">Reset</span>. # Mach Assigned and Fracture per Ton can only be changed after a Reset.</li>
+        <li>The <strong>Operator Timeline</strong> and <strong>Machine Timeline</strong> show what happened each minute. Click an operator segment to highlight the related machines; click a machine row for that machine's summary.</li>
+        <li><strong>Dashboard</strong>: Output (Running Time), Output, Man Occupation, OEE &amp; Downtime, Completed Activities, Activity Log.</li>
+        <li><span class="ui">Save WLM</span> saves the result to WL_Outputmodels. If that Construction Detail already has a saved result, you'll see a comparison with the old version and can replace it or save a new version (a Version remark is required for a new version).</li>
+        <li>After the shift ends: view the output details, or <span class="ui">Copy output</span> (tab-separated, pastes into Excel).</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2 id="en-layout">Layout Builder</h2>
+      <p>Where you build machine layouts to reuse in both simulators.</p>
+      <ul>
+        <li><strong>Add Group Machine</strong>: create a block of machines by rows, columns, orientation (Vertical: PO top, TU bottom; Horizontal: PO left, TU right), Pair/Single, and machine size in meters.</li>
+        <li>Select machines to copy/paste (Ctrl+C / Ctrl+V, including repeated paste left/right), flip orientation, toggle type BF/X, resize, or renumber.</li>
+        <li><strong>Walls</strong>: operators must walk around them. <strong>Remarks</strong>: text notes that don't block walking.</li>
+        <li><strong>Measure distance</strong> to measure, and the <strong>operator start point</strong> for where operators begin.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2 id="en-production">Production Simulation</h2>
+      <h3>Creating a Production Setup</h3>
+      <ol class="steps">
+        <li>Pick a Layout, type a setup name, click <span class="ui">+ New Setup</span>. The layout is copied into the setup (later layout edits don't carry over). Shift and movement values start from Setting → Default Values.</li>
+        <li>Fill <strong>Shift &amp; Movement Settings</strong>: Task Priority, Shift/Lunch/Meeting, RPC %, Doff Priority, Min Remain Task, Walking Speed, Layout Scale (Admin only).</li>
+        <li>Add operators in the <strong>Operators</strong> card: one at a time, or in bulk with a prefix and count (e.g. <code>Opr_0001</code>). The number next to each name is that operator's forecast man occupation.</li>
+      </ol>
+
+      <h3>Assign Selection</h3>
+      <p>Select machines on the canvas (click or drag), then work down the panel. Each field has an <span class="ui">Apply</span> button and a remove button. An Apply button turns yellow when its field has changes not yet applied.</p>
+      <ol class="steps">
+        <li><strong>Construction Detail</strong> of the machines.</li>
+        <li><strong>Group Name</strong>: a free-text label to group machines.</li>
+        <li><strong>Planning Type</strong>: pick it and Apply. Operator assignment appears only after this.
+          <ul>
+            <li><em>Dedicated Machines</em> → choose <span class="ui">Opr Assign Type</span>: <em>Multi Task</em> (one operator for every activity) or <em>Split Task</em> (an operator per activity: Doff, Load, Fract, Dies, Defect).</li>
+            <li><em>Machines Group</em> → add several operators. Any of them may do any task on those machines.</li>
+          </ul>
+        </li>
+      </ol>
+      <div class="note warn"><p>Changing a machine's Planning Type removes the previous type's operators from it (you're asked to confirm).</p></div>
+      <p>The <strong>Man Occupation (1 operator)</strong> panel shows the selected machines' workload if one operator handled them. Per-activity rows appear only for Dedicated + Split Task.</p>
+
+      <h3>Operators card</h3>
+      <ul>
+        <li><span class="ui">⚙️</span>: a per-operator Lunch/Meeting start minute. Blank = follow the setup. Durations always follow the setup.</li>
+        <li><span class="ui">📊</span>: fullscreen Planned Man Occupation, including demand with no operator yet.</li>
+      </ul>
+
+      <h3>Canvas &amp; Machine Assignments</h3>
+      <ul>
+        <li><strong>Construction Detail View</strong> colors machines by Construction. <strong>Operator View</strong> splits each machine body by operator. Hover a legend entry to highlight its machines.</li>
+        <li>The <strong>Machine Assignments</strong> table lists every column per machine. Use <span class="ui">Export CSV</span>, edit in Excel, then <span class="ui">Import CSV</span>. The Operators column takes operator names separated by <code>;</code>.</li>
+      </ul>
+
+      <h3>Running the simulation</h3>
+      <p>Click <span class="ui">▶ Run Simulation</span>. The result page has operator and machine timelines (click an operator's name to filter the Man Occupation card), the Operator List, Output (split into Finish Product and Semi Finish Product by SpoolType BS…), Reject % for OEE Quality, a Downtime Pareto, and the Production Report button.</p>
+    </section>
+
+    <section>
+      <h2 id="en-data">Master data</h2>
+      <h3>WL_Products</h3>
+      <p>One row per Construction Detail: Area, Mach, Product, machine specification, POlength1–3, Fracture/Dies/Defect per ton. Double-click a Construction cell to open that Construction's WL_Activities.</p>
+      <h3>WL_Activities</h3>
+      <p>One row per Task/SubTask per Construction. A blank SubTask is the parent activity.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Column</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td>Task / SubTask</td><td>Doffing, Loading, FractureRepairing, DiesChange, DefectRepairing; SubTask for sub-activities (e.g. ScanMES, Partial1)</td></tr>
+          <tr><td>Time</td><td>The activity's work time (minutes), before RPC</td></tr>
+          <tr><td>FrequencyType</td><td>Doffing sub-tasks only. When set, the frequency doesn't come from Num/Dem (see Simulation rules)</td></tr>
+          <tr><td>Num / Dem</td><td>Numerator / Denominator: happens Num times every Dem spools. Blank for activities with their own frequency rule</td></tr>
+          <tr><td>MachCondition</td><td>Stop = the machine stops while it's done; Run = the machine keeps running</td></tr>
+          <tr><td>Product, Mach, SpoolType, TG, LayLength</td><td>Derived from the Construction text (read-only)</td></tr>
+        </tbody>
+      </table></div>
+      <h3>WL_Outputmodels</h3>
+      <p>Results saved with Save WLM, with versions. Double-click a row for details. <span class="ui">Use inherited machine condition</span> reloads the layout, operator settings, assigned machines, starting machine conditions and seed, so the same simulation replays exactly.</p>
+    </section>
+
+    <section>
+      <h2 id="en-admin">Admin menus</h2>
+      <h3>Manage Users</h3>
+      <p>Search people by email and give them the Admin or Contribute role.</p>
+      <h3>Setting → Default Values</h3>
+      <p>Starting values for new Production Setups, and for the Work Load Simulator each time a Construction Detail is picked: Task Priority, Shift Time, Lunch Time, Lunch starts at, Meeting Time, Meeting starts at, RPC %, Walking Speed, Layout Scale, Doff Priority, Min Remain Task for Doff Priority. Click <span class="ui">Save</span> to keep them.</p>
+    </section>
+
+    <section>
+      <h2 id="en-rules">Simulation rules</h2>
+
+      <h3>Task Priority</h3>
+      <p><em>Nearest Task</em>: the operator goes to the queued machine with the shortest walk. <em>Quickest Task</em>: the operator picks the machine whose work would be finished soonest (walk plus all work time).</p>
+
+      <h3>Mach Condition: Run and Stop</h3>
+      <ul>
+        <li>A <strong>Stop</strong> activity stops the machine while it's done; the machine is also stopped while waiting for the operator.</li>
+        <li>A <strong>Run</strong> activity is done while the machine keeps running.</li>
+        <li>A Run activity directly followed by a Stop activity stops the machine too. This also applies when the following Stop activity belongs to another operator and is still waiting on that machine.</li>
+      </ul>
+
+      <h3>RPC (Rest &amp; Personal Care)</h3>
+      <p>Every activity gets extra time equal to RPC % of its time. For example, 12% RPC turns a 10-minute activity into 10 + 1.2 minutes. RPC time shows as its own segment in the timelines (legend "RPC") and as <em>Others (RPC)</em> in Man Occupation. RPC behaves like a Run activity: it only keeps the machine stopped when the next activity is Stop, and that time then counts as downtime of its parent activity.</p>
+
+      <h3>Doffing, Loading and sub-activities</h3>
+      <ul>
+        <li><strong>Loading</strong> follows POlength in WL_Products when it's filled. Areas WW, BA, CA, IS, IP use weight-based Loading done at the Pay Off.</li>
+        <li>When <strong>Loading Partial1 and Partial2</strong> come due together, one Loading Partial3 replaces both.</li>
+        <li>When a machine's Doffing and Loading belong to different operators, Loading waits until Doffing is done; that gap counts as waiting.</li>
+      </ul>
+
+      <h3>Fracture Repairing, Dies Change, Defect Repairing</h3>
+      <p>These are counted per Construction, not per machine: once the combined spools of the machines on one Construction reach the cycle, the event lands on a random running machine. Dies Change applies to Areas WW, BA, CA, with 7 or 26 dies per event. Defect Repairing applies to Areas CB, BU, SP, CH, CR and is done at the Take Up.</p>
+
+      <h3>Frequency Type (Doffing sub-tasks)</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Frequency Type</th><th>Done on…</th></tr></thead>
+        <tbody>
+          <tr><td>(blank)</td><td>Num/Dem as usual</td></tr>
+          <tr><td><code>FirstDoffAfterLoading</code></td><td>The first Doffing after a Loading (main or partial)</td></tr>
+          <tr><td><code>FirstDoffAfterLoadingAll</code></td><td>The first Doffing after a main Loading</td></tr>
+          <tr><td><code>FirstDoffAfterLoadingPartial</code></td><td>The first Doffing after a partial Loading</td></tr>
+          <tr><td><code>FirstDoffAfterFractureRepairing</code></td><td>The first Doffing after a Fracture Repairing</td></tr>
+          <tr><td><code>FirstDoffAfterDefectRepairing</code></td><td>The first Doffing after a Defect Repairing</td></tr>
+          <tr><td><code>FirstDoffAfterDiesChange</code></td><td>The first Doffing after a Dies Change</td></tr>
+          <tr><td><code>FirstDoffAfterInteruptions</code></td><td>The first Doffing after any of the events above</td></tr>
+          <tr><td><code>FirstDoffOnShift</code></td><td>The machine's first Doffing of the shift</td></tr>
+        </tbody>
+      </table></div>
+      <p>An event counts when it's finished, on the same machine. Several events before one Doffing still give the sub-task once.</p>
+
+      <h3>Dedicated Machines vs Machines Group</h3>
+      <p><em>Dedicated</em>: each activity has its own operator. <em>Machines Group</em>: every operator assigned to the machine shares its work; only one operator works a machine at a time. One setup can mix both, per machine. A machine with no Planning Type is simulated as Dedicated.</p>
+
+      <h3>Breaks (Lunch, Meeting, Other)</h3>
+      <p>When a break is due, the operator first finishes the visit they're on, then takes the full break. Machines that need work wait during the break. In Production Simulation, start minutes can differ per operator (the ⚙️ button).</p>
+
+      <h3>Doff Priority</h3>
+      <p>When <strong>Yes</strong>: if the operator is working a machine and another machine needs Doffing while at least <em>Min Remain Task</em> minutes of the visit are left, that work is paused. The operator does all waiting Doffings (by Task Priority), then picks again by Task Priority. Paused work is judged by its remaining time and resumes where it stopped. Doffing work itself is never paused.</p>
+      <div class="note"><p>Doff Priority cuts Doffing waiting time but adds operator walking. Raise Min Remain Task if pauses happen too often.</p></div>
+    </section>
+
+    <section>
+      <h2 id="en-glossary">Glossary</h2>
+      <dl class="glossary">
+        <dt>Construction</dt><dd>The product construction code; its text holds Mach-Product-LayLength-TG-SpoolType.</dd>
+        <dt>Construction Detail</dt><dd>One WL_Products row; the basis for the machine spec and Activity Table.</dd>
+        <dt>Area</dt><dd>Production area (BU, CB, SP, CH, CR, WW, IS, IP, CA, BA); decides the Loading, Dies Change and Defect Repairing rules.</dd>
+        <dt>Spool</dt><dd>One reel a machine produces. Spool Weight = SpoolLength × LinearDensity × NoOfWires ÷ 1000 (kg).</dd>
+        <dt>Runtime/spool</dt><dd>Time a machine takes to produce one spool.</dd>
+        <dt>Doffing</dt><dd>Taking a finished spool off the machine, at the Take Up.</dd>
+        <dt>Loading</dt><dd>Replacing/feeding raw material; Loading Partial is a partial load.</dd>
+        <dt>Fracture Repairing</dt><dd>Repairing a broken wire.</dd>
+        <dt>Dies Change</dt><dd>Changing dies.</dd>
+        <dt>Defect Repairing</dt><dd>Repairing a product defect.</dd>
+        <dt>Pay Off / Cradle / Take Up</dt><dd>Work zones on a machine where the operator stands (PO, cradle, TU).</dd>
+        <dt>Mach Condition</dt><dd>Stop (machine stops) or Run (machine keeps running) while the activity is done.</dd>
+        <dt>Num / Dem</dt><dd>Numerator / Denominator: the activity happens Num times every Dem spools.</dd>
+        <dt>Frequency Type</dt><dd>An event-based frequency rule for Doffing sub-tasks.</dd>
+        <dt>RPC</dt><dd>Rest &amp; Personal Care: an extra % of time for rest and personal needs.</dd>
+        <dt>Task Priority</dt><dd>How the operator picks the next machine: Nearest or Quickest.</dd>
+        <dt>Available Time</dt><dd>Shift Time minus Lunch, Meeting and other breaks.</dd>
+        <dt>Man Occupation</dt><dd>(Walking + Handling) ÷ net working time, in %.</dd>
+        <dt>Ideal demand / Forecast</dt><dd>Theoretical workload vs the estimate after machine stops and walking.</dd>
+        <dt>Others (RPC)</dt><dd>The RPC share of time in Man Occupation.</dd>
+        <dt>Idle</dt><dd>The operator has nothing to do.</dd>
+        <dt>Downtime / Waiting</dt><dd>The machine is stopped: for a Stop activity, or waiting for an operator.</dd>
+        <dt>OEE Availability</dt><dd>(Planned production time − downtime) ÷ planned production time.</dd>
+        <dt>Reject % / Quality</dt><dd>Share of reject tonnage; reduces good tonnage and OEE (Production Simulation).</dd>
+        <dt>Manhour/ton, Machhours/ton</dt><dd>Operator hours or machine hours per ton of output.</dd>
+        <dt>Planning Type</dt><dd>Dedicated Machines or Machines Group, per machine.</dd>
+        <dt>Group Name</dt><dd>A free-text label to group machines.</dd>
+        <dt>Doff Priority / Min Remain Task</dt><dd>Pausing work for Doffing when at least Min Remain Task minutes of the visit are left.</dd>
+        <dt>WLM / Output model</dt><dd>A simulation result saved in WL_Outputmodels, with versions.</dd>
+        <dt>Inherited condition</dt><dd>Starting machine conditions + seed from a saved result, to replay a simulation.</dd>
+      </dl>
+    </section>
+  </article>

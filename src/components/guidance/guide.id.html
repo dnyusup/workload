@@ -1,0 +1,241 @@
+<nav class="guide-toc" aria-label="Daftar isi">
+  <p>Daftar isi</p>
+  <ol>
+    <li><a href="#id-ringkasan">Ringkasan &amp; peran</a></li>
+    <li><a href="#id-workload">Work Load Simulator</a></li>
+    <li><a href="#id-layout">Layout Builder</a></li>
+    <li><a href="#id-production">Production Simulation</a></li>
+    <li><a href="#id-data">Data master</a></li>
+    <li><a href="#id-admin">Menu admin</a></li>
+    <li><a href="#id-aturan">Aturan simulasi</a></li>
+    <li><a href="#id-glosarium">Glosarium</a></li>
+  </ol>
+</nav>
+<article class="guide-article">
+    <section>
+      <p class="lede">Aplikasi ini mensimulasikan beban kerja operator di lantai produksi: berapa mesin yang sanggup ditangani satu operator, berapa man occupation-nya, dan berapa output yang dihasilkan dalam satu shift.</p>
+    </section>
+
+    <section>
+      <h2 id="id-ringkasan">Ringkasan &amp; peran</h2>
+      <p>Ada dua simulator. <span class="ui">Work Load Simulator</span> mensimulasikan satu operator yang menangani sekumpulan mesin dengan satu Construction Detail. <span class="ui">Production Simulation</span> mensimulasikan banyak operator dan banyak Construction sekaligus pada satu layout pabrik.</p>
+      <p>Menu yang tampil di sidebar tergantung peran Anda:</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Menu</th><th>Fungsi</th><th>Peran</th></tr></thead>
+        <tbody>
+          <tr><td>Work Load Simulator</td><td>Setup dan jalankan simulasi satu operator</td><td>Admin, Contribute, Guest</td></tr>
+          <tr><td>Layout Builder</td><td>Membuat dan menyimpan layout mesin</td><td>Admin, Contribute</td></tr>
+          <tr><td>Production Simulation</td><td>Production Setup multi-operator dan simulasinya</td><td>Admin, Contribute</td></tr>
+          <tr><td>WL_Products</td><td>Data spesifikasi produk / Construction Detail</td><td>Admin</td></tr>
+          <tr><td>WL_Activities</td><td>Waktu dan frekuensi aktivitas per Construction</td><td>Admin</td></tr>
+          <tr><td>WL_Outputmodels</td><td>Hasil simulasi yang disimpan (WLM)</td><td>Admin</td></tr>
+          <tr><td>Manage Users</td><td>Memberi akses Admin / Contribute</td><td>Admin</td></tr>
+          <tr><td>Setting</td><td>Default value untuk setup baru</td><td>Admin</td></tr>
+        </tbody>
+      </table></div>
+      <p>Pengguna yang login tapi belum terdaftar di Manage Users otomatis menjadi <span class="ui">Guest</span>.</p>
+    </section>
+
+    <section>
+      <h2 id="id-workload">Work Load Simulator</h2>
+      <p>Alurnya dua tahap: <span class="ui">1. Setup</span> lalu <span class="ui">2. Simulation</span>. Setup sendiri terdiri dari dua langkah: <span class="ui">Setup</span> dan <span class="ui">Machine Layout</span>.</p>
+
+      <h3>Langkah 1 — Setup</h3>
+      <ol class="steps">
+        <li><strong>Pilih Construction Detail</strong> di bagian atas (bisa difilter per Area, Mach, Product). Aplikasi mengisi Machine Specification dari WL_Products dan Activity Table dari WL_Activities. Setting operator (Task Priority, shift, lunch, meeting, RPC, Walking Speed, Layout Scale, Doff Priority) diisi dari <span class="ui">Setting → Default Values</span>.</li>
+        <li><strong>Machine Specification</strong>: LayLength, NoOfWires, Speed, SpoolLength, LinearDensity, Fracture/Dies/Defect per ton, POlength. Dari sini dihitung Spool Weight dan Runtime/spool.</li>
+        <li><strong>Operator Activities</strong>: Task Priority, Shift Time, Lunch/Meeting (durasi dan menit mulainya), break tambahan (<span class="ui">+ Add activity</span>), Available Time, serta <span class="ui">Doff Priority</span> dan <span class="ui">Min Remain Task for Doff Priority</span> di bagian paling bawah.</li>
+        <li><strong>Output Estimate</strong>: perkiraan output dan man occupation sebelum simulasi dijalankan. Atur <span class="ui"># Assigned Machines</span>, atau klik <span class="ui">Optimize Man Occupation</span> agar aplikasi mencari jumlah mesin terbanyak tanpa backlog.</li>
+        <li><strong>Activity Table</strong>: Time, Frequency Type, Numerator, Denominator, dan Mach Condition per aktivitas. <span class="ui">RPC %</span> ada di kanan judul tabel. Tambah sub-aktivitas dengan <span class="ui">+ Sub Doffing</span> atau <span class="ui">+ Sub Loading</span>.</li>
+        <li><strong>Movement Params</strong>: Walking Speed (m/menit) dan Layout Scale (px per meter).</li>
+      </ol>
+      <div class="note"><p>Tombol ikon panah melingkar mengembalikan semua isian ke kondisi saat Construction Detail dipilih.</p></div>
+
+      <h3>Langkah 2 — Machine Layout</h3>
+      <ol class="steps">
+        <li>Pilih layout tersimpan dari Layout Builder, atau susun langsung di kanvas.</li>
+        <li>Pilih mesin lalu <span class="ui">Assign</span>. Jumlah mesin yang di-assign harus sama dengan # Assigned Machines.</li>
+        <li>Opsional: tentukan titik awal operator (operator start point). Kalau tidak ada, operator mulai dari mesin pertama.</li>
+        <li>Klik <span class="ui">Validate &amp; Start Simulation</span>.</li>
+      </ol>
+
+      <h3>Tahap Simulation</h3>
+      <ul>
+        <li><span class="ui">▶ Play</span>, <span class="ui">⏸ Pause</span>, pilihan kecepatan, dan <span class="ui">Reset</span>. # Mach Assigned dan Fracture per Ton hanya bisa diubah setelah Reset.</li>
+        <li><strong>Operator Timeline</strong> dan <strong>Machine Timeline</strong> menampilkan apa yang terjadi tiap menit. Klik segmen operator untuk menandai mesin terkait, klik baris mesin untuk ringkasan mesin itu.</li>
+        <li><strong>Dashboard</strong>: Output (Running Time), Output, Man Occupation, OEE &amp; Downtime, Completed Activities, Activity Log.</li>
+        <li><span class="ui">Save WLM</span> menyimpan hasil ke WL_Outputmodels. Kalau Construction Detail itu sudah punya hasil tersimpan, muncul perbandingan dengan versi lama; Anda bisa mengganti versi lama atau menyimpan versi baru (Version remark wajib diisi untuk versi baru).</li>
+        <li>Setelah shift selesai: lihat detail output, atau <span class="ui">Copy output</span> (format tab, bisa ditempel ke Excel).</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2 id="id-layout">Layout Builder</h2>
+      <p>Tempat membuat layout mesin yang bisa dipakai ulang di kedua simulator.</p>
+      <ul>
+        <li><strong>Add Group Machine</strong>: buat sekelompok mesin dengan jumlah baris, kolom, orientasi (Vertikal: PO atas, TU bawah; Horizontal: PO kiri, TU kanan), Pair/Single, dan ukuran mesin (meter).</li>
+        <li>Pilih mesin untuk menyalin/menempel (Ctrl+C / Ctrl+V, termasuk tempel berulang ke kiri/kanan), membalik orientasi, mengubah tipe BF/X, mengubah ukuran, atau menomori ulang.</li>
+        <li><strong>Wall</strong> (dinding): operator harus berjalan memutarinya. <strong>Remark</strong>: catatan teks, tidak menghalangi jalan.</li>
+        <li><strong>Measure distance</strong> untuk mengukur jarak, dan <strong>operator start point</strong> untuk titik awal operator.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2 id="id-production">Production Simulation</h2>
+      <h3>Membuat Production Setup</h3>
+      <ol class="steps">
+        <li>Pilih Layout, isi nama setup, klik <span class="ui">+ New Setup</span>. Layout disalin ke setup (perubahan layout sesudahnya tidak ikut). Nilai awal shift dan movement diambil dari Setting → Default Values.</li>
+        <li>Isi <strong>Shift &amp; Movement Settings</strong>: Task Priority, Shift/Lunch/Meeting, RPC %, Doff Priority, Min Remain Task, Walking Speed, Layout Scale (khusus Admin).</li>
+        <li>Tambah operator di card <strong>Operators</strong>: satu per satu, atau sekaligus dengan prefix dan jumlah (contoh <code>Opr_0001</code>). Angka di samping nama operator adalah forecast man occupation-nya.</li>
+      </ol>
+
+      <h3>Assign Selection</h3>
+      <p>Pilih mesin di kanvas (klik atau drag), lalu isi dari atas ke bawah. Setiap field punya tombol <span class="ui">Apply</span> dan tombol hapus. Tombol Apply berwarna kuning kalau isiannya belum di-apply.</p>
+      <ol class="steps">
+        <li><strong>Construction Detail</strong> mesin.</li>
+        <li><strong>Group Name</strong>: label bebas untuk mengelompokkan mesin.</li>
+        <li><strong>Planning Type</strong>: pilih lalu Apply. Bagian assign operator baru muncul setelah ini.
+          <ul>
+            <li><em>Dedicated Machines</em> → pilih <span class="ui">Opr Assign Type</span>: <em>Multi Task</em> (satu operator untuk semua aktivitas) atau <em>Split Task</em> (operator per aktivitas: Doff, Load, Fract, Dies, Defect).</li>
+            <li><em>Machines Group</em> → tambahkan beberapa operator. Siapa pun di antara mereka bisa mengerjakan tugas apa pun di mesin itu.</li>
+          </ul>
+        </li>
+      </ol>
+      <div class="note warn"><p>Mengganti Planning Type menghapus operator dari tipe sebelumnya di mesin itu (ada konfirmasi dulu).</p></div>
+      <p>Panel <strong>Man Occupation (1 operator)</strong> menunjukkan beban mesin terpilih bila dikerjakan satu operator. Baris per aktivitas hanya tampil untuk Dedicated + Split Task.</p>
+
+      <h3>Card Operators</h3>
+      <ul>
+        <li><span class="ui">⚙️</span>: jam mulai Lunch/Meeting khusus per operator. Kosong = mengikuti setup. Durasi tetap dari setup.</li>
+        <li><span class="ui">📊</span>: Planned Man Occupation layar penuh, termasuk beban yang belum ada operatornya.</li>
+      </ul>
+
+      <h3>Kanvas &amp; Machine Assignments</h3>
+      <ul>
+        <li><strong>Construction Detail View</strong> mewarnai mesin per Construction. <strong>Operator View</strong> membagi badan mesin per operator. Arahkan kursor ke legend untuk menyorot mesinnya.</li>
+        <li>Tabel <strong>Machine Assignments</strong> menampilkan semua kolom per mesin. Gunakan <span class="ui">Export CSV</span>, edit di Excel, lalu <span class="ui">Import CSV</span>. Kolom Operators diisi nama operator dipisah <code>;</code>.</li>
+      </ul>
+
+      <h3>Menjalankan simulasi</h3>
+      <p>Klik <span class="ui">▶ Run Simulation</span>. Di halaman hasil: timeline operator dan mesin (klik nama operator untuk memfilter card Man Occupation), Operator List, Output (dipisah Finish Product dan Semi Finish Product berdasarkan SpoolType BS…), Reject % untuk OEE Quality, Downtime Pareto, dan tombol Production Report.</p>
+    </section>
+
+    <section>
+      <h2 id="id-data">Data master</h2>
+      <h3>WL_Products</h3>
+      <p>Satu baris per Construction Detail: Area, Mach, Product, spesifikasi mesin, POlength1–3, Fracture/Dies/Defect per ton. Double-click sel Construction untuk membuka WL_Activities milik Construction itu.</p>
+      <h3>WL_Activities</h3>
+      <p>Satu baris per Task/SubTask per Construction. SubTask kosong = aktivitas induk.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Kolom</th><th>Arti</th></tr></thead>
+        <tbody>
+          <tr><td>Task / SubTask</td><td>Doffing, Loading, FractureRepairing, DiesChange, DefectRepairing; SubTask untuk sub-aktivitas (mis. ScanMES, Partial1)</td></tr>
+          <tr><td>Time</td><td>Waktu kerja aktivitas (menit), sebelum RPC</td></tr>
+          <tr><td>FrequencyType</td><td>Khusus subtask Doffing. Kalau diisi, frekuensi tidak dari Num/Dem (lihat Aturan simulasi)</td></tr>
+          <tr><td>Num / Dem</td><td>Numerator / Denominator: terjadi Num kali setiap Dem spool. Kosong untuk aktivitas yang punya aturan frekuensi sendiri</td></tr>
+          <tr><td>MachCondition</td><td>Stop = mesin berhenti saat dikerjakan; Run = mesin tetap jalan</td></tr>
+          <tr><td>Product, Mach, SpoolType, TG, LayLength</td><td>Diturunkan dari teks Construction (read-only)</td></tr>
+        </tbody>
+      </table></div>
+      <h3>WL_Outputmodels</h3>
+      <p>Hasil simulasi yang disimpan dengan Save WLM, lengkap dengan versi. Double-click baris untuk detail. Tombol <span class="ui">Use inherited machine condition</span> memuat ulang layout, setting operator, mesin yang di-assign, kondisi mesin awal, dan seed, sehingga simulasi yang sama bisa diputar ulang persis.</p>
+    </section>
+
+    <section>
+      <h2 id="id-admin">Menu admin</h2>
+      <h3>Manage Users</h3>
+      <p>Cari orang berdasarkan email lalu beri peran Admin atau Contribute.</p>
+      <h3>Setting → Default Values</h3>
+      <p>Nilai awal untuk Production Setup baru dan untuk Work Load Simulator setiap kali Construction Detail dipilih: Task Priority, Shift Time, Lunch Time, Lunch starts at, Meeting Time, Meeting starts at, RPC %, Walking Speed, Layout Scale, Doff Priority, Min Remain Task for Doff Priority. Klik <span class="ui">Save</span> untuk menyimpan.</p>
+    </section>
+
+    <section>
+      <h2 id="id-aturan">Aturan simulasi</h2>
+
+      <h3>Task Priority</h3>
+      <p><em>Nearest Task</em>: operator mendatangi mesin antrean yang jarak jalannya terdekat. <em>Quickest Task</em>: operator memilih mesin yang pekerjaannya selesai paling cepat (jalan + seluruh waktu kerja).</p>
+
+      <h3>Mach Condition: Run dan Stop</h3>
+      <ul>
+        <li>Aktivitas <strong>Stop</strong> menghentikan mesin selama dikerjakan; mesin juga berhenti selama menunggu operator.</li>
+        <li>Aktivitas <strong>Run</strong> dikerjakan sambil mesin tetap jalan.</li>
+        <li>Aktivitas Run yang langsung diikuti aktivitas Stop ikut menghentikan mesin. Ini juga berlaku kalau aktivitas Stop berikutnya milik operator lain dan masih menunggu di mesin itu.</li>
+      </ul>
+
+      <h3>RPC (Rest &amp; Personal Care)</h3>
+      <p>Setiap aktivitas mendapat tambahan waktu sebesar RPC % dari waktunya. Contoh: RPC 12% membuat aktivitas 10 menit menjadi 10 + 1,2 menit. Waktu RPC tampil sebagai segmen sendiri di timeline (legend "RPC") dan sebagai <em>Others (RPC)</em> di Man Occupation. RPC berperilaku seperti aktivitas Run: mesin hanya ikut berhenti kalau aktivitas setelahnya Stop, dan waktunya lalu dicatat sebagai downtime aktivitas induknya.</p>
+
+      <h3>Doffing, Loading, dan sub-aktivitas</h3>
+      <ul>
+        <li><strong>Loading</strong> mengikuti POlength di WL_Products bila diisi. Area WW, BA, CA, IS, IP memakai Loading berbasis berat yang dikerjakan di Pay Off.</li>
+        <li>Kalau <strong>Loading Partial1 dan Partial2</strong> jatuh tempo bersamaan, keduanya diganti satu Loading Partial3.</li>
+        <li>Kalau Doffing dan Loading satu mesin dipegang operator berbeda, Loading menunggu sampai Doffing selesai; jeda itu tercatat sebagai waiting.</li>
+      </ul>
+
+      <h3>Fracture Repairing, Dies Change, Defect Repairing</h3>
+      <p>Ketiganya dihitung per Construction, bukan per mesin: begitu jumlah spool gabungan mesin ber-Construction sama mencapai siklusnya, kejadian jatuh ke salah satu mesin yang sedang jalan secara acak. Dies Change berlaku untuk Area WW, BA, CA, dengan 7 atau 26 dies per kejadian. Defect Repairing berlaku untuk Area CB, BU, SP, CH, CR dan dikerjakan di Take Up.</p>
+
+      <h3>Frequency Type (subtask Doffing)</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Frequency Type</th><th>Dikerjakan pada…</th></tr></thead>
+        <tbody>
+          <tr><td>(kosong)</td><td>Sesuai Num/Dem seperti biasa</td></tr>
+          <tr><td><code>FirstDoffAfterLoading</code></td><td>Doffing pertama setelah Loading (utama atau partial)</td></tr>
+          <tr><td><code>FirstDoffAfterLoadingAll</code></td><td>Doffing pertama setelah Loading utama</td></tr>
+          <tr><td><code>FirstDoffAfterLoadingPartial</code></td><td>Doffing pertama setelah Loading partial</td></tr>
+          <tr><td><code>FirstDoffAfterFractureRepairing</code></td><td>Doffing pertama setelah Fracture Repairing</td></tr>
+          <tr><td><code>FirstDoffAfterDefectRepairing</code></td><td>Doffing pertama setelah Defect Repairing</td></tr>
+          <tr><td><code>FirstDoffAfterDiesChange</code></td><td>Doffing pertama setelah Dies Change</td></tr>
+          <tr><td><code>FirstDoffAfterInteruptions</code></td><td>Doffing pertama setelah event mana pun di atas</td></tr>
+          <tr><td><code>FirstDoffOnShift</code></td><td>Doffing pertama mesin itu di shift ini</td></tr>
+        </tbody>
+      </table></div>
+      <p>Event dihitung saat selesai dikerjakan, di mesin yang sama. Beberapa event sebelum satu Doffing tetap menghasilkan satu kali subtask.</p>
+
+      <h3>Dedicated Machines vs Machines Group</h3>
+      <p><em>Dedicated</em>: setiap aktivitas punya operatornya sendiri. <em>Machines Group</em>: semua operator yang di-assign ke mesin berbagi pekerjaannya; satu mesin hanya dikerjakan satu operator pada satu waktu. Satu setup bisa mencampur keduanya per mesin. Mesin yang Planning Type-nya kosong disimulasikan seperti Dedicated.</p>
+
+      <h3>Break (Lunch, Meeting, Other)</h3>
+      <p>Saat jam break tiba, operator menyelesaikan kunjungan yang sedang dikerjakan dulu, lalu break dengan durasi penuh. Selama break, mesin yang butuh dikerjakan menunggu. Di Production Simulation, jam mulai bisa berbeda per operator (tombol ⚙️).</p>
+
+      <h3>Doff Priority</h3>
+      <p>Kalau <strong>Yes</strong>: saat operator sedang mengerjakan mesin dan mesin lain butuh Doffing, sementara sisa kunjungannya masih ≥ <em>Min Remain Task</em> menit, pekerjaan itu ditunda. Operator mengerjakan semua Doffing yang menunggu (sesuai Task Priority), lalu memilih lagi sesuai Task Priority. Pekerjaan yang ditunda dinilai dari sisa waktunya dan dilanjutkan dari titik terakhir. Pekerjaan Doffing sendiri tidak pernah ditunda.</p>
+      <div class="note"><p>Doff Priority mengurangi waktu tunggu Doffing, tapi menambah waktu jalan operator. Naikkan Min Remain Task bila penundaan terlalu sering.</p></div>
+    </section>
+
+    <section>
+      <h2 id="id-glosarium">Glosarium</h2>
+      <dl class="glossary">
+        <dt>Construction</dt><dd>Kode konstruksi produk; teksnya memuat Mach-Product-LayLength-TG-SpoolType.</dd>
+        <dt>Construction Detail</dt><dd>Satu baris WL_Products; dasar spesifikasi mesin dan Activity Table.</dd>
+        <dt>Area</dt><dd>Area produksi (BU, CB, SP, CH, CR, WW, IS, IP, CA, BA); menentukan aturan Loading, Dies Change, dan Defect Repairing.</dd>
+        <dt>Spool</dt><dd>Satu gulungan hasil mesin. Spool Weight = SpoolLength × LinearDensity × NoOfWires ÷ 1000 (kg).</dd>
+        <dt>Runtime/spool</dt><dd>Waktu mesin memproduksi satu spool.</dd>
+        <dt>Doffing</dt><dd>Mengambil spool jadi dari mesin, di Take Up.</dd>
+        <dt>Loading</dt><dd>Mengganti/mengisi bahan baku; Loading Partial adalah loading sebagian.</dd>
+        <dt>Fracture Repairing</dt><dd>Memperbaiki kawat putus.</dd>
+        <dt>Dies Change</dt><dd>Mengganti dies.</dd>
+        <dt>Defect Repairing</dt><dd>Memperbaiki cacat produk.</dd>
+        <dt>Pay Off / Cradle / Take Up</dt><dd>Zona kerja di mesin tempat operator berdiri (PO, cradle, TU).</dd>
+        <dt>Mach Condition</dt><dd>Stop (mesin berhenti) atau Run (mesin tetap jalan) saat aktivitas dikerjakan.</dd>
+        <dt>Num / Dem</dt><dd>Numerator / Denominator: aktivitas terjadi Num kali setiap Dem spool.</dd>
+        <dt>Frequency Type</dt><dd>Aturan frekuensi berbasis event untuk subtask Doffing.</dd>
+        <dt>RPC</dt><dd>Rest &amp; Personal Care: tambahan waktu % untuk istirahat dan keperluan pribadi.</dd>
+        <dt>Task Priority</dt><dd>Cara operator memilih mesin berikutnya: Nearest atau Quickest.</dd>
+        <dt>Available Time</dt><dd>Shift Time dikurangi Lunch, Meeting, dan break lain.</dd>
+        <dt>Man Occupation</dt><dd>(Walking + Handling) ÷ waktu kerja bersih, dalam %.</dd>
+        <dt>Ideal demand / Forecast</dt><dd>Beban kerja teoretis vs perkiraan setelah memperhitungkan mesin berhenti dan jalan kaki.</dd>
+        <dt>Others (RPC)</dt><dd>Porsi waktu RPC di Man Occupation.</dd>
+        <dt>Idle</dt><dd>Operator tidak ada pekerjaan.</dd>
+        <dt>Downtime / Waiting</dt><dd>Mesin berhenti: karena aktivitas Stop, atau menunggu operator.</dd>
+        <dt>OEE Availability</dt><dd>(Waktu produksi terencana − downtime) ÷ waktu produksi terencana.</dd>
+        <dt>Reject % / Quality</dt><dd>Persentase tonase reject; mengurangi tonase baik dan OEE (Production Simulation).</dd>
+        <dt>Manhour/ton, Machhours/ton</dt><dd>Jam operator atau jam mesin per ton output.</dd>
+        <dt>Planning Type</dt><dd>Dedicated Machines atau Machines Group, per mesin.</dd>
+        <dt>Group Name</dt><dd>Label bebas untuk mengelompokkan mesin.</dd>
+        <dt>Doff Priority / Min Remain Task</dt><dd>Menunda pekerjaan demi Doffing bila sisa kunjungan ≥ Min Remain Task menit.</dd>
+        <dt>WLM / Output model</dt><dd>Hasil simulasi yang disimpan di WL_Outputmodels, dengan versi.</dd>
+        <dt>Inherited condition</dt><dd>Kondisi awal mesin + seed dari hasil tersimpan untuk memutar ulang simulasi.</dd>
+      </dl>
+    </section>
+  </article>

@@ -15,6 +15,7 @@ import { LayoutManagerPage } from './components/layouts/LayoutManagerPage';
 import { ProductionSimulationPage } from './components/production/ProductionSimulationPage';
 import { UsersManagerPage } from './components/users/UsersManagerPage';
 import { SettingsPage } from './components/settings/SettingsPage';
+import { GuidancePage } from './components/guidance/GuidancePage';
 import './App.css';
 
 const ROLE_LABEL: Record<string, string> = { admin: 'Admin', contribute: 'Contribute', guest: 'Guest' };
@@ -27,6 +28,7 @@ const PAGE_DESCRIPTION: Record<AppPage, string> = {
   outputModels: 'Review saved workload simulation outputs',
   users: 'Manage user access and roles',
   settings: 'Application settings, such as default values for new setups',
+  guidance: 'How to use this app, its terms and simulation rules',
 };
 
 function AppShell() {
@@ -136,6 +138,7 @@ function AppShell() {
           )}
           {activePage === 'users' && <UsersManagerPage />}
           {activePage === 'settings' && <SettingsPage />}
+          {activePage === 'guidance' && <GuidancePage />}
         </main>
       </div>
     </div>

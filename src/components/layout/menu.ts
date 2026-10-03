@@ -1,6 +1,6 @@
 import type { UserRole } from '../../context/AuthContext';
 
-export type AppPage = 'simulator' | 'layouts' | 'production' | 'products' | 'activities' | 'outputModels' | 'users' | 'settings';
+export type AppPage = 'simulator' | 'layouts' | 'production' | 'products' | 'activities' | 'outputModels' | 'users' | 'settings' | 'guidance';
 
 export const MENU: { page: AppPage; label: string; icon: string; roles: UserRole[] }[] = [
   { page: 'simulator', label: 'Work Load Simulator', icon: '▶️', roles: ['admin', 'contribute', 'guest'] },
@@ -11,6 +11,7 @@ export const MENU: { page: AppPage; label: string; icon: string; roles: UserRole
   { page: 'outputModels', label: 'WL_Outputmodels', icon: '📊', roles: ['admin'] },
   { page: 'users', label: 'Manage Users', icon: '👥', roles: ['admin'] },
   { page: 'settings', label: 'Setting', icon: '⚙️', roles: ['admin'] },
+  { page: 'guidance', label: 'Guidance', icon: '📘', roles: ['admin', 'contribute', 'guest'] },
 ];
 
 /** Pages a given role is allowed to see — shared with App.tsx so the sidebar's visible menu and

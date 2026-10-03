@@ -4917,3 +4917,264 @@
 .operator-doff-priority {
   margin-top: 14px;
 }
+
+/* ---- Guidance (in-app user guide) ---- */
+.guidance-page {
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+.guidance-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+}
+
+.guidance-language {
+  display: inline-flex;
+  border: 1px solid #1e293b;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #111827;
+}
+
+.guidance-language button {
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 6px 14px;
+  border: 0;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+}
+
+.guidance-language button[aria-pressed='true'] {
+  background: #0ea5e9;
+  color: #0b1220;
+}
+
+.guidance-language button:focus-visible {
+  outline: 2px solid #38bdf8;
+  outline-offset: 2px;
+}
+
+.guidance-layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 32px;
+  color: #e2e8f0;
+  line-height: 1.6;
+}
+
+.guidance-layout .guide-toc {
+  position: sticky;
+  top: 96px;
+  align-self: start;
+  font-size: 0.88rem;
+}
+
+.guidance-layout .guide-toc p {
+  margin: 0 0 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.guidance-layout .guide-toc ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.guidance-layout .guide-toc a {
+  display: block;
+  padding: 5px 10px;
+  border-radius: 6px;
+  color: #cbd5e1;
+  text-decoration: none;
+}
+
+.guidance-layout .guide-toc a:hover,
+.guidance-layout .guide-toc a:focus-visible {
+  background: rgba(56, 189, 248, 0.12);
+  color: #38bdf8;
+  outline: none;
+}
+
+.guidance-layout .guide-article {
+  min-width: 0;
+  background: #111827;
+  border: 1px solid #1e293b;
+  border-radius: 14px;
+  padding: 8px 28px 24px;
+}
+
+.guidance-layout .guide-article section {
+  padding: 8px 0 24px;
+  border-bottom: 1px solid #1e293b;
+}
+
+.guidance-layout .guide-article section:last-child {
+  border-bottom: 0;
+}
+
+.guidance-layout h2 {
+  margin: 22px 0 10px;
+  font-size: 1.35rem;
+  color: #f1f5f9;
+  scroll-margin-top: 96px;
+  text-wrap: balance;
+}
+
+.guidance-layout h3 {
+  margin: 20px 0 6px;
+  font-size: 1rem;
+  color: #f1f5f9;
+}
+
+.guidance-layout p,
+.guidance-layout li {
+  max-width: 72ch;
+}
+
+.guidance-layout .lede {
+  font-size: 1.05rem;
+  color: #94a3b8;
+}
+
+.guidance-layout code {
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 0.86em;
+  background: #1e293b;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.guidance-layout .ui {
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.guidance-layout ol.steps {
+  padding-left: 1.3em;
+  display: grid;
+  gap: 6px;
+}
+
+.guidance-layout .note {
+  max-width: 72ch;
+  margin: 14px 0;
+  padding: 10px 14px;
+  border-left: 3px solid #38bdf8;
+  border-radius: 0 8px 8px 0;
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.guidance-layout .note.warn {
+  border-left-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.guidance-layout .note p {
+  margin: 0;
+}
+
+.guidance-layout .table-wrap {
+  overflow-x: auto;
+  margin: 12px 0;
+  border: 1px solid #1e293b;
+  border-radius: 8px;
+}
+
+.guidance-layout table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.guidance-layout th,
+.guidance-layout td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #1e293b;
+  text-align: left;
+  vertical-align: top;
+}
+
+.guidance-layout th {
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #94a3b8;
+  background: #0f172a;
+}
+
+.guidance-layout tr:last-child td {
+  border-bottom: 0;
+}
+
+.guidance-layout td:first-child {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.guidance-layout dl.glossary {
+  display: grid;
+  grid-template-columns: minmax(150px, 220px) minmax(0, 1fr);
+  margin: 12px 0;
+  border: 1px solid #1e293b;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.guidance-layout dl.glossary dt,
+.guidance-layout dl.glossary dd {
+  margin: 0;
+  padding: 9px 12px;
+  border-bottom: 1px solid #1e293b;
+}
+
+.guidance-layout dl.glossary dt {
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.guidance-layout dl.glossary dt:last-of-type,
+.guidance-layout dl.glossary dd:last-of-type {
+  border-bottom: 0;
+}
+
+@media (max-width: 900px) {
+  .guidance-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  .guidance-layout .guide-toc {
+    position: static;
+    padding: 12px;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    background: #111827;
+  }
+
+  .guidance-layout .guide-toc ol {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  }
+
+  .guidance-layout .guide-article {
+    padding: 4px 16px 16px;
+  }
+
+  .guidance-layout dl.glossary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .guidance-layout td:first-child {
+    white-space: normal;
+  }
+}
