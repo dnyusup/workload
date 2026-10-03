@@ -120,6 +120,17 @@ export class ProductionSimulationEngine {
   private doffFirstOperatorIds = new Set<string>();
   /** False when neither the setup nor any machine turns Doff Priority on — skips the per-step check. */
   private readonly anyDoffPriority: boolean;
+  /** Per operator, bumped whenever their Doff Priority check could flip from false to true: a
+   * Doffing they may do comes due, or one of their machines is released by another operator.
+   * Per operator rather than global — at a few thousand machines some Doffing comes due almost
+   * every step, which would invalidate every operator's cached answer constantly. */
+  private doffCheckEpochByOperator = new Map<string, number>();
+  /** Every operator that may work each machine (per-activity slots, or the MachinesGroup pool). */
+  private operatorsByMachineId = new Map<string, Set<string>>();
+  /** Per operator, the last Doff Priority check that came out false. Within one visit and zone the
+   * remaining visit time only shrinks, so that answer holds until the epoch, zone or visit changes —
+   * re-checking every 0.02-min step was the dominant cost at a few thousand machines. */
+  private lastFailedDoffCheck = new Map<string, { epoch: number; zone: string | null; tasks: PendingTask[] }>();
   private routeCache: RoutingRowCache = createRoutingRowCache();
   /** Visibility graph around the layout's walls (null when there are none). */
   private wallGraph: WallGraph | null = null;
@@ -248,6 +259,7 @@ export class ProductionSimulationEngine {
             ].filter((id): id is string => !!id),
           );
       if (groupMachine) this.operatorPoolByMachineId.set(m.id, operatorIds);
+      this.operatorsByMachineId.set(m.id, operatorIds);
       operatorIds.forEach((id) => {
         const list = this.machinesByOperator.get(id);
         if (list) list.push(m);
@@ -490,7 +502,13 @@ export class ProductionSimulationEngine {
     if (newTasks.length > 0) {
       const existingKeys = new Set(machine.pendingTasks.map((t) => t.activity));
       newTasks.forEach((t) => {
-        if (!existingKeys.has(t.activity)) machine.pendingTasks.push(t);
+        if (existingKeys.has(t.activity)) return;
+        machine.pendingTasks.push(t);
+        if (isDoffingActivity(t.activity)) {
+          const pool = this.operatorPoolByMachineId.get(machine.id);
+          if (pool) pool.forEach((id) => this.bumpDoffCheck(id));
+          else if (t.assignedOperatorId) this.bumpDoffCheck(t.assignedOperatorId);
+        }
       });
       this.addLog(atMin, `${machine.label} needs ${newTasks.map((t) => t.label).join(', ')}`);
     }
@@ -848,7 +866,14 @@ export class ProductionSimulationEngine {
       (machine.status === 'needs-service' || machine.status === 'running') &&
       (!machine.lockedByOperatorId || machine.lockedByOperatorId === operator.id) &&
       this.doffPriorityOf(machine).enabled &&
-      this.tasksFor(operator.id, machine).some((t) => isDoffingActivity(t.activity))
+      this.hasDoffingFor(operator.id, machine)
+    );
+  }
+
+  private hasDoffingFor(operatorId: string, machine: ProdMachine): boolean {
+    const pool = this.operatorPoolByMachineId.get(machine.id);
+    return machine.pendingTasks.some(
+      (t) => isDoffingActivity(t.activity) && (pool ? pool.has(operatorId) : t.assignedOperatorId === operatorId),
     );
   }
 
@@ -857,14 +882,32 @@ export class ProductionSimulationEngine {
    * Never interrupts Doffing work itself. */
   private shouldSuspendForDoffing(operator: ProductionOperatorRuntimeState): boolean {
     if (!this.anyDoffPriority) return false;
+    const epoch = this.doffCheckEpochByOperator.get(operator.id) ?? 0;
+    const last = this.lastFailedDoffCheck.get(operator.id);
+    if (last && last.epoch === epoch && last.zone === operator.currentZoneLabel && last.tasks === operator.serviceTasks) {
+      return false;
+    }
+    const result = this.checkSuspendForDoffing(operator);
+    if (result) this.lastFailedDoffCheck.delete(operator.id);
+    else this.lastFailedDoffCheck.set(operator.id, { epoch, zone: operator.currentZoneLabel, tasks: operator.serviceTasks });
+    return result;
+  }
+
+  private bumpDoffCheck(operatorId: string) {
+    this.doffCheckEpochByOperator.set(operatorId, (this.doffCheckEpochByOperator.get(operatorId) ?? 0) + 1);
+  }
+
+  private checkSuspendForDoffing(operator: ProductionOperatorRuntimeState): boolean {
     const task = this.serviceTaskForCurrentZone(operator);
     if (!task || isDoffingActivity(task.activity)) return false;
-    const candidates = (this.machinesByOperator.get(operator.id) ?? []).filter(
-      (m) => m.id !== operator.targetMachineId && this.hasPriorityDoffing(operator, m),
-    );
-    if (candidates.length === 0) return false;
-    const remaining = remainingVisitMinutes(operator, this.setup.movement.pixelsPerMeter, this.setup.movement.walkingSpeed);
-    return candidates.some((m) => remaining >= this.doffPriorityOf(m).minRemain);
+    let minRemain = Infinity;
+    for (const m of this.machinesByOperator.get(operator.id) ?? []) {
+      if (m.id !== operator.targetMachineId && this.hasPriorityDoffing(operator, m)) {
+        minRemain = Math.min(minRemain, this.doffPriorityOf(m).minRemain);
+      }
+    }
+    if (!Number.isFinite(minRemain)) return false;
+    return remainingVisitMinutes(operator, this.setup.movement.pixelsPerMeter, this.setup.movement.walkingSpeed) >= minRemain;
   }
 
   private suspendVisitForDoffing(operator: ProductionOperatorRuntimeState, atMin: number) {
@@ -879,7 +922,10 @@ export class ProductionSimulationEngine {
         machine.status = 'needs-service';
         machine.queuedSince = atMin;
       }
-      if (machine.lockedByOperatorId === operator.id) machine.lockedByOperatorId = null;
+      if (machine.lockedByOperatorId === operator.id) {
+        machine.lockedByOperatorId = null;
+        this.operatorsByMachineId.get(machine.id)?.forEach((id) => this.bumpDoffCheck(id));
+      }
       this.addLog(atMin, `${operator.label} paused work on Machine ${machine.label} for Doffing priority`);
     }
     this.doffFirstOperatorIds.add(operator.id);
@@ -1070,7 +1116,10 @@ export class ProductionSimulationEngine {
         }
         if (t.activity === 'loading' || t.activity.startsWith('loading-')) machine.spoolsSinceLoading = 0;
       });
-      if (machine.lockedByOperatorId === operator.id) machine.lockedByOperatorId = null;
+      if (machine.lockedByOperatorId === operator.id) {
+        machine.lockedByOperatorId = null;
+        this.operatorsByMachineId.get(machine.id)?.forEach((id) => this.bumpDoffCheck(id));
+      }
       this.addLog(atMin, `${operator.label} finished servicing Machine ${machine.label}`);
     }
     operator.phase = 'idle';
