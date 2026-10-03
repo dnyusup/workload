@@ -38,6 +38,22 @@ function emptyDowntime(activities: ActivityConfig[] = []): Record<DowntimeReason
   return { ...Object.fromEntries(activities.map((activity) => [activity.key, 0])), waiting: 0 };
 }
 
+/** Sub-activity keys carry their WL_Activities row id (`doffing-sub-<guid>`), so an inherited
+ * condition saved before a row was re-created can name a key this run doesn't have. Map such a task
+ * onto the current activity with the same family and label; drop it if nothing matches, since an
+ * unknown key has no counters to add its time to. */
+function matchInheritedTasks<T extends { activity: ActivityKey; label: string }>(tasks: T[], activities: ActivityConfig[]): T[] {
+  const keys = new Set(activities.map((activity) => activity.key));
+  return tasks.flatMap((task) => {
+    if (keys.has(task.activity)) return [{ ...task }];
+    const family = task.activity.split('-sub-')[0];
+    const match = activities.find(
+      (activity) => activity.parentKey === family && activity.label.trim().toLowerCase() === task.label.trim().toLowerCase(),
+    );
+    return match ? [{ ...task, activity: match.key, label: match.label }] : [];
+  });
+}
+
 const GLOBAL_EVENT_ACTIVITIES = new Set(['fractureRepairing', 'diesChange', 'defectRepairing']);
 const AVERAGE_DIES_PER_CHANGE_EVENT = (7 + 26) / 2;
 
@@ -172,6 +188,7 @@ export class SimulationEngine {
       });
       const widthPx = machineWidthPx(m, config.movement.pixelsPerMeter);
       const heightPx = machineHeightPx(m, config.movement.pixelsPerMeter);
+      const inheritedTasks = savedCondition ? matchInheritedTasks(savedCondition.pendingTasks, config.activities) : [];
       const machine: MachineRuntimeState = {
         id: m.id,
         label: m.label,
@@ -184,7 +201,7 @@ export class SimulationEngine {
         widthPx,
         heightPx,
         status: assigned
-          ? savedCondition?.status === 'needs-service'
+          ? savedCondition?.status === 'needs-service' && inheritedTasks.length > 0
             ? 'needs-service'
             : 'running'
           : 'unassigned',
@@ -201,7 +218,7 @@ export class SimulationEngine {
           return Number.isFinite(loadingCycle) && loadingCycle > 0 ? startSpools % loadingCycle : startSpools;
         })(),
         nextCompletionAt: savedCondition?.nextCompletionAt ?? (assigned ? this.rng() * this.runtimePerSpool : this.runtimePerSpool),
-        pendingTasks: savedCondition?.pendingTasks.map((task) => ({ ...task })) ?? [],
+        pendingTasks: inheritedTasks,
         queuedSince: savedCondition?.queuedSince ?? null,
         totalServiced: 0,
         completedByActivity,

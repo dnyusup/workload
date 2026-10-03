@@ -111,7 +111,9 @@
       "Bash(node \"C:/Users/DENI~1.YUS/AppData/Local/Temp/claude/c--Users-deni-yusup-powerapps-code-WorkLoad/6aef9193-7703-4c6d-9d7f-50697731bc86/scratchpad/prod.cjs\")",
       "Bash(grep -rhoE \"\\(>|title=\\\\\"|aria-label=\\\\\"\\)[A-Z][A-Za-z &/#\\(\\).,'+:-]{2,45}\\(<|\\\\\"\\)\" src/SimulationView.tsx src/components/simulation/SimulationControls.tsx src/components/simulation/OutputModelSaveDialog.tsx src/components/production/ProductionRunView.tsx)",
       "Bash(grep -hoE \"\\(>|title=\\\\\"|aria-label=\\\\\"|label: '\\)[A-Za-z0-9▶⏸↺][A-Za-z0-9 &/#\\(\\).,'+:×-]{1,45}\\(<|\\\\\"|'\\)\" src/components/simulation/Controls.tsx src/components/simulation/InheritedConditionDialog.tsx src/SimulationView.tsx)",
-      "Bash(mkdir -p src/components/guidance)"
+      "Bash(mkdir -p src/components/guidance)",
+      "Bash(bash \"C:/Users/DENI~1.YUS/AppData/Local/Temp/claude/c--Users-deni-yusup-powerapps-code-WorkLoad/6aef9193-7703-4c6d-9d7f-50697731bc86/scratchpad/runbench.sh\")",
+      "Bash(git rm *)"
     ]
   }
 }
