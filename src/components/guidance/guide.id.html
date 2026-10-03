@@ -42,12 +42,11 @@
 
       <h3>Langkah 1 — Setup</h3>
       <ol class="steps">
-        <li><strong>Pilih Construction Detail</strong> di bagian atas (bisa difilter per Area, Mach, Product). Aplikasi mengisi Machine Specification dari WL_Products dan Activity Table dari WL_Activities. Setting operator (Task Priority, shift, lunch, meeting, RPC, Walking Speed, Layout Scale, Doff Priority) diisi dari <span class="ui">Setting → Default Values</span>.</li>
+        <li><strong>Pilih Construction Detail</strong> di bagian atas (bisa difilter per Area, Mach, Product). Aplikasi mengisi Machine Specification dari WL_Products dan Activity Table dari WL_Activities. Setting operator (Task Priority, shift, lunch, meeting, RPC, Walking Speed, Doff Priority) diisi dari <span class="ui">Setting → Default Values</span>.</li>
         <li><strong>Machine Specification</strong>: LayLength, NoOfWires, Speed, SpoolLength, LinearDensity, Fracture/Dies/Defect per ton, POlength. Dari sini dihitung Spool Weight dan Runtime/spool.</li>
-        <li><strong>Operator Activities</strong>: Task Priority, Shift Time, Lunch/Meeting (durasi dan menit mulainya), break tambahan (<span class="ui">+ Add activity</span>), Available Time, serta <span class="ui">Doff Priority</span> dan <span class="ui">Min Remain Task for Doff Priority</span> di bagian paling bawah.</li>
+        <li><strong>Operator Activities</strong>: Task Priority, Shift Time, Lunch/Meeting (durasi dan menit mulainya), break tambahan (<span class="ui">+ Add activity</span>), Available Time beserta Walking Speed (m/menit) di sampingnya, serta <span class="ui">Doff Priority</span> dan <span class="ui">Min Remain Task for Doff Priority</span> di bagian paling bawah.</li>
         <li><strong>Output Estimate</strong>: perkiraan output dan man occupation sebelum simulasi dijalankan. Atur <span class="ui"># Assigned Machines</span>, atau klik <span class="ui">Optimize Man Occupation</span> agar aplikasi mencari jumlah mesin terbanyak tanpa backlog.</li>
         <li><strong>Activity Table</strong>: Time, Frequency Type, Numerator, Denominator, dan Mach Condition per aktivitas. <span class="ui">RPC %</span> ada di kanan judul tabel. Tambah sub-aktivitas dengan <span class="ui">+ Sub Doffing</span> atau <span class="ui">+ Sub Loading</span>.</li>
-        <li><strong>Movement Params</strong>: Walking Speed (m/menit) dan Layout Scale (px per meter).</li>
       </ol>
       <div class="note"><p>Tombol ikon panah melingkar mengembalikan semua isian ke kondisi saat Construction Detail dipilih.</p></div>
 
@@ -85,7 +84,7 @@
       <h3>Membuat Production Setup</h3>
       <ol class="steps">
         <li>Pilih Layout, isi nama setup, klik <span class="ui">+ New Setup</span>. Layout disalin ke setup (perubahan layout sesudahnya tidak ikut). Nilai awal shift dan movement diambil dari Setting → Default Values.</li>
-        <li>Isi <strong>Shift &amp; Movement Settings</strong>: Task Priority, Shift/Lunch/Meeting, RPC %, Doff Priority, Min Remain Task, Walking Speed, Layout Scale (khusus Admin).</li>
+        <li>Isi <strong>Shift &amp; Movement Settings</strong>: Task Priority, Shift/Lunch/Meeting, RPC %, Doff Priority, Min Remain Task, Walking Speed.</li>
         <li>Tambah operator di card <strong>Operators</strong>: satu per satu, atau sekaligus dengan prefix dan jumlah (contoh <code>Opr_0001</code>). Angka di samping nama operator adalah forecast man occupation-nya.</li>
       </ol>
 
@@ -148,7 +147,7 @@
       <h3>Manage Users</h3>
       <p>Cari orang berdasarkan email lalu beri peran Admin atau Contribute.</p>
       <h3>Setting → Default Values</h3>
-      <p>Nilai awal untuk Production Setup baru dan untuk Work Load Simulator setiap kali Construction Detail dipilih: Task Priority, Shift Time, Lunch Time, Lunch starts at, Meeting Time, Meeting starts at, RPC %, Walking Speed, Layout Scale, Doff Priority, Min Remain Task for Doff Priority. Klik <span class="ui">Save</span> untuk menyimpan.</p>
+      <p>Nilai awal untuk Production Setup baru dan untuk Work Load Simulator setiap kali Construction Detail dipilih: Task Priority, Shift Time, Lunch Time, Lunch starts at, Meeting Time, Meeting starts at, RPC %, Walking Speed, Doff Priority, Min Remain Task for Doff Priority. Klik <span class="ui">Save</span> untuk menyimpan.</p>
     </section>
 
     <section>

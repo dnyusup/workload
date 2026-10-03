@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { DEFAULT_PIXELS_PER_METER } from '../../lib/layoutConstants';
 import { Mpp_wl_productsesService } from '../../generated/services/Mpp_wl_productsesService';
 import { Mpp_wl_activitiesService } from '../../generated/services/Mpp_wl_activitiesService';
 import { Mpp_wl_outputmodelsesService } from '../../generated/services/Mpp_wl_outputmodelsesService';
@@ -180,7 +181,7 @@ export function ConstructionDetailSelector({
           doffPriority: defaults.doffPriority,
           minRemainForDoffPriority: defaults.minRemainForDoffPriority,
         },
-        movement: { walkingSpeed: defaults.walkingSpeed, pixelsPerMeter: defaults.pixelsPerMeter },
+        movement: { walkingSpeed: defaults.walkingSpeed, pixelsPerMeter: DEFAULT_PIXELS_PER_METER },
         rpcPercent: defaults.rpc,
         spec: newSpec,
         activities,

@@ -13,7 +13,6 @@ import { SpecForm } from './SpecForm';
 import { OperatorForm } from './OperatorForm';
 import { AssignedMachinesControl } from './AssignedMachinesControl';
 import { ActivityTable } from './ActivityTable';
-import { MovementParamsForm } from './MovementParams';
 import { OutputEstimate } from './OutputEstimate';
 import { LayoutBuilder } from './LayoutBuilder';
 import { ConstructionDetailSelector } from './ConstructionDetailSelector';
@@ -117,6 +116,8 @@ export function SetupWizard({ onStart }: { onStart: () => void }) {
               <OperatorForm
                 operator={config.operator}
                 onChange={(operator) => setConfig((prev) => ({ ...prev, operator }))}
+                movement={config.movement}
+                onMovementChange={(movement) => setConfig((prev) => ({ ...prev, movement }))}
               />
             </div>
             <div className="setup-column">
@@ -143,10 +144,6 @@ export function SetupWizard({ onStart }: { onStart: () => void }) {
                 rpcPercent={config.rpcPercent ?? 12}
                 onChange={(activities) => setConfig((prev) => ({ ...prev, activities }))}
                 onRpcPercentChange={(rpcPercent) => setConfig((prev) => ({ ...prev, rpcPercent }))}
-              />
-              <MovementParamsForm
-                movement={config.movement}
-                onChange={(movement) => setConfig((prev) => ({ ...prev, movement }))}
               />
             </div>
           </div>

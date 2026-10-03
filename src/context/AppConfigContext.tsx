@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import { DEFAULT_PIXELS_PER_METER } from '../lib/layoutConstants';
 import type { AppConfig } from '../types';
 import { AppConfigContext } from './appConfig';
 import { defaultActivities, deriveMachineSpec, ensureCoreActivities } from '../lib/calculations';
@@ -43,7 +44,7 @@ function defaultConfig(): AppConfig {
       minRemainForDoffPriority: BUILT_IN_DEFAULTS.minRemainForDoffPriority,
     },
     activities: defaultActivities(derived.spoolWeight, defaultSpec.fracturePerTon),
-    movement: { walkingSpeed: BUILT_IN_DEFAULTS.walkingSpeed, pixelsPerMeter: BUILT_IN_DEFAULTS.pixelsPerMeter },
+    movement: { walkingSpeed: BUILT_IN_DEFAULTS.walkingSpeed, pixelsPerMeter: DEFAULT_PIXELS_PER_METER },
     layout,
     assignedMachineIds: layout.slice(0, 20).map((m) => m.id),
     rpcPercent: BUILT_IN_DEFAULTS.rpc,
@@ -69,6 +70,8 @@ function loadConfig(): AppConfig {
       };
       parsed.spec = { ...defaultSpec, ...parsed.spec, area: parsed.spec?.area ?? '' };
       parsed.rpcPercent = parsed.rpcPercent ?? 12;
+      // Layout Scale is fixed: layouts are drawn at this scale, so an old saved value is ignored.
+      parsed.movement = { walkingSpeed: parsed.movement?.walkingSpeed ?? BUILT_IN_DEFAULTS.walkingSpeed, pixelsPerMeter: DEFAULT_PIXELS_PER_METER };
       // Configs saved before explicit machine assignment existed relied on "first N machines in
       // layout order" — preserve that as the initial assignment so they keep running exactly as
       // before, instead of suddenly losing their assignment and failing the new Start validation.

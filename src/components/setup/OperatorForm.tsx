@@ -1,4 +1,4 @@
-import type { ExtraBreak, OperatorConfig, TaskPriorityMode } from '../../types';
+import type { ExtraBreak, MovementParams, OperatorConfig, TaskPriorityMode } from '../../types';
 import { Fragment } from 'react';
 import { availableTimeMinutes, extraBreakMinutes } from '../../lib/calculations';
 import { Button } from '../ui/Button';
@@ -16,9 +16,13 @@ const TASK_PRIORITY_OPTIONS: { value: TaskPriorityMode; label: string }[] = [
 export function OperatorForm({
   operator,
   onChange,
+  movement,
+  onMovementChange,
 }: {
   operator: OperatorConfig;
   onChange: (next: OperatorConfig) => void;
+  movement: MovementParams;
+  onMovementChange: (next: MovementParams) => void;
 }) {
   const set = <K extends keyof OperatorConfig>(key: K) => (v: OperatorConfig[K]) => onChange({ ...operator, [key]: v });
   const extraBreaks = operator.extraBreaks ?? [];
@@ -80,12 +84,17 @@ export function OperatorForm({
         + Add activity
       </Button>
       <div className="divider" />
-      <Field
-        label="Available Time (min)"
-        hint={`= ShiftTime - LunchTime - MeetingTime${extraBreaks.length > 0 ? ' - Other' : ''}. The simulation runs for the full ShiftTime, with every break inserted at its configured minute.`}
-      >
-        <NumberInput value={available} readOnly />
-      </Field>
+      <div className="operator-form-grid">
+        <Field
+          label="Available Time (min)"
+          hint={`= ShiftTime - LunchTime - MeetingTime${extraBreaks.length > 0 ? ' - Other' : ''}. The simulation runs for the full ShiftTime, with every break inserted at its configured minute.`}
+        >
+          <NumberInput value={available} readOnly />
+        </Field>
+        <Field label="Walking Speed (m/min)" tooltip="Used to work out how long the operator walks between machines on the layout">
+          <NumberInput value={movement.walkingSpeed} min={0} onChange={(walkingSpeed) => onMovementChange({ ...movement, walkingSpeed })} />
+        </Field>
+      </div>
       <div className="operator-form-grid operator-doff-priority">
         <Field label="Doff Priority" tooltip={DOFF_PRIORITY_TOOLTIP}>
           <Toggle

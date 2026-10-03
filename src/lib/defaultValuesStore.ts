@@ -14,7 +14,6 @@ export interface DefaultValues {
   meetingStartAt: number;
   rpc: number;
   walkingSpeed: number;
-  pixelsPerMeter: number;
   doffPriority: boolean;
   minRemainForDoffPriority: number;
 }
@@ -29,7 +28,6 @@ export const BUILT_IN_DEFAULTS: DefaultValues = {
   meetingStartAt: 420,
   rpc: 12,
   walkingSpeed: 60,
-  pixelsPerMeter: 20,
   doffPriority: false,
   minRemainForDoffPriority: 5,
 };
@@ -44,7 +42,6 @@ const PARAMETER_NAMES: Record<keyof DefaultValues, string> = {
   meetingStartAt: 'MeetingStartAt',
   rpc: 'RPC',
   walkingSpeed: 'WalkingSpeed',
-  pixelsPerMeter: 'LayoutScale',
   doffPriority: 'DoffPriority',
   minRemainForDoffPriority: 'MinRemainTaskForDoffPriority',
 };

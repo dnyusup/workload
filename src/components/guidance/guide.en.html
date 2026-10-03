@@ -42,12 +42,11 @@
 
       <h3>Step 1 — Setup</h3>
       <ol class="steps">
-        <li><strong>Pick a Construction Detail</strong> at the top (filter by Area, Mach, Product). The app fills Machine Specification from WL_Products and the Activity Table from WL_Activities. Operator settings (Task Priority, shift, lunch, meeting, RPC, Walking Speed, Layout Scale, Doff Priority) come from <span class="ui">Setting → Default Values</span>.</li>
+        <li><strong>Pick a Construction Detail</strong> at the top (filter by Area, Mach, Product). The app fills Machine Specification from WL_Products and the Activity Table from WL_Activities. Operator settings (Task Priority, shift, lunch, meeting, RPC, Walking Speed, Doff Priority) come from <span class="ui">Setting → Default Values</span>.</li>
         <li><strong>Machine Specification</strong>: LayLength, NoOfWires, Speed, SpoolLength, LinearDensity, Fracture/Dies/Defect per ton, POlength. Spool Weight and Runtime/spool are derived from these.</li>
-        <li><strong>Operator Activities</strong>: Task Priority, Shift Time, Lunch/Meeting (duration and start minute), extra breaks (<span class="ui">+ Add activity</span>), Available Time, and at the bottom <span class="ui">Doff Priority</span> and <span class="ui">Min Remain Task for Doff Priority</span>.</li>
+        <li><strong>Operator Activities</strong>: Task Priority, Shift Time, Lunch/Meeting (duration and start minute), extra breaks (<span class="ui">+ Add activity</span>), Available Time with Walking Speed (m/min) beside it, and at the bottom <span class="ui">Doff Priority</span> and <span class="ui">Min Remain Task for Doff Priority</span>.</li>
         <li><strong>Output Estimate</strong>: estimated output and man occupation before running. Set <span class="ui"># Assigned Machines</span>, or click <span class="ui">Optimize Man Occupation</span> to find the most machines that leave no backlog.</li>
         <li><strong>Activity Table</strong>: Time, Frequency Type, Numerator, Denominator and Mach Condition per activity. <span class="ui">RPC %</span> sits right of the table title. Add sub-activities with <span class="ui">+ Sub Doffing</span> or <span class="ui">+ Sub Loading</span>.</li>
-        <li><strong>Movement Params</strong>: Walking Speed (m/min) and Layout Scale (px per meter).</li>
       </ol>
       <div class="note"><p>The circular-arrow button resets every field to how it was when the Construction Detail was picked.</p></div>
 
@@ -85,7 +84,7 @@
       <h3>Creating a Production Setup</h3>
       <ol class="steps">
         <li>Pick a Layout, type a setup name, click <span class="ui">+ New Setup</span>. The layout is copied into the setup (later layout edits don't carry over). Shift and movement values start from Setting → Default Values.</li>
-        <li>Fill <strong>Shift &amp; Movement Settings</strong>: Task Priority, Shift/Lunch/Meeting, RPC %, Doff Priority, Min Remain Task, Walking Speed, Layout Scale (Admin only).</li>
+        <li>Fill <strong>Shift &amp; Movement Settings</strong>: Task Priority, Shift/Lunch/Meeting, RPC %, Doff Priority, Min Remain Task, Walking Speed.</li>
         <li>Add operators in the <strong>Operators</strong> card: one at a time, or in bulk with a prefix and count (e.g. <code>Opr_0001</code>). The number next to each name is that operator's forecast man occupation.</li>
       </ol>
 
@@ -148,7 +147,7 @@
       <h3>Manage Users</h3>
       <p>Search people by email and give them the Admin or Contribute role.</p>
       <h3>Setting → Default Values</h3>
-      <p>Starting values for new Production Setups, and for the Work Load Simulator each time a Construction Detail is picked: Task Priority, Shift Time, Lunch Time, Lunch starts at, Meeting Time, Meeting starts at, RPC %, Walking Speed, Layout Scale, Doff Priority, Min Remain Task for Doff Priority. Click <span class="ui">Save</span> to keep them.</p>
+      <p>Starting values for new Production Setups, and for the Work Load Simulator each time a Construction Detail is picked: Task Priority, Shift Time, Lunch Time, Lunch starts at, Meeting Time, Meeting starts at, RPC %, Walking Speed, Doff Priority, Min Remain Task for Doff Priority. Click <span class="ui">Save</span> to keep them.</p>
     </section>
 
     <section>

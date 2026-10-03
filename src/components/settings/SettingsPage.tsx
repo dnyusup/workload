@@ -20,7 +20,6 @@ const NUMBER_FIELDS: { key: Exclude<keyof DefaultValues, 'taskPriority' | 'doffP
   { key: 'meetingStartAt', label: 'Meeting starts at minute', min: 0 },
   { key: 'rpc', label: 'RPC %', min: 0 },
   { key: 'walkingSpeed', label: 'Walking Speed (m/min)', min: 0 },
-  { key: 'pixelsPerMeter', label: 'Layout Scale (px/meter)', min: 1 },
 ];
 
 function DefaultValuesCard() {

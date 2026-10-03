@@ -1,4 +1,5 @@
 import type { LayoutMachine, OperatorStartPoint, PlanningType, ProductionMachineAssignment, ProductionOperator, ProductionSetup, TaskPriorityMode, LayoutWall, LayoutRemark } from '../types';
+import { DEFAULT_PIXELS_PER_METER } from './layoutConstants';
 import { Mpp_wl_productionsetupsesService } from '../generated/services/Mpp_wl_productionsetupsesService';
 import { Mpp_wl_productionsetupoperatorsesService } from '../generated/services/Mpp_wl_productionsetupoperatorsesService';
 import { Mpp_wl_productionsetupmachinesesService } from '../generated/services/Mpp_wl_productionsetupmachinesesService';
@@ -150,7 +151,7 @@ export async function loadProductionSetup(id: string, constructionLabelById: Map
     meetingTime: header.mpp_meetingtime ?? 15,
     meetingStartAt: header.mpp_meetingstartat ?? 420,
     taskPriority: (header.mpp_taskpriority as TaskPriorityMode) ?? 'quickest',
-    movement: { walkingSpeed: header.mpp_walkingspeed ?? 60, pixelsPerMeter: header.mpp_pixelspermeter ?? 20 },
+    movement: { walkingSpeed: header.mpp_walkingspeed ?? 60, pixelsPerMeter: DEFAULT_PIXELS_PER_METER },
     rpc: header.mpp_rpc ?? 12,
     doffPriority: (header.mpp_doffpriority ?? '').trim().toLowerCase() === 'yes',
     minRemainForDoffPriority: header.mpp_minremaintaskfordoffpriority ?? BUILT_IN_DEFAULTS.minRemainForDoffPriority,
@@ -183,7 +184,7 @@ export async function createProductionSetup(
     mpp_meetingstartat: defaults.meetingStartAt,
     mpp_taskpriority: defaults.taskPriority,
     mpp_walkingspeed: defaults.walkingSpeed,
-    mpp_pixelspermeter: defaults.pixelsPerMeter,
+    mpp_pixelspermeter: DEFAULT_PIXELS_PER_METER,
     mpp_rpc: defaults.rpc,
     mpp_doffpriority: defaults.doffPriority ? 'Yes' : 'No',
     mpp_minremaintaskfordoffpriority: defaults.minRemainForDoffPriority,
@@ -225,7 +226,7 @@ export async function createProductionSetup(
     meetingTime: defaults.meetingTime,
     meetingStartAt: defaults.meetingStartAt,
     taskPriority: defaults.taskPriority,
-    movement: { walkingSpeed: defaults.walkingSpeed, pixelsPerMeter: defaults.pixelsPerMeter },
+    movement: { walkingSpeed: defaults.walkingSpeed, pixelsPerMeter: DEFAULT_PIXELS_PER_METER },
     rpc: defaults.rpc,
     doffPriority: defaults.doffPriority,
     minRemainForDoffPriority: defaults.minRemainForDoffPriority,
@@ -265,7 +266,7 @@ export async function updateProductionSetupHeader(
   if (patch.minRemainForDoffPriority !== undefined) fields.mpp_minremaintaskfordoffpriority = patch.minRemainForDoffPriority;
   if (patch.movement !== undefined) {
     fields.mpp_walkingspeed = patch.movement.walkingSpeed;
-    fields.mpp_pixelspermeter = patch.movement.pixelsPerMeter;
+    fields.mpp_pixelspermeter = DEFAULT_PIXELS_PER_METER;
   }
   if (Object.keys(fields).length === 0) return;
   const result = await Mpp_wl_productionsetupsesService.update(id, fields);
