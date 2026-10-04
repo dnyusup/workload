@@ -30,6 +30,9 @@ import { buildWallGraph, type WallGraph } from './wallRouting';
 
 /** How far operators keep from a wall's end when walking around it. */
 const WALL_CLEARANCE_METERS = 0.5;
+/** Simulation sub-step. tick() only ever advances in whole sub-steps, counted as an integer, so a
+ * run gives the same result whatever deltas it's ticked with. */
+const SUB_STEP_MIN = 0.01;
 
 function emptyCounts(activities: ActivityConfig[] = []): Record<ActivityKey, number> {
   return Object.fromEntries(activities.map((activity) => [activity.key, 0]));
@@ -100,6 +103,9 @@ export class SimulationEngine {
   private cycleLengths: Record<ActivityKey, number>;
   private logIdCounter = 0;
   private assignedIds: Set<string>;
+  /** Sub-steps run so far, and the part of a sub-step still waiting for the next tick (see tick). */
+  private subStepIndex = 0;
+  private pendingStepMin = 0;
   private initialMachineConditions: MachineStartCondition[];
   private seed: number;
   private rng: () => number;
@@ -172,9 +178,22 @@ export class SimulationEngine {
         ? (theoreticalSpoolsPerShift * this.assignedIds.size * derived.spoolWeight * diesActivity.numerator) / 1000
         : 0;
 
+    const loadingActivity = config.activities.find((activity) => activity.key === 'loading');
+    const weightBasedLoading =
+      !!loadingActivity?.loadingInterrupt && Number.isFinite(this.cycleLengths.loading) && this.cycleLengths.loading > 0;
     this.machines = config.layout.map((m) => {
       const assigned = this.assignedIds.has(m.id);
       const savedCondition = savedStartConditions.get(m.id);
+      if (savedCondition) {
+        // Replaying a saved start: the state comes from the snapshot, but draw exactly what a fresh
+        // run with this seed drew here (start spools, weight-based Loading phase, next completion,
+        // start backlog), so every random event after it — fractures and the like — matches the
+        // run the snapshot was saved from.
+        if (assigned) this.rng();
+        if (weightBasedLoading) this.rng();
+        if (assigned) this.rng();
+        if (assigned) this.rng();
+      }
       const startSpools = assigned
         ? savedCondition
           ? Math.max(0, Math.floor(savedCondition.spoolsCompleted))
@@ -1234,22 +1253,26 @@ export class SimulationEngine {
       return;
     }
     const capped = Math.min(deltaMin, this.metrics.shiftTimeMin - this.metrics.clockMin);
-    let remaining = capped;
+    const remaining = capped;
     // Keep timeline boundaries close to the actual FSM transitions, especially when a
     // fast simulation tick crosses the end of a short activity such as Doffing.
-    while (remaining > 1e-9) {
-      const step = Math.min(remaining, 0.01);
+    // Whole sub-steps only; a fraction of one waits for the next tick.
+    this.pendingStepMin += remaining;
+    const steps = Math.floor(this.pendingStepMin / SUB_STEP_MIN + 1e-9);
+    this.pendingStepMin = Math.max(0, this.pendingStepMin - steps * SUB_STEP_MIN);
+    for (let i = 0; i < steps && this.subStepIndex * SUB_STEP_MIN < this.metrics.shiftTimeMin - 1e-9; i += 1) {
+      const step = SUB_STEP_MIN;
       const startMin = this.metrics.clockMin;
       this.advanceMachines(startMin, startMin + step);
       this.machines.forEach((machine) => this.triggerMidRuntimeLoading(machine, startMin + step));
       GLOBAL_EVENT_ACTIVITIES.forEach((activityKey) => this.triggerMidRuntimeGlobalActivity(activityKey, startMin + step));
       this.advanceOperator(startMin, step);
       this.accumulateDowntime(step);
-      this.metrics.clockMin += step;
+      this.subStepIndex += 1;
+      this.metrics.clockMin = this.subStepIndex * SUB_STEP_MIN;
       this.machines.forEach((machine) => this.recordMachineTime(machine, startMin, step));
-      remaining -= step;
     }
-    if (this.metrics.clockMin >= this.metrics.shiftTimeMin - 1e-9) {
+    if (this.metrics.clockMin >= this.metrics.shiftTimeMin - SUB_STEP_MIN / 2) {
       this.metrics.clockMin = this.metrics.shiftTimeMin;
     }
     this.metrics.queueLength = this.machines.filter((m) => m.status === 'needs-service').length;
