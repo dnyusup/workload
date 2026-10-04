@@ -117,3 +117,54 @@ export async function saveDefaultValues(values: DefaultValues): Promise<void> {
     if (!result.success) throw new Error(result.error?.message ?? `Failed to save ${PARAMETER_NAMES[key]}.`);
   }
 }
+
+/** WL_DefaultValues rows named `Layout-<Area>` (e.g. Layout-BU) hold the WL_Layouts id the Work
+ * Load Simulator uses by default for that Area. */
+const DEFAULT_LAYOUT_PREFIX = 'layout-';
+
+function defaultLayoutRows(rows: Mpp_wl_defaultvalues[]): Map<string, Mpp_wl_defaultvalues> {
+  const byArea = new Map<string, Mpp_wl_defaultvalues>();
+  rows.forEach((row) => {
+    const name = (row.mpp_parameters ?? '').trim();
+    if (!name.toLowerCase().startsWith(DEFAULT_LAYOUT_PREFIX)) return;
+    const area = name.slice(DEFAULT_LAYOUT_PREFIX.length).trim().toUpperCase();
+    if (area) byArea.set(area, row);
+  });
+  return byArea;
+}
+
+/** Area (upper case) → default layout id, for every Area that has one. */
+export async function loadDefaultLayouts(): Promise<Record<string, string>> {
+  const rows = defaultLayoutRows(await fetchAllPages(Mpp_wl_defaultvaluesService.getAll, {}));
+  const layouts: Record<string, string> = {};
+  rows.forEach((row, area) => {
+    const layoutId = (row.mpp_value ?? '').trim();
+    if (layoutId) layouts[area] = layoutId;
+  });
+  return layouts;
+}
+
+/** Like loadDefaultLayouts, but none at all when WL_DefaultValues can't be read — picking a
+ * Construction then just keeps the current layout. */
+export async function loadDefaultLayoutsOrNone(): Promise<Record<string, string>> {
+  try {
+    return await loadDefaultLayouts();
+  } catch {
+    return {};
+  }
+}
+
+/** Upserts one `Layout-<Area>` row per given Area; a blank id clears that Area's default. */
+export async function saveDefaultLayouts(layouts: Record<string, string>): Promise<void> {
+  const rows = defaultLayoutRows(await fetchAllPages(Mpp_wl_defaultvaluesService.getAll, {}));
+  for (const [rawArea, rawLayoutId] of Object.entries(layouts)) {
+    const area = rawArea.trim().toUpperCase();
+    const layoutId = rawLayoutId.trim();
+    const row = rows.get(area);
+    if ((row?.mpp_value ?? '').trim() === layoutId || (!row && !layoutId)) continue;
+    const result = row
+      ? await Mpp_wl_defaultvaluesService.update(row.mpp_wl_defaultvalueid, { mpp_value: layoutId })
+      : await Mpp_wl_defaultvaluesService.create({ mpp_parameters: `Layout-${area}`, mpp_value: layoutId, statecode: 0 });
+    if (!result.success) throw new Error(result.error?.message ?? `Failed to save Layout-${area}.`);
+  }
+}

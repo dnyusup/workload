@@ -25,6 +25,7 @@ import { createRng, randomSeed } from './rng';
 import { forecastCycleLength, frequencyTypeIsDue, triggerEventOf, type TriggerEvent } from './frequencyTypes';
 import { isDoffingActivity, nextTaskOf, remainingVisitMinutes, snapshotVisit } from './doffPriority';
 import { pickLowestScore } from './bestCandidate';
+import { defaultAssignmentOrder } from './defaultAssignment';
 import { buildWallGraph, type WallGraph } from './wallRouting';
 
 /** How far operators keep from a wall's end when walking around it. */
@@ -141,7 +142,9 @@ export class SimulationEngine {
     const layoutIds = new Set(config.layout.map((m) => m.id));
     const explicitAssigned = (config.assignedMachineIds ?? []).filter((id) => layoutIds.has(id));
     this.assignedIds = new Set(
-      explicitAssigned.length > 0 ? explicitAssigned.slice(0, handled) : config.layout.slice(0, handled).map((m) => m.id),
+      explicitAssigned.length > 0
+        ? explicitAssigned.slice(0, handled)
+        : defaultAssignmentOrder(config.layout, config.movement.pixelsPerMeter).slice(0, handled).map((m) => m.id),
     );
     const savedStartConditions = new Map(
       (config.initialMachineConditions ?? []).map((condition) => [condition.machineId, condition]),

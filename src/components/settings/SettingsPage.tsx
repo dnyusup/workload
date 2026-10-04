@@ -6,6 +6,7 @@ import { Button } from '../ui/Button';
 import { Field, NumberInput, SelectInput } from '../ui/Field';
 import { Toggle } from '../ui/Toggle';
 import { DOFF_PRIORITY_TOOLTIP } from '../ui/doffPriorityText';
+import { DefaultLayoutsCard } from './DefaultLayoutsCard';
 
 const TASK_PRIORITY_OPTIONS: { value: TaskPriorityMode; label: string }[] = [
   { value: 'nearest', label: 'Nearest Task' },
@@ -139,6 +140,7 @@ export function SettingsPage() {
   return (
     <div className="settings-page">
       <DefaultValuesCard />
+      <DefaultLayoutsCard />
     </div>
   );
 }

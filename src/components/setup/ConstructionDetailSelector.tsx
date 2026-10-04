@@ -9,7 +9,8 @@ import type { Mpp_wl_outputmodelses } from '../../generated/models/Mpp_wl_output
 import { useAppConfig } from '../../context/appConfig';
 import { fetchAllPages } from '../../lib/dataversePaging';
 import { buildActivitiesFromRows, isLoadingTaskRow, mapProductToSpec } from '../../lib/productCatalog';
-import { loadDefaultValuesOrBuiltIn } from '../../lib/defaultValuesStore';
+import { loadDefaultLayoutsOrNone, loadDefaultValuesOrBuiltIn } from '../../lib/defaultValuesStore';
+import { loadSavedLayouts } from '../../lib/savedLayoutsStore';
 import { deriveMachineSpec, ensureCoreActivities } from '../../lib/calculations';
 import {
   previewAssignedMachineIds,
@@ -145,6 +146,14 @@ export function ConstructionDetailSelector({
       const construction = product.mpp_constructioncode?.trim();
 
       const defaultsPromise = loadDefaultValuesOrBuiltIn();
+      // The Area's default layout (Setting → Default Layouts), if any — otherwise the current one stays.
+      const area = product.mpp_area?.trim().toUpperCase() ?? '';
+      const defaultLayoutPromise = loadDefaultLayoutsOrNone().then(async (layouts) => {
+        const layoutId = layouts[area];
+        if (!layoutId) return null;
+        const saved = await loadSavedLayouts().catch(() => []);
+        return saved.find((layout) => layout.id === layoutId) ?? null;
+      });
       let activityRows: Mpp_wl_activities[] = [];
       if (construction) {
         const result = await Mpp_wl_activitiesService.getAll({
@@ -164,8 +173,19 @@ export function ConstructionDetailSelector({
       }
 
       const defaults = await defaultsPromise;
+      const defaultLayout = await defaultLayoutPromise;
       const nextConfig = {
         ...config,
+        // A fresh assignment on the default layout, so it follows the default order from the top-left.
+        ...(defaultLayout
+          ? {
+              layout: defaultLayout.machines,
+              operatorStart: defaultLayout.operatorStart,
+              walls: defaultLayout.walls,
+              remarks: defaultLayout.remarks,
+              assignedMachineIds: [],
+            }
+          : {}),
         // Shift/break/priority settings start from Setting → Default Values for every Construction;
         // extra "Other" breaks belong to the previous Construction's scenario — start clean (both
         // before the recommended machine count below is worked out).

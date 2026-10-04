@@ -1,6 +1,7 @@
 import type { ActivityConfig, AppConfig, LayoutMachine, WaitingModel } from '../types';
 import { activityCycleLength, applyRpc, availableTimeMinutes, deriveMachineSpec, distanceMeters, extraBreakMinutes } from './calculations';
 import { forecastCycleLength } from './frequencyTypes';
+import { defaultAssignmentOrder } from './defaultAssignment';
 import { generatePairedGrid, PAIR_GAP } from './gridLayout';
 import { machineWidthPx } from './layoutConstants';
 
@@ -207,13 +208,15 @@ function forecastScale(activities: ActivityConfig[], runtimePerSpool: number, sp
   return runtimePerSpool > 0 ? runtimePerSpool / (runtimePerSpool + stopMinutesPerSpool) : 1;
 }
 
+/** The machines a count assigns: the explicit assignment first, then the rest in the default
+ * assignment order (top-left, two facing rows at a time — see defaultAssignmentOrder). */
 export function previewAssignedMachineIds(config: AppConfig, machineCount: number): string[] {
   const layoutById = new Map(config.layout.map((machine) => [machine.id, machine]));
   const explicitAssigned = (config.assignedMachineIds ?? []).filter((id) => layoutById.has(id));
   const handled = Math.max(0, Math.floor(machineCount));
   return [
     ...explicitAssigned.slice(0, handled),
-    ...config.layout
+    ...defaultAssignmentOrder(config.layout, config.movement.pixelsPerMeter)
       .filter((machine) => !explicitAssigned.includes(machine.id))
       .slice(0, Math.max(0, handled - explicitAssigned.length))
       .map((machine) => machine.id),

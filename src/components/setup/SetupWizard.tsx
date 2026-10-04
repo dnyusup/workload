@@ -174,7 +174,11 @@ export function SetupWizard({ onStart }: { onStart: () => void }) {
           <>
             <LayoutSelector
               onSelect={(layout, operatorStart, walls, remarks) =>
-                setConfig((prev) => ({ ...prev, layout, operatorStart, walls, remarks }))
+                setConfig((prev) => {
+                  // A new layout starts from the default assignment (top-left, two facing rows at a time).
+                  const next = { ...prev, layout, operatorStart, walls, remarks, assignedMachineIds: [] };
+                  return { ...next, assignedMachineIds: previewAssignedMachineIds(next, prev.operator.machHandled) };
+                })
               }
             />
             <LayoutBuilder
