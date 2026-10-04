@@ -1,7 +1,7 @@
 import type { Mpp_wl_activities } from '../generated/models/Mpp_wl_activitiesModel';
 import type { Mpp_wl_productses } from '../generated/models/Mpp_wl_productsesModel';
 import type { AppConfig } from '../types';
-import { deriveMachineSpec, ensureCoreActivities } from './calculations';
+import { deriveMachineSpec, ensureCoreActivities, syncAutoActivityValues } from './calculations';
 import type { DefaultValues } from './defaultValuesStore';
 import { DEFAULT_PIXELS_PER_METER } from './layoutConstants';
 import { buildActivitiesFromRows, isLoadingTaskRow, mapProductToSpec } from './productCatalog';
@@ -31,7 +31,9 @@ export function buildConstructionConfig({
   const spec = mapProductToSpec(product);
   const derived = deriveMachineSpec(spec);
   const built = buildActivitiesFromRows(activityRows, product, derived.spoolWeight, spec.fracturePerTon);
-  const activities = ensureCoreActivities(built.activities, derived.spoolWeight, spec.fracturePerTon);
+  // Synced the way Start does it (auto Num/Dem, Dies/Defect per ton), so a batch run, a replay and a
+  // run started from the setup all simulate the very same Activity Table.
+  const activities = syncAutoActivityValues(ensureCoreActivities(built.activities, derived.spoolWeight, spec.fracturePerTon), spec);
   const config: AppConfig = {
     ...base,
     // A fresh assignment on the default layout, so it follows the default order from the top-left.
