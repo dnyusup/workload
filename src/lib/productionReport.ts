@@ -20,6 +20,7 @@ export type ReportDimension =
   | 'spoolLength'
   | 'speed'
   | 'numberOfWires'
+  | 'groupName'
   | 'machine';
 
 export const REPORT_DIMENSIONS: { key: ReportDimension; label: string }[] = [
@@ -35,6 +36,7 @@ export const REPORT_DIMENSIONS: { key: ReportDimension; label: string }[] = [
   { key: 'spoolLength', label: 'Spool Length' },
   { key: 'speed', label: 'Speed' },
   { key: 'numberOfWires', label: 'No. of Wires' },
+  { key: 'groupName', label: 'Machine Group' },
   { key: 'machine', label: 'Machine' },
 ];
 
@@ -43,6 +45,8 @@ const NOT_SET = '(not set)';
 export interface MachineFact {
   id: string;
   label: string;
+  /** The machine's Group Name from the setup; empty when none. */
+  groupName: string;
   attributes: ConstructionAttributes | null;
   productType: 'FP' | 'SFP';
   plannedMin: number;
@@ -166,6 +170,7 @@ export function buildMachineFacts(
     facts.push({
       id: m.id,
       label: m.label,
+      groupName: assignment.groupName?.trim() ?? '',
       attributes,
       productType: isFinishProductSpoolType(attributes?.spoolType) ? 'FP' : 'SFP',
       plannedMin: clock,
@@ -215,6 +220,7 @@ export function buildOperatorFacts(
 export function dimensionValue(fact: MachineFact, dimension: ReportDimension): string {
   if (dimension === 'machine') return fact.label;
   if (dimension === 'productType') return fact.productType;
+  if (dimension === 'groupName') return fact.groupName || NOT_SET;
   const value = fact.attributes?.[dimension];
   return value && value.trim() ? value : NOT_SET;
 }
