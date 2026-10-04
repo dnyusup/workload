@@ -40,7 +40,6 @@ import { CanvasLegendPanel } from './CanvasLegendPanel';
 import { OperatorStartTimesDialog } from './OperatorStartTimesDialog';
 import { buildCanvasLegendData, type LegendHover } from '../../lib/canvasLegend';
 import {
-  machineOperatorIds,
   operatorAssignmentLines,
   TASK_OPERATOR_FIELDS,
   TASK_OPERATOR_LABELS,
@@ -57,13 +56,13 @@ const TASK_PRIORITY_OPTIONS: { value: TaskPriorityMode; label: string }[] = [
 /** Order-insensitive key for comparing two operator-id lists (e.g. pending vs applied). */
 const operatorSetKey = (ids: string[] | undefined) => [...new Set(ids ?? [])].sort().join(';');
 
-/** Split Task rows of Assign Selection, in display order, with their Apply button caption. */
-const TASK_ROWS: { family: ProductionActivityFamily; button: string }[] = [
-  { family: 'doffing', button: 'Doff' },
-  { family: 'loading', button: 'Load' },
-  { family: 'fractureRepairing', button: 'Fract' },
-  { family: 'diesChange', button: 'Dies' },
-  { family: 'defectRepairing', button: 'Defect' },
+/** Split Task rows of Assign Selection, in display order. */
+const TASK_ROWS: { family: ProductionActivityFamily }[] = [
+  { family: 'doffing' },
+  { family: 'loading' },
+  { family: 'fractureRepairing' },
+  { family: 'diesChange' },
+  { family: 'defectRepairing' },
 ];
 
 type TaskOperatorLists = Record<ProductionActivityFamily, string[]>;
@@ -97,6 +96,10 @@ function withoutOperator(ids: string[] | undefined, operatorId: string): string[
 /** Only picks which operator fields Assign Selection shows — never stored, and switching it keeps
  * the other type's operators (a machine may have both). */
 type AssignType = 'multi' | 'split';
+const ASSIGN_TYPE_TABS: { value: AssignType; label: string }[] = [
+  { value: 'multi', label: 'Multi Task' },
+  { value: 'split', label: 'Split Task' },
+];
 
 /** Multi Task unless the selection only has Split Task operators. */
 function assignTypeFor(assignments: ProductionMachineAssignment[]): AssignType {
@@ -714,9 +717,6 @@ function ProductionSetupEditor({
   );
   const operatorLabel = (id?: string) => (id ? setup.operators.find((o) => o.id === id)?.label ?? '—' : '—');
 
-  /** Per-activity breakdown only means something while assigning Split Task; otherwise operators do
-   * every task, so only All Task is shown. */
-  const showsActivityOccupation = assignType === 'split';
 
   // Every Construction used in this setup gets its own fill (ordered like WL_Products, so it
   // matches the dropdown); every operator likewise gets its own.
@@ -1296,46 +1296,13 @@ function ProductionSetupEditor({
     if (occupation.plannedMachineCount === 0) return ['No Construction assigned yet'];
     return [
       `All Task: ${formatOccupation(occupation.allTask)}`,
-      ...(showsActivityOccupation ? occupation.activities : [])
+      ...occupation.activities
         .filter((row) => row.plannedMinutes > 0)
         .map((row) => `· ${row.label}: ${formatOccupation(row)}`),
     ];
   };
   const occupationStatus = (percent: number) =>
     percent > 100 ? 'overload' : percent > (plannedUtilization?.targetPercent ?? 85) ? 'above-target' : 'under-target';
-  const selectionOccupationPanel = selectionOccupation && (
-    <div className="selection-occupation" aria-live="polite">
-      <div className="selection-occupation-title">
-        <span>Man Occupation (1 operator)</span>
-        <span title={selectionOccupation.constructionLabels.join(', ')}>
-          {selectionOccupation.plannedMachineCount}/{selectionOccupation.machineCount} planned ·{' '}
-          {selectionOccupation.constructionLabels.length} Construction
-        </span>
-      </div>
-      {selectionOccupation.plannedMachineCount === 0 ? (
-        <p className="data-manager-hint">Apply a Construction Detail to see man occupation.</p>
-      ) : (
-        [
-          selectionOccupation.allTask,
-          ...(showsActivityOccupation ? selectionOccupation.activities : []).filter((row) => row.plannedMinutes > 0),
-        ].map(
-          (row) => (
-            <div
-              key={row.key}
-              className={`selection-occupation-row ${row.key === 'all' ? 'is-total' : 'is-activity'}`}
-              title={`${row.plannedMinutes.toFixed(1)} min ideal demand of ${selectionOccupation.availableMinutes.toFixed(1)} min net available`}
-            >
-              <span>{row.label}</span>
-              <span className={`planned-utilization-status planned-utilization-status-${occupationStatus(row.forecastUtilizationPercent)}`}>
-                {row.forecastUtilizationPercent.toFixed(2)}%
-              </span>
-              <span className="selection-occupation-ideal">ideal {row.utilizationPercent.toFixed(2)}%</span>
-            </div>
-          ),
-        )
-      )}
-    </div>
-  );
 
   const constructionDirty = bulkConstructionId !== appliedConstructionId;
   const multiTaskDirty = operatorSetKey(bulkMultiTaskIds) !== operatorSetKey(appliedMultiTaskIds);
@@ -1381,31 +1348,48 @@ function ProductionSetupEditor({
     </Button>
   );
 
-  /** One "pick several operators, then Apply" row with its chips below. */
+  /** One bordered "pick several operators, then Apply" box: title (with the selection's man
+   * occupation for that work), the picker row, then the picked operators as chips. */
   const operatorListRow = ({
     key,
+    title,
+    occupation,
     ids,
     setIds,
     excluded,
     placeholder,
     dirty,
-    applyLabel,
     applyTitle,
     removeTitle,
     onApply,
   }: {
     key: string;
+    title: string;
+    occupation: SelectionOccupation['allTask'] | undefined;
     ids: string[];
     setIds: (ids: string[]) => void;
     excluded: Set<string>;
     placeholder: string;
     dirty: boolean;
-    applyLabel: string;
     applyTitle: string;
     removeTitle: string;
     onApply: (ids: string[]) => void;
   }) => (
-    <div key={key} className="production-assign-list">
+    <div key={key} className="production-assign-task">
+      <div className="production-assign-task-header">
+        <span>{title}</span>
+        {occupation && occupation.plannedMinutes > 0 && selectionOccupation && (
+          <span
+            className="production-assign-task-occupation"
+            title={`Man occupation of 1 operator doing this on the selection: ${occupation.plannedMinutes.toFixed(1)} min ideal demand of ${selectionOccupation.availableMinutes.toFixed(1)} min net available`}
+          >
+            <span className={`planned-utilization-status planned-utilization-status-${occupationStatus(occupation.forecastUtilizationPercent)}`}>
+              {occupation.forecastUtilizationPercent.toFixed(2)}%
+            </span>
+            <span className="selection-occupation-ideal">ideal {occupation.utilizationPercent.toFixed(2)}%</span>
+          </span>
+        )}
+      </div>
       <div className="production-assign-row">
         <SearchableSelect
           value=""
@@ -1423,12 +1407,12 @@ function ProductionSetupEditor({
           disabled={selectedMachineIds.length === 0}
           title={applyTitle}
         >
-          {applyLabel}
+          Apply
         </Button>
         {removeButton(removeTitle, () => onApply([]))}
       </div>
       {ids.length > 0 && (
-        <div className="production-operator-chips production-group-operators">
+        <div className="production-operator-chips">
           {ids.map((id) => (
             <span key={id} className="production-operator-chip">
               {operatorLabel(id)}
@@ -1446,25 +1430,27 @@ function ProductionSetupEditor({
     assignType === 'multi'
       ? operatorListRow({
           key: 'multi',
+          title: 'Multi Task',
+          occupation: selectionOccupation?.allTask,
           ids: bulkMultiTaskIds,
           setIds: setBulkMultiTaskIds,
           excluded: selectionTaskIds,
-          placeholder: 'Add Multi Task Operator',
+          placeholder: 'Add operator',
           dirty: multiTaskDirty,
-          applyLabel: 'Apply',
           applyTitle: 'Apply these operators to the selection — any of them may do any task on these machines',
           removeTitle: 'Remove all Multi Task operators from selection',
           onApply: applyMultiTaskOperators,
         })
-      : TASK_ROWS.map(({ family, button }) =>
+      : TASK_ROWS.map(({ family }) =>
           operatorListRow({
             key: family,
+            title: TASK_OPERATOR_LABELS[family],
+            occupation: selectionOccupation?.activities.find((row) => row.key === family),
             ids: bulkTaskIds[family],
             setIds: (ids) => setBulkTaskIds((prev) => ({ ...prev, [family]: ids })),
             excluded: selectionMultiTaskIds,
-            placeholder: `Add ${TASK_OPERATOR_LABELS[family]} Operator`,
+            placeholder: 'Add operator',
             dirty: taskDirty(family),
-            applyLabel: button,
             applyTitle: `Apply these ${TASK_OPERATOR_LABELS[family]} operators to the selection`,
             removeTitle: `Remove ${TASK_OPERATOR_LABELS[family]} operators from selection`,
             onApply: (ids) => applyTaskOperators(family, ids),
@@ -1480,7 +1466,6 @@ function ProductionSetupEditor({
         </Button>
       }
     >
-      {selectionOccupationPanel}
       <div className="production-assign-row">
         <SearchableSelect
           value={bulkConstructionId}
@@ -1522,19 +1507,32 @@ function ProductionSetupEditor({
         </Button>
         {removeButton('Remove group name from selection', () => applyGroupName(''))}
       </div>
-      <div className="production-assign-mode-row">
-        <label htmlFor="production-assign-type">Assign Type</label>
-        <select
-          id="production-assign-type"
-          className="input"
-          value={assignType}
-          onChange={(event) => setAssignType(event.target.value as AssignType)}
-          title="Multi Task: operators who may do every task on these machines. Split Task: operators per activity. Switching only changes which fields show — operators of the other type stay assigned."
-        >
-          <option value="multi">Multi Task</option>
-          <option value="split">Split Task</option>
-        </select>
+      <div
+        className="production-assign-tabs"
+        role="tablist"
+        aria-label="Assign Type"
+        title="Multi Task: operators who may do every task on these machines. Split Task: operators per activity. Switching only changes which fields show — operators of the other type stay assigned."
+      >
+        {ASSIGN_TYPE_TABS.map((tab) => (
+          <button
+            key={tab.value}
+            type="button"
+            role="tab"
+            aria-selected={assignType === tab.value}
+            className={assignType === tab.value ? 'active' : ''}
+            onClick={() => setAssignType(tab.value)}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
+      {selectionOccupation && selectionOccupation.machineCount > 0 && (
+        <p className="production-assign-scope" title={selectionOccupation.constructionLabels.join(', ')}>
+          {selectionOccupation.plannedMachineCount === 0
+            ? 'Apply a Construction Detail to see man occupation (1 operator).'
+            : `Man occupation (1 operator) · ${selectionOccupation.plannedMachineCount}/${selectionOccupation.machineCount} planned · ${selectionOccupation.constructionLabels.length} Construction`}
+        </p>
+      )}
       {operatorRows}
       {otherTypeSummary && <p className="data-manager-hint">{otherTypeSummary}</p>}
       <div className="production-assign-row production-assign-doff">
@@ -1796,7 +1794,6 @@ function ProductionSetupEditor({
                 {TASK_ROWS.map(({ family }) => (
                   <th key={family}>{TASK_OPERATOR_LABELS[family]}</th>
                 ))}
-                <th title="Everyone working the machine, Multi Task and Split Task">Operators</th>
                 <th title="Machine's own Doff Priority; — = follows the setup">Doff Priority</th>
               </tr>
             </thead>
@@ -1804,14 +1801,14 @@ function ProductionSetupEditor({
               {setup.layout.map((m) => {
                 const a = assignmentByMachine.get(m.id);
                 // A list can be long — keep the cell to a count, full list on hover.
-                const listCell = (ids: string[] | undefined, title?: string) =>
+                const listCell = (ids: string[] | undefined) =>
                   !ids?.length ? (
                     '—'
-                  ) : ids.length === 1 && !title ? (
+                  ) : ids.length === 1 ? (
                     operatorLabel(ids[0])
                   ) : (
-                    <span className="production-operators-cell" title={title ?? ids.map((id) => operatorLabel(id)).join('\n')}>
-                      {ids.length === 1 ? operatorLabel(ids[0]) : `${ids.length} operators`}
+                    <span className="production-operators-cell" title={ids.map((id) => operatorLabel(id)).join('\n')}>
+                      {ids.length} operators
                     </span>
                   );
                 return (
@@ -1822,9 +1819,7 @@ function ProductionSetupEditor({
                     <td>{listCell(a?.assignedOperatorIds)}</td>
                     {TASK_ROWS.map(({ family }) => (
                       <td key={family}>{listCell(a?.[TASK_OPERATOR_FIELDS[family]])}</td>
-                    ))}
-                    <td>{listCell(machineOperatorIds(a), operatorAssignmentLines(a, (id) => operatorLabel(id)).join('\n'))}</td>
-                    <td>{doffPriorityText(a)}</td>
+                    ))}                    <td>{doffPriorityText(a)}</td>
                   </tr>
                 );
               })}

@@ -93,7 +93,7 @@
       <ol class="steps">
         <li><strong>Construction Detail</strong> mesin.</li>
         <li><strong>Group Name</strong>: label bebas untuk pelaporan mesin yang dikelompokkan.</li>
-        <li><strong>Assign Type</strong>: hanya menentukan field operator yang tampil; tidak disimpan.
+        <li>Tab <strong>Assign Type</strong>: hanya menentukan field operator yang tampil; tidak disimpan.
           <ul>
             <li><em>Multi Task</em> → tambahkan satu atau beberapa operator. Siapa pun di antara mereka bisa mengerjakan tugas apa pun di mesin itu.</li>
             <li><em>Split Task</em> → tambahkan satu atau beberapa operator per aktivitas: Doff, Load, Fract, Dies, Defect. Mereka hanya mengerjakan aktivitas itu.</li>
@@ -102,7 +102,7 @@
         <li><strong>Doff Priority</strong> (opsional): toggle dan Min Remain Task khusus mesin terpilih. Tombol hapus mengembalikannya agar ikut setting setup.</li>
       </ol>
       <div class="note"><p>Satu mesin bisa punya operator Multi Task dan Split Task sekaligus. Mengganti Assign Type tidak menghapus operator tipe lainnya; keterangan di bawahnya menampilkan siapa saja. Satu operator hanya masuk salah satu di sebuah mesin: operator yang sudah Multi Task di mesin terpilih tidak muncul di Split Task, begitu juga sebaliknya. Mesin yang belum punya operator terbuka sebagai Multi Task.</p></div>
-      <p>Panel <strong>Man Occupation (1 operator)</strong> menunjukkan beban mesin terpilih bila dikerjakan satu operator. Baris per aktivitas tampil saat Assign Type Split Task.</p>
+      <p>Setiap kotak operator menampilkan <strong>man occupation</strong> mesin terpilih bila pekerjaan itu dikerjakan satu operator: kotak Multi Task untuk semua task, setiap kotak Split Task untuk aktivitasnya, beserta ideal demand di sampingnya. Kotak seleksi di kanvas menampilkan All Task dan semua aktivitas.</p>
 
       <h3>Card Operators</h3>
       <ul>
@@ -113,7 +113,7 @@
       <h3>Kanvas &amp; Machine Assignments</h3>
       <ul>
         <li><strong>Construction Detail View</strong> mewarnai mesin per Construction. <strong>Operator View</strong> membagi badan mesin per operator. Arahkan kursor ke legend untuk menyorot mesinnya.</li>
-        <li>Tabel <strong>Machine Assignments</strong> menampilkan semua kolom per mesin: Construction, Group Name, Multi Task, operator per aktivitas, Operators (semua operator di mesin itu; arahkan kursor untuk melihat siapa mengerjakan apa), dan Doff Priority mesin ("—" = ikut setup).</li>
+        <li>Tabel <strong>Machine Assignments</strong> menampilkan semua kolom per mesin: Construction, Group Name, Multi Task, operator per aktivitas (arahkan kursor ke jumlahnya untuk melihat nama-namanya), dan Doff Priority mesin ("—" = ikut setup).</li>
         <li>Gunakan <span class="ui">Export CSV</span>, edit di Excel, lalu <span class="ui">Import CSV</span>. Kolom Multi Task dan kolom aktivitas diisi nama operator dipisah <code>;</code>. Kolom Doff Priority diisi <code>Yes</code>, <code>No</code>, atau kosong; Min Remain Task diisi angka menit atau kosong (kosong = ikut setup).</li>
       </ul>
 

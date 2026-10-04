@@ -93,7 +93,7 @@
       <ol class="steps">
         <li><strong>Construction Detail</strong> of the machines.</li>
         <li><strong>Group Name</strong>: a free-text label for reporting machines together.</li>
-        <li><strong>Assign Type</strong>: only picks which operator fields show; it isn't saved.
+        <li><strong>Assign Type</strong> tabs: only pick which operator fields show; it isn't saved.
           <ul>
             <li><em>Multi Task</em> → add one or more operators. Any of them may do any task on those machines.</li>
             <li><em>Split Task</em> → add one or more operators per activity: Doff, Load, Fract, Dies, Defect. They only do that activity.</li>
@@ -102,7 +102,7 @@
         <li><strong>Doff Priority</strong> (optional): a toggle and Min Remain Task for the selected machines only. The remove button sets them back to follow the setup.</li>
       </ol>
       <div class="note"><p>A machine can have Multi Task and Split Task operators at once. Switching Assign Type keeps the other type's operators; a hint below lists them. An operator is one or the other on a machine: someone already Multi Task on the selection isn't offered in Split Task, and the other way round. A machine with no operator yet opens as Multi Task.</p></div>
-      <p>The <strong>Man Occupation (1 operator)</strong> panel shows the selected machines' workload if one operator handled them. Per-activity rows appear while Assign Type is Split Task.</p>
+      <p>Each operator box shows the selection's <strong>man occupation</strong> if one operator handled that work: the Multi Task box for all tasks, each Split Task box for its activity, with the ideal demand next to it. The selection box on the canvas lists All Task and every activity.</p>
 
       <h3>Operators card</h3>
       <ul>
@@ -113,7 +113,7 @@
       <h3>Canvas &amp; Machine Assignments</h3>
       <ul>
         <li><strong>Construction Detail View</strong> colors machines by Construction. <strong>Operator View</strong> splits each machine body by operator. Hover a legend entry to highlight its machines.</li>
-        <li>The <strong>Machine Assignments</strong> table lists every column per machine: Construction, Group Name, Multi Task, the operators per activity, Operators (everyone on the machine; hover to see who does what), and the machine's Doff Priority ("—" = follows the setup).</li>
+        <li>The <strong>Machine Assignments</strong> table lists every column per machine: Construction, Group Name, Multi Task, the operators per activity (hover a count to see the names), and the machine's Doff Priority ("—" = follows the setup).</li>
         <li>Use <span class="ui">Export CSV</span>, edit in Excel, then <span class="ui">Import CSV</span>. The Multi Task and activity columns take operator names separated by <code>;</code>. Doff Priority takes <code>Yes</code>, <code>No</code> or blank; Min Remain Task takes minutes or blank (blank = follow the setup).</li>
       </ul>
 
