@@ -1559,34 +1559,52 @@
   min-width: 96px;
 }
 
-.products-table th:nth-child(1),
-.products-table td:nth-child(1) {
+.products-table th:nth-child(2),
+.products-table td:nth-child(2) {
   width: 280px;
   min-width: 250px;
 }
 
-.products-table th:nth-child(2),
-.products-table td:nth-child(2) {
+.products-table th:nth-child(3),
+.products-table td:nth-child(3) {
   width: 220px;
   min-width: 200px;
 }
 
-.products-table th:nth-child(3),
-.products-table td:nth-child(3) {
+.products-table th:nth-child(4),
+.products-table td:nth-child(4) {
   width: 250px;
   min-width: 220px;
 }
 
-.products-table th:nth-child(7),
-.products-table td:nth-child(7) {
+.products-table th:nth-child(8),
+.products-table td:nth-child(8) {
   width: 92px;
   min-width: 92px;
 }
 
-.products-table th:nth-child(8),
-.products-table td:nth-child(8) {
+.products-table th:nth-child(9),
+.products-table td:nth-child(9) {
   width: 82px;
   min-width: 82px;
+}
+
+/* Batch Simulation checkbox column, before ConstructionDetail. */
+.products-table th:nth-child(1),
+.products-table td:nth-child(1) {
+  width: 36px;
+  min-width: 36px;
+  text-align: center;
+}
+
+.products-select-column input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.products-row-selected td {
+  background: rgba(56, 189, 248, 0.06);
 }
 
 .activities-table th:nth-child(1),
@@ -5428,4 +5446,98 @@
 
 .production-assign-doff .input {
   max-width: 120px;
+}
+
+/* ---- Batch Simulation dialog ---- */
+.batch-dialog {
+  width: min(1100px, 100%);
+}
+
+.batch-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.batch-progress-track {
+  height: 12px;
+  border-radius: 999px;
+  background: #1e293b;
+  overflow: hidden;
+}
+
+.batch-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #38bdf8, #6366f1);
+  transition: width 0.3s ease;
+}
+
+.batch-progress-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  color: #94a3b8;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.batch-progress-stats strong {
+  color: #f1f5f9;
+}
+
+.batch-stat-success {
+  color: #4ade80;
+}
+
+.batch-stat-failed {
+  color: #f87171;
+}
+
+.batch-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+
+.batch-filter.input {
+  width: auto;
+}
+
+.batch-log-wrap {
+  max-height: min(55vh, 520px);
+  overflow: auto;
+}
+
+.batch-log td,
+.batch-log th {
+  white-space: nowrap;
+}
+
+.batch-log td.batch-message {
+  white-space: normal;
+  min-width: 260px;
+  color: #cbd5e1;
+}
+
+.batch-status {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.batch-status-success {
+  background: rgba(74, 222, 128, 0.15);
+  color: #4ade80;
+}
+
+.batch-status-failed {
+  background: rgba(248, 113, 113, 0.15);
+  color: #f87171;
+}
+
+.batch-status-cancelled {
+  background: rgba(148, 163, 184, 0.15);
+  color: #cbd5e1;
 }

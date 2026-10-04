@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { DEFAULT_PIXELS_PER_METER } from '../../lib/layoutConstants';
 import { Mpp_wl_productsesService } from '../../generated/services/Mpp_wl_productsesService';
 import { Mpp_wl_activitiesService } from '../../generated/services/Mpp_wl_activitiesService';
 import { Mpp_wl_outputmodelsesService } from '../../generated/services/Mpp_wl_outputmodelsesService';
@@ -8,14 +7,9 @@ import type { Mpp_wl_productses } from '../../generated/models/Mpp_wl_productses
 import type { Mpp_wl_outputmodelses } from '../../generated/models/Mpp_wl_outputmodelsesModel';
 import { useAppConfig } from '../../context/appConfig';
 import { fetchAllPages } from '../../lib/dataversePaging';
-import { buildActivitiesFromRows, isLoadingTaskRow, mapProductToSpec } from '../../lib/productCatalog';
 import { loadDefaultLayoutsOrNone, loadDefaultValuesOrBuiltIn } from '../../lib/defaultValuesStore';
 import { loadSavedLayouts } from '../../lib/savedLayoutsStore';
-import { deriveMachineSpec, ensureCoreActivities } from '../../lib/calculations';
-import {
-  previewAssignedMachineIds,
-  recommendedMachineCountForForecast,
-} from '../../lib/singleOperatorUtilization';
+import { buildConstructionConfig, withOptimizedAssignment } from '../../lib/constructionConfig';
 import type { AppConfig } from '../../types';
 import { Card } from '../ui/Card';
 import { SearchableSelect } from '../ui/SearchableSelect';
@@ -141,10 +135,7 @@ export function ConstructionDetailSelector({
     onApplyingChange?.(true);
     setError(null);
     try {
-      const newSpec = mapProductToSpec(product);
-      const derived = deriveMachineSpec(newSpec);
       const construction = product.mpp_constructioncode?.trim();
-
       const defaultsPromise = loadDefaultValuesOrBuiltIn();
       // The Area's default layout (Setting → Default Layouts), if any — otherwise the current one stays.
       const area = product.mpp_area?.trim().toUpperCase() ?? '';
@@ -166,57 +157,17 @@ export function ConstructionDetailSelector({
         }
       }
 
-      const built = buildActivitiesFromRows(activityRows, product, derived.spoolWeight, newSpec.fracturePerTon);
-      const activities = ensureCoreActivities(built.activities, derived.spoolWeight, newSpec.fracturePerTon);
+      const built = buildConstructionConfig({
+        base: config,
+        product,
+        activityRows,
+        defaults: await defaultsPromise,
+        layout: await defaultLayoutPromise,
+      });
       if (built.errors.length > 0) {
         setError(built.errors.join(' '));
       }
-
-      const defaults = await defaultsPromise;
-      const defaultLayout = await defaultLayoutPromise;
-      const nextConfig = {
-        ...config,
-        // A fresh assignment on the default layout, so it follows the default order from the top-left.
-        ...(defaultLayout
-          ? {
-              layout: defaultLayout.machines,
-              operatorStart: defaultLayout.operatorStart,
-              walls: defaultLayout.walls,
-              remarks: defaultLayout.remarks,
-              assignedMachineIds: [],
-            }
-          : {}),
-        // Shift/break/priority settings start from Setting → Default Values for every Construction;
-        // extra "Other" breaks belong to the previous Construction's scenario — start clean (both
-        // before the recommended machine count below is worked out).
-        operator: {
-          ...config.operator,
-          extraBreaks: [],
-          taskPriority: defaults.taskPriority,
-          shiftTime: defaults.shiftTime,
-          lunchTime: defaults.lunchTime,
-          lunchStartAt: defaults.lunchStartAt,
-          meetingTime: defaults.meetingTime,
-          meetingStartAt: defaults.meetingStartAt,
-          doffPriority: defaults.doffPriority,
-          minRemainForDoffPriority: defaults.minRemainForDoffPriority,
-          waitingModel: defaults.waitingModel,
-        },
-        movement: { walkingSpeed: defaults.walkingSpeed, pixelsPerMeter: DEFAULT_PIXELS_PER_METER },
-        rpcPercent: defaults.rpc,
-        spec: newSpec,
-        activities,
-        selectedProductId: product.mpp_wl_productsid,
-        selectedConstructionDetail: product.mpp_constructiondetailcode,
-        loadingActivityRows: activityRows.filter(isLoadingTaskRow),
-        initialMachineConditions: undefined,
-      };
-      const recommendedMachineCount = recommendedMachineCountForForecast(nextConfig);
-      const appliedConfig: AppConfig = {
-        ...nextConfig,
-        operator: { ...nextConfig.operator, machHandled: recommendedMachineCount },
-        assignedMachineIds: previewAssignedMachineIds(nextConfig, recommendedMachineCount),
-      };
+      const appliedConfig = withOptimizedAssignment(built.config);
       setConfig(() => appliedConfig);
       onApplied?.(appliedConfig);
     } catch (err) {

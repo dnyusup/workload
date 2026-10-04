@@ -2,7 +2,7 @@ import type { Mpp_wl_outputmodelses } from '../generated/models/Mpp_wl_outputmod
 import type { Mpp_wl_productses } from '../generated/models/Mpp_wl_productsesModel';
 import { Mpp_wl_outputmodelsesService } from '../generated/services/Mpp_wl_outputmodelsesService';
 import { Mpp_wl_productsesService } from '../generated/services/Mpp_wl_productsesService';
-import { calculateSingleOperatorForecast, DEFAULT_WAITING_MODEL } from './singleOperatorUtilization';
+import { calculateForecastDowntime, calculateSingleOperatorForecast, DEFAULT_WAITING_MODEL } from './singleOperatorUtilization';
 import { formatWaitingModel } from './waitingModel';
 import { deriveMachineSpec } from './calculations';
 import type { AppConfig, InheritedSimulationSnapshot, SimulationState } from '../types';
@@ -140,15 +140,9 @@ export function buildOutputModelPayload(
 ): OutputModelPayload {
   const derived = deriveMachineSpec(config.spec);
   const forecast = calculateSingleOperatorForecast(config);
-  const plannedMachineMinutes = forecast.assignedMachineCount * Math.max(0, config.operator.shiftTime);
-  const plannedDowntimeMinutes = Math.min(
-    plannedMachineMinutes,
-    forecast.activityContributions.reduce((total, contribution) => total + contribution.downtimeMinutes, 0) +
-      forecast.forecastWaitingMinutes,
-  );
-  const plannedMachineEfficiency = plannedMachineMinutes > 0
-    ? Math.max(0, ((plannedMachineMinutes - plannedDowntimeMinutes) / plannedMachineMinutes) * 100)
-    : 0;
+  // Same OEE availability as Output Estimate: Stop activities plus waiting for the operator.
+  const plannedDowntime = calculateForecastDowntime(config, forecast);
+  const plannedMachineEfficiency = plannedDowntime.plannedMachineMinutes > 0 ? plannedDowntime.availabilityPercent : 0;
   const workedElapsed = Math.max(0, state.metrics.clockMin - state.metrics.breakElapsedMin);
   const actualBusyMinutes = Math.max(0, state.metrics.walkingMin + state.metrics.servicingMin);
   const actualManOccupation = percentage(actualBusyMinutes, workedElapsed);

@@ -7,6 +7,10 @@ import { Button } from '../ui/Button';
 import { FloatingScrollbar } from '../ui/FloatingScrollbar';
 import { PRODUCT_AREAS } from '../../types';
 import { CustomSortControl, type CustomSortLevel } from './CustomSortControl';
+import { BatchSimulationDialog } from './BatchSimulationDialog';
+import { useAppConfig } from '../../context/appConfig';
+import { useAuth } from '../../context/auth';
+import type { AppConfig } from '../../types';
 
 interface ProductFields {
   mpp_constructiondetailcode: string;
@@ -150,6 +154,12 @@ export function ProductsManager({
   const [machineFilter, setMachineFilter] = useState('');
   const [sortLevels, setSortLevels] = useState<CustomSortLevel[]>([]);
   const tableWrapRef = useRef<HTMLDivElement>(null);
+  /** The saved WL_Products records — Batch Simulation runs on these, not on unsaved edits. */
+  const [records, setRecords] = useState<Map<string, Mpp_wl_productses>>(() => new Map());
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [batch, setBatch] = useState<{ products: Mpp_wl_productses[]; base: AppConfig } | null>(null);
+  const { config } = useAppConfig();
+  const { user } = useAuth();
 
   useEffect(() => {
     let cancelled = false;
@@ -158,6 +168,8 @@ export function ProductsManager({
     fetchAllPages(Mpp_wl_productsesService.getAll, { orderBy: ['mpp_constructiondetailcode asc'] })
       .then((data) => {
         if (cancelled) return;
+        setRecords(new Map(data.map((record) => [record.mpp_wl_productsid, record])));
+        setSelectedIds(new Set());
         setRows(
           data.map((record) => ({
             id: record.mpp_wl_productsid,
@@ -284,6 +296,41 @@ export function ProductsManager({
     return ` ${level + 1}${direction}`;
   };
 
+  // Only saved rows can be batch-simulated.
+  const selectableVisibleIds = visibleRows.filter((row) => !row.isNew && records.has(row.id)).map((row) => row.id);
+  const allVisibleSelected = selectableVisibleIds.length > 0 && selectableVisibleIds.every((id) => selectedIds.has(id));
+  const someVisibleSelected = selectableVisibleIds.some((id) => selectedIds.has(id));
+  const toggleAllVisible = () =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      selectableVisibleIds.forEach((id) => (allVisibleSelected ? next.delete(id) : next.add(id)));
+      return next;
+    });
+  const toggleSelected = (id: string) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const selectAllRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = someVisibleSelected && !allVisibleSelected;
+  }, [someVisibleSelected, allVisibleSelected]);
+
+  const startBatch = () => {
+    const chosen = rows.filter((row) => selectedIds.has(row.id) && records.has(row.id));
+    if (chosen.length === 0) return;
+    const unsaved = chosen.filter((row) => row.dirty).length;
+    const message = [
+      `Run Batch Simulation for ${chosen.length} Construction Detail(s)?`,
+      'Each uses Default Values and its Area\'s Default Layout, and its result replaces version 0001 in WL_Outputmodels.',
+      ...(unsaved > 0 ? [`${unsaved} selected row(s) have unsaved changes — their saved values are used.`] : []),
+    ].join('\n\n');
+    if (!window.confirm(message)) return;
+    setBatch({ products: chosen.map((row) => records.get(row.id)!), base: config });
+  };
+
   const machineOptions = useMemo(
     () =>
       [...new Set(rows.map((row) => row.fields.mpp_machinecode.trim()).filter(Boolean))].sort((a, b) =>
@@ -298,6 +345,14 @@ export function ProductsManager({
       subtitle="Master data: machine & product specification per Construction Detail"
       actions={
         <div className="data-manager-actions">
+          <Button
+            variant="primary"
+            onClick={startBatch}
+            disabled={loading || selectedIds.size === 0 || batch !== null}
+            title="Simulate every checked Construction Detail with Default Values and its Area's Default Layout, saving each result to WL_Outputmodels"
+          >
+            Batch Simulation{selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}
+          </Button>
           <Button variant="ghost" onClick={() => setReloadToken((t) => t + 1)} disabled={loading}>
             Refresh
           </Button>
@@ -313,6 +368,9 @@ export function ProductsManager({
       }
     >
       {loadError && <p className="construction-selector-error">{loadError}</p>}
+      {batch && (
+        <BatchSimulationDialog products={batch.products} base={batch.base} updatedBy={user.email} onClose={() => setBatch(null)} />
+      )}
       {loading ? (
         <p className="data-manager-hint">Loading…</p>
       ) : (
@@ -345,6 +403,17 @@ export function ProductsManager({
             <table className="table products-table">
               <thead>
                 <tr>
+                  <th className="products-select-column">
+                    <input
+                      ref={selectAllRef}
+                      type="checkbox"
+                      checked={allVisibleSelected}
+                      onChange={toggleAllVisible}
+                      disabled={selectableVisibleIds.length === 0}
+                      aria-label="Select all shown Construction Details"
+                      title="Select all shown"
+                    />
+                  </th>
                   {COLUMNS.map((col) => (
                     <th
                       key={col.key}
@@ -360,7 +429,17 @@ export function ProductsManager({
               </thead>
               <tbody>
                 {visibleRows.map((row) => (
-                  <tr key={row.id}>
+                  <tr key={row.id} className={selectedIds.has(row.id) ? 'products-row-selected' : undefined}>
+                    <td className="products-select-column">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(row.id)}
+                        onChange={() => toggleSelected(row.id)}
+                        disabled={row.isNew || !records.has(row.id)}
+                        aria-label={`Select ${row.fields.mpp_constructiondetailcode || 'row'}`}
+                        title={row.isNew ? 'Save this product first' : undefined}
+                      />
+                    </td>
                     {COLUMNS.map((col) => {
                       const readOnly =
                         col.key === 'mpp_dieston'
@@ -428,7 +507,7 @@ export function ProductsManager({
                 ))}
                 {visibleRows.length === 0 && (
                   <tr>
-                    <td colSpan={COLUMNS.length + 1} className="data-manager-hint">
+                    <td colSpan={COLUMNS.length + 2} className="data-manager-hint">
                       {rows.length === 0 ? 'No products yet — click "+ Add Product" to create one.' : `No products match "${searchTerm}".`}
                     </td>
                   </tr>

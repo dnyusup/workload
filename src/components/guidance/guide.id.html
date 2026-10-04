@@ -125,6 +125,7 @@
       <h2 id="id-data">Data master</h2>
       <h3>WL_Products</h3>
       <p>Satu baris per Construction Detail: Area, Mach, Product, spesifikasi mesin, POlength1–3, Fracture/Dies/Defect per ton. Double-click sel Construction untuk membuka WL_Activities milik Construction itu.</p>
+      <p><strong>Batch Simulation</strong>: centang Construction Detail (centang di header memilih semua baris yang tampil), lalu klik <span class="ui">Batch Simulation</span>. Setiap item disiapkan seperti saat dipilih di Work Load Simulator — Default Values dan Default Layout Area-nya — lalu Optimize Man Occupation dijalankan, satu shift disimulasikan, dan hasilnya disimpan ke WL_Outputmodels sebagai version 0001 (menimpa kalau sudah ada). Progress bar menunjukkan sejauh mana prosesnya; biarkan halaman tetap terbuka sampai selesai (Cancel berhenti setelah item yang sedang berjalan; hasil yang sudah tersimpan tetap ada). Setelah selesai, log menampilkan setiap item Success atau Failed beserta alasannya — misalnya Area belum punya Default Layout, spesifikasi di WL_Products kurang, WL_Activities kosong atau tidak lengkap, atau jumlah mesin yang dibutuhkan melebihi isi layout — dan bisa di-export ke CSV. Perubahan yang belum di-save di sebuah baris tidak dipakai. Kira-kira 0,5–1 detik per item, jadi 2000 item sekitar 20–40 menit.</p>
       <h3>WL_Activities</h3>
       <p>Satu baris per Task/SubTask per Construction. SubTask kosong = aktivitas induk.</p>
       <div class="table-wrap"><table>

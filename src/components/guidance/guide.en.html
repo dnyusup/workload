@@ -125,6 +125,7 @@
       <h2 id="en-data">Master data</h2>
       <h3>WL_Products</h3>
       <p>One row per Construction Detail: Area, Mach, Product, machine specification, POlength1–3, Fracture/Dies/Defect per ton. Double-click a Construction cell to open that Construction's WL_Activities.</p>
+      <p><strong>Batch Simulation</strong>: tick Construction Details (the header box ticks every row shown), then click <span class="ui">Batch Simulation</span>. Each one is set up like picking it in the Work Load Simulator — Default Values and its Area's Default Layout — then Optimize Man Occupation runs, one shift is simulated, and the result is saved to WL_Outputmodels as version 0001 (replacing it when it exists). A progress bar shows how far it is; keep the page open until it finishes (Cancel stops after the current item; saved results stay). Afterwards the log lists every item as Success or Failed with the reason — e.g. no Default Layout for the Area, missing spec in WL_Products, no or incomplete WL_Activities, more machines needed than the layout has — and can be exported to CSV. Unsaved edits on a row aren't used. Roughly 0.5–1 s per item, so 2000 items take about 20–40 minutes.</p>
       <h3>WL_Activities</h3>
       <p>One row per Task/SubTask per Construction. A blank SubTask is the parent activity.</p>
       <div class="table-wrap"><table>
