@@ -147,7 +147,7 @@
           "x-ms-dataverse-attribute": "mpp_assignedopr",
           "x-ms-dataverse-type": "StringType",
           "x-ms-schema-name": "mpp_assignedopr",
-          "maxLength": 100
+          "maxLength": 4000
         },
         "mpp_constructiondetailid": {
           "type": "string",
@@ -163,7 +163,7 @@
           "x-ms-dataverse-attribute": "mpp_defectrepairingoperatorid",
           "x-ms-dataverse-type": "StringType",
           "x-ms-schema-name": "mpp_defectrepairingoperatorid",
-          "maxLength": 100
+          "maxLength": 4000
         },
         "mpp_dieschangeoperatorid": {
           "type": "string",
@@ -179,7 +179,7 @@
           "x-ms-dataverse-attribute": "mpp_doffingoperatorid",
           "x-ms-dataverse-type": "StringType",
           "x-ms-schema-name": "mpp_doffingoperatorid",
-          "maxLength": 100
+          "maxLength": 4000
         },
         "mpp_doffpriority": {
           "type": "string",
@@ -195,7 +195,7 @@
           "x-ms-dataverse-attribute": "mpp_fracturerepairingoperatorid",
           "x-ms-dataverse-type": "StringType",
           "x-ms-schema-name": "mpp_fracturerepairingoperatorid",
-          "maxLength": 100
+          "maxLength": 4000
         },
         "mpp_groupname": {
           "type": "string",
@@ -211,7 +211,7 @@
           "x-ms-dataverse-attribute": "mpp_loadingoperatorid",
           "x-ms-dataverse-type": "StringType",
           "x-ms-schema-name": "mpp_loadingoperatorid",
-          "maxLength": 100
+          "maxLength": 4000
         },
         "mpp_machineid": {
           "type": "string",

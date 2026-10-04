@@ -24,6 +24,7 @@ export interface Mpp_wl_productionsetupsesBase {
   mpp_meetingtime?: number;
   mpp_minremaintaskfordoffpriority?: number;
   mpp_name: string;
+  mpp_optimizemodel?: string;
   mpp_pixelspermeter?: number;
   mpp_planningtype?: string;
   mpp_rpc?: number;

@@ -44,6 +44,7 @@ export interface Mpp_wl_outputmodelsesBase {
   mpp_meetingtime?: number;
   mpp_nofwires?: number;
   mpp_numberofmachinesassigned?: number;
+  mpp_optimizemodel?: string;
   mpp_othertime?: number;
   mpp_plannedmachineefficiency?: number;
   mpp_plannedmanoccupation?: number;

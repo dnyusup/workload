@@ -349,6 +349,14 @@
           "x-ms-dataverse-type": "IntegerType",
           "x-ms-schema-name": "mpp_numberofmachinesassigned"
         },
+        "mpp_optimizemodel": {
+          "type": "string",
+          "title": "optimizemodel",
+          "x-ms-dataverse-attribute": "mpp_optimizemodel",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "mpp_optimizemodel",
+          "maxLength": 100
+        },
         "mpp_othertime": {
           "type": "string",
           "title": "Others",
