@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { LayoutMachine, ProductionMachineAssignment, ProductionSetup, TaskPriorityMode } from '../../types';
 import { loadSavedLayouts, type SavedLayout } from '../../lib/savedLayoutsStore';
 import {
@@ -32,12 +32,18 @@ import { Button } from '../ui/Button';
 import { Field, NumberInput, SelectInput } from '../ui/Field';
 import { SearchableSelect } from '../ui/SearchableSelect';
 import { Toggle } from '../ui/Toggle';
-import { DOFF_PRIORITY_TOOLTIP } from '../ui/doffPriorityText';
+import { DOFF_PRIORITY_TOOLTIP, doffPriorityText } from '../ui/doffPriorityText';
 import { BlockingProgressOverlay } from '../ui/BlockingProgressOverlay';
 import { LayoutBuilder, type MachineAppearance } from '../setup/LayoutBuilder';
 import { ProductionRunView } from './ProductionRunView';
 import { CanvasLegendPanel } from './CanvasLegendPanel';
 import { OperatorStartTimesDialog } from './OperatorStartTimesDialog';
+import {
+  MachineAssignmentsGroupBySelect,
+  MachineAssignmentsSearch,
+  MachineAssignmentsTable,
+  type MachineAssignmentsGroupBy,
+} from './MachineAssignmentsTable';
 import { buildCanvasLegendData, type LegendHover } from '../../lib/canvasLegend';
 import {
   operatorAssignmentLines,
@@ -82,11 +88,6 @@ function sharedValue<T>(values: (T | undefined)[]): T | undefined {
   return distinct.size === 1 ? values[0] : undefined;
 }
 
-function doffPriorityText(a: ProductionMachineAssignment | undefined): string {
-  if (a?.doffPriority === undefined && a?.minRemainForDoffPriority === undefined) return '—';
-  const flag = a?.doffPriority === undefined ? 'Setup' : a.doffPriority ? 'Yes' : 'No';
-  return a?.minRemainForDoffPriority === undefined ? flag : `${flag} · ${a.minRemainForDoffPriority} min`;
-}
 
 function withoutOperator(ids: string[] | undefined, operatorId: string): string[] | undefined {
   const remaining = ids?.filter((id) => id !== operatorId);
@@ -691,6 +692,8 @@ function ProductionSetupEditor({
   const [bulkMinRemain, setBulkMinRemain] = useState<number | undefined>(undefined);
   const [bulkGroupName, setBulkGroupName] = useState('');
   const [appliedGroupName, setAppliedGroupName] = useState('');
+  const [assignmentsGroupBy, setAssignmentsGroupBy] = useState<MachineAssignmentsGroupBy>('none');
+  const [assignmentsSearch, setAssignmentsSearch] = useState('');
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -715,7 +718,8 @@ function ProductionSetupEditor({
       .filter((product) => product.mpp_wl_productsid && product.mpp_area)
       .map((product) => [product.mpp_wl_productsid, product.mpp_area!.trim().toUpperCase()]),
   );
-  const operatorLabel = (id?: string) => (id ? setup.operators.find((o) => o.id === id)?.label ?? '—' : '—');
+  const operatorLabelById = useMemo(() => new Map(setup.operators.map((o) => [o.id, o.label])), [setup.operators]);
+  const operatorLabel = useCallback((id?: string) => (id ? operatorLabelById.get(id) ?? '—' : '—'), [operatorLabelById]);
 
 
   // Every Construction used in this setup gets its own fill (ordered like WL_Products, so it
@@ -1754,6 +1758,8 @@ function ProductionSetupEditor({
         title="Machine Assignments"
         actions={
           <div className="production-csv-actions">
+            <MachineAssignmentsSearch value={assignmentsSearch} onChange={setAssignmentsSearch} />
+            <MachineAssignmentsGroupBySelect value={assignmentsGroupBy} onChange={setAssignmentsGroupBy} />
             <input
               ref={importInputRef}
               type="file"
@@ -1783,49 +1789,13 @@ function ProductionSetupEditor({
           </>
         )}
         {!importProgress && importMessage && <p className="data-manager-hint">{importMessage}</p>}
-        <div className="machine-timeline-rows">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Machine</th>
-                <th>Construction</th>
-                <th>Group Name</th>
-                <th title="Operators who may do every task on the machine">Multi Task</th>
-                {TASK_ROWS.map(({ family }) => (
-                  <th key={family}>{TASK_OPERATOR_LABELS[family]}</th>
-                ))}
-                <th title="Machine's own Doff Priority; — = follows the setup">Doff Priority</th>
-              </tr>
-            </thead>
-            <tbody>
-              {setup.layout.map((m) => {
-                const a = assignmentByMachine.get(m.id);
-                // A list can be long — keep the cell to a count, full list on hover.
-                const listCell = (ids: string[] | undefined) =>
-                  !ids?.length ? (
-                    '—'
-                  ) : ids.length === 1 ? (
-                    operatorLabel(ids[0])
-                  ) : (
-                    <span className="production-operators-cell" title={ids.map((id) => operatorLabel(id)).join('\n')}>
-                      {ids.length} operators
-                    </span>
-                  );
-                return (
-                  <tr key={m.id}>
-                    <td>{m.label}</td>
-                    <td>{a?.constructionDetailLabel ?? '—'}</td>
-                    <td>{a?.groupName ?? '—'}</td>
-                    <td>{listCell(a?.assignedOperatorIds)}</td>
-                    {TASK_ROWS.map(({ family }) => (
-                      <td key={family}>{listCell(a?.[TASK_OPERATOR_FIELDS[family]])}</td>
-                    ))}                    <td>{doffPriorityText(a)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <MachineAssignmentsTable
+          layout={setup.layout}
+          assignments={setup.assignments}
+          operatorLabel={operatorLabel}
+          groupBy={assignmentsGroupBy}
+          search={assignmentsSearch}
+        />
       </Card>
     </>
   );

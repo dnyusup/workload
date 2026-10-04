@@ -4860,6 +4860,43 @@
   border-bottom: 1px dotted #64748b;
 }
 
+/* ---- Machine Assignments: group-by and the totals row above the headers ---- */
+.production-csv-actions .assign-search {
+  width: 180px;
+}
+
+.assign-group-by {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #94a3b8;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.assign-group-by .input {
+  width: auto;
+  min-width: 140px;
+}
+
+/* Totals and headers stay visible while the rows scroll. */
+.assign-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #111827;
+}
+
+.table .assign-total-row th.assign-total-cell {
+  color: #e2e8f0;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+  background: rgba(56, 189, 248, 0.06);
+  white-space: nowrap;
+}
+
 .operator-start-dialog {
   width: min(640px, 100%);
 }
