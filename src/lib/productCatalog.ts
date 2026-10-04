@@ -129,6 +129,9 @@ function rounddownRatio(value: number, divisor: number): number {
  *     two lengths each get a ROUNDDOWN(length/SpoolLength); if those two values are equal, it
  *     collapses to a single sub-loading (Partial1) just like the 2-filled case. If they differ,
  *     there are two: the smaller-value one is Partial1, the other is Partial2.
+ *   - A partial whose ROUNDDOWN equals the parent's is dropped (it would always fall due with full
+ *     Loading, which replaces it), so 2 filled with equal ROUNDDOWNs means parent only, and 3 filled
+ *     with one of them equal to the parent's means a single Partial1 (no Partial3 needed).
  *   - none filled: no POlength regulation configured for this Construction — Loading falls back to
  *     the generic same-as-other-tasks handling (parent + literal WL_Activities subs).
  * Any Loading/Partial row this regulation calls for but that's missing from WL_Activities is
@@ -189,12 +192,17 @@ function buildLoadingActivities(
 
   if (poLengths.length > 1) {
     const maxEntry = poLengths.reduce((best, p) => (p.value > best.value ? p : best), poLengths[0]);
-    const others = poLengths.filter((p) => p !== maxEntry);
+    // A partial whose ROUNDDOWN(length/SpoolLength) equals the parent Loading's always falls due on
+    // the same spool as full Loading, which replaces it — so it isn't needed (nor its WL_Activities row).
+    const parentRundown = rounddownRatio(maxEntry.value, spoolLength);
+    const others = poLengths.filter((p) => p !== maxEntry && rounddownRatio(p.value, spoolLength) !== parentRundown);
     // Which sub gets which POlength: with only one "other" length it's always Partial1; with two,
     // whichever has the smaller ROUNDDOWN(length/SpoolLength) is Partial1 and the other Partial2 —
     // or just one merged Partial1 if both round down to the same value.
     const subPlan: { subtaskName: string; poLength: number; slot: 1 | 2 }[] =
-      others.length === 1
+      others.length === 0
+        ? []
+        : others.length === 1
         ? [{ subtaskName: 'Partial1', poLength: others[0].value, slot: 1 }]
         : (() => {
             const withRundown = others.map((p) => ({ poLength: p.value, rundown: rounddownRatio(p.value, spoolLength) }));

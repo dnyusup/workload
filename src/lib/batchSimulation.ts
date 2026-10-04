@@ -4,7 +4,7 @@ import type { Mpp_wl_productses } from '../generated/models/Mpp_wl_productsesMod
 import { Mpp_wl_activitiesService } from '../generated/services/Mpp_wl_activitiesService';
 import { Mpp_wl_outputmodelsesService } from '../generated/services/Mpp_wl_outputmodelsesService';
 import type { AppConfig } from '../types';
-import { deriveMachineSpec } from './calculations';
+import { areaUsesLayLength, deriveMachineSpec } from './calculations';
 import { buildConstructionConfig } from './constructionConfig';
 import { escapeODataString, fetchAllPages } from './dataversePaging';
 import { loadDefaultLayouts, loadDefaultValues } from './defaultValuesStore';
@@ -89,7 +89,10 @@ function specProblems(product: Mpp_wl_productses): string[] {
     return Number.isFinite(n) && n > 0;
   };
   if (!positive(product.mpp_speed)) missing.push('Speed');
-  if (!positive(product.mpp_laylength)) missing.push('LayLength');
+  // Only Areas whose runtime comes from the twisting formula need a lay length (not WW, BA, CA, IS, IP, CH, CR).
+  if (areaUsesLayLength(product.mpp_area ?? '') && !positive(product.mpp_laylength)) {
+    missing.push('LayLength');
+  }
   if (!positive(product.mpp_spoollength)) missing.push('SpoolLength');
   if (!positive(product.mpp_numberoffibers)) missing.push('NoOfWires');
   if (!positive(product.mpp_lineardensity)) missing.push('LinearDensity');

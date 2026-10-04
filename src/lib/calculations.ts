@@ -5,6 +5,11 @@ const LINEAR_SPEED_FROM_SPEED_AREAS = ['WW', 'CH', 'CR', 'BA', 'CA', 'IS', 'IP']
 /** Areas whose Twist/min = Speed (not Speed*2); Linear Speed still uses the LayLength/1000*Twist/min formula. */
 const TWIST_EQUALS_SPEED_AREAS = ['SP', 'CB'];
 
+/** Whether the Area's Linear Speed (so its runtime per spool) is worked out from LayLength. */
+export function areaUsesLayLength(area: string): boolean {
+  return !LINEAR_SPEED_FROM_SPEED_AREAS.includes(area.trim().toUpperCase());
+}
+
 export function deriveMachineSpec(spec: MachineSpecInput): MachineSpecDerived {
   const spoolWeight = (spec.spoolLength * spec.linearDensity * spec.noOfWires) / 1000;
 
