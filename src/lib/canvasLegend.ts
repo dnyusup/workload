@@ -1,7 +1,8 @@
 import type { ProductionMachineAssignment } from '../types';
 import { machineOperatorIds } from './productionActivityRouting';
+import { buildDistinctColorMap } from './constructionColors';
 
-export type LegendTab = 'construction' | 'operator';
+export type LegendTab = 'construction' | 'operator' | 'group';
 
 export interface LegendEntry {
   id: string;
@@ -21,12 +22,15 @@ export const NO_ASSIGNMENT_LEGEND_ID = '__none__';
 export interface CanvasLegendData {
   constructionEntries: LegendEntry[];
   operatorEntries: LegendEntry[];
+  /** One entry per Group Name (A→Z), plus the "no group" row. */
+  groupEntries: LegendEntry[];
   /** Machine ids to highlight for a hovered legend entry, or null when nothing is hovered. */
   highlightFor: (hover: LegendHover) => Set<string> | null;
 }
 
-/** Builds both legend tabs for a Production Setup canvas: which machines each Construction and
- * each operator (in any of its 5 task slots) covers, plus the "not assigned" rows — shared by the
+/** Builds the legend tabs for a Production Setup canvas: which machines each Construction, each
+ * operator (Multi Task or any Split Task list) and each Machine Group covers, plus the "not
+ * assigned" rows — shared by the
  * Setup canvas and the Production Run canvas so both legends count and highlight identically. */
 export function buildCanvasLegendData({
   machineIds,
@@ -46,8 +50,10 @@ export function buildCanvasLegendData({
 }): CanvasLegendData {
   const byConstruction = new Map<string, string[]>();
   const byOperator = new Map<string, string[]>();
+  const byGroup = new Map<string, string[]>();
   const unplanned: string[] = [];
   const noOperator: string[] = [];
+  const noGroup: string[] = [];
   const push = (map: Map<string, string[]>, key: string, id: string) => {
     const list = map.get(key);
     if (list) list.push(id);
@@ -61,7 +67,12 @@ export function buildCanvasLegendData({
     const operatorIds = machineOperatorIds(a);
     if (operatorIds.length === 0) noOperator.push(machineId);
     operatorIds.forEach((id) => push(byOperator, id, machineId));
+    const groupName = a?.groupName?.trim();
+    if (groupName) push(byGroup, groupName, machineId);
+    else noGroup.push(machineId);
   });
+  const groupNames = [...byGroup.keys()].sort((x, y) => x.localeCompare(y, undefined, { numeric: true, sensitivity: 'base' }));
+  const groupColors = buildDistinctColorMap(groupNames);
 
   return {
     constructionEntries: [
@@ -77,10 +88,17 @@ export function buildCanvasLegendData({
       { id: NO_ASSIGNMENT_LEGEND_ID, label: 'No operator assigned', color: unassignedColor, count: noOperator.length },
       ...operators.map((o) => ({ ...o, count: byOperator.get(o.id)?.length ?? 0 })),
     ],
+    groupEntries: [
+      { id: NO_ASSIGNMENT_LEGEND_ID, label: 'No group', color: unassignedColor, count: noGroup.length },
+      ...groupNames.map((name) => ({ id: name, label: name, color: groupColors.get(name) ?? unassignedColor, count: byGroup.get(name)?.length ?? 0 })),
+    ],
     highlightFor: (hover) => {
       if (!hover) return null;
       if (hover.tab === 'construction') {
         return new Set(hover.id === NO_ASSIGNMENT_LEGEND_ID ? unplanned : byConstruction.get(hover.id) ?? []);
+      }
+      if (hover.tab === 'group') {
+        return new Set(hover.id === NO_ASSIGNMENT_LEGEND_ID ? noGroup : byGroup.get(hover.id) ?? []);
       }
       return new Set(hover.id === NO_ASSIGNMENT_LEGEND_ID ? noOperator : byOperator.get(hover.id) ?? []);
     },

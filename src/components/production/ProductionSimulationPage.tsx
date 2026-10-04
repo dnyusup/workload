@@ -889,10 +889,12 @@ function ProductionSetupEditor({
         const forecast = operatorUtilizationFor(entry.id)?.forecastUtilizationPercent;
         return forecast === undefined ? entry : { ...entry, detail: `${forecast.toFixed(1)}%` };
       })}
+      groupEntries={legendData.groupEntries}
       initialTab={canvasView}
       onHover={setLegendHover}
       hints={{
         construction: 'Construction Detail View: body color = Construction. Hover an entry to highlight its machines.',
+        group: "Machines by Group Name. Hover an entry to highlight that group's machines.",
         operator:
           'Operator View: machines with Split Task operators split the body Doffing | Loading | Fracture Repairing | Defect Repairing (CB/BU/SP/CH/CR) or Dies Change (WW/BA/CA), each colored by its first operator; Multi Task-only machines split it by their operators; gray = not assigned yet; border = Construction. Hover an entry to highlight its machines.',
       }}

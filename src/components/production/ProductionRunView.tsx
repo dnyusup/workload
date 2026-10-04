@@ -682,11 +682,13 @@ export function ProductionRunView({
               <CanvasLegendPanel
                 constructionEntries={legendData.constructionEntries}
                 operatorEntries={legendOperatorEntries}
+                groupEntries={legendData.groupEntries}
                 initialTab="construction"
                 onHover={setLegendHover}
                 hints={{
                   construction: 'Machine border color = Construction Detail. Hover an entry to highlight its machines.',
                   operator: 'Operator marker colors on this canvas. Hover an entry to highlight the machines that operator is assigned to.',
+                  group: "Machines by Group Name. Hover an entry to highlight that group's machines.",
                 }}
               />
             </div>

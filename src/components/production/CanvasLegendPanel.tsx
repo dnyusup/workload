@@ -12,12 +12,14 @@ const CANVAS_EDGE_MARGIN = 16;
 export function CanvasLegendPanel({
   constructionEntries,
   operatorEntries,
+  groupEntries,
   initialTab,
   onHover,
   hints,
 }: {
   constructionEntries: LegendEntry[];
   operatorEntries: LegendEntry[];
+  groupEntries: LegendEntry[];
   /** Tab shown each time the panel is opened (e.g. the current canvas view). */
   initialTab: LegendTab;
   onHover: (hovered: LegendHover) => void;
@@ -31,7 +33,13 @@ export function CanvasLegendPanel({
   const rootRef = useRef<HTMLDivElement>(null);
   const resizeRef = useRef<{ startX: number; startWidth: number; maxWidth: number } | null>(null);
 
-  const entries = tab === 'construction' ? constructionEntries : operatorEntries;
+  const tabs: { key: LegendTab; label: string; search: string; entries: LegendEntry[] }[] = [
+    { key: 'construction', label: 'Construction', search: 'Cari Construction…', entries: constructionEntries },
+    { key: 'operator', label: 'Operator', search: 'Cari Operator…', entries: operatorEntries },
+    { key: 'group', label: 'Machine Group', search: 'Cari Machine Group…', entries: groupEntries },
+  ];
+  const activeTab = tabs.find((t) => t.key === tab) ?? tabs[0];
+  const entries = activeTab.entries;
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return q ? entries.filter((entry) => entry.label.toLowerCase().includes(q)) : entries;
@@ -130,28 +138,22 @@ export function CanvasLegendPanel({
             aria-hidden="true"
           />
           <div className="canvas-legend-tabs" role="tablist">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={tab === 'construction'}
-              className={tab === 'construction' ? 'active' : ''}
-              onClick={() => switchTab('construction')}
-            >
-              Construction ({constructionEntries.length})
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={tab === 'operator'}
-              className={tab === 'operator' ? 'active' : ''}
-              onClick={() => switchTab('operator')}
-            >
-              Operator ({operatorEntries.length})
-            </button>
+            {tabs.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                role="tab"
+                aria-selected={tab === t.key}
+                className={tab === t.key ? 'active' : ''}
+                onClick={() => switchTab(t.key)}
+              >
+                {t.label} ({t.entries.length})
+              </button>
+            ))}
           </div>
           <input
             className="input input-sm canvas-legend-search"
-            placeholder={tab === 'construction' ? 'Cari Construction…' : 'Cari Operator…'}
+            placeholder={activeTab.search}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
