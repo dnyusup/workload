@@ -61,6 +61,41 @@ function greatestCommonDivisor(a: number, b: number): number {
   return left;
 }
 
+/** Share of spools on which every one of these cycles comes due at once. Due counts are
+ * floor(spools ÷ cycle) on one shared spool counter, so whole-number cycles all fall due together
+ * every lcm spools; other cycles are treated as independent. */
+function sharedRatePerSpool(cycles: number[]): number {
+  if (cycles.some((cycle) => !Number.isFinite(cycle) || cycle <= 0)) return 0;
+  const whole = cycles.every((cycle) => Math.abs(cycle - Math.round(cycle)) < 1e-9);
+  if (!whole) return cycles.reduce((rate, cycle) => rate / cycle, 1);
+  const lcm = cycles.map(Math.round).reduce((a, b) => (a * b) / greatestCommonDivisor(a, b));
+  return 1 / lcm;
+}
+
+/** How often a Loading partial is really done per spool, as the simulation does it: never on a
+ * spool where full Loading is due too, and when Partial1 and Partial2 come due together they're
+ * replaced by one Partial3 (only defined when that row exists). Null for anything else. */
+function loadingPartialRatePerSpool(activity: ActivityConfig, activities: ActivityConfig[]): number | null {
+  if (activity.parentKey !== 'loading' || !activity.loadingPartialSlot) return null;
+  const loading = activities.find((item) => item.key === 'loading');
+  // Weight-based Loading isn't due on a spool count, so it never coincides with a partial.
+  const loadingCycle = loading && !loading.loadingInterrupt ? activityCycleLength(loading) : Infinity;
+  const notWithLoading = (cycles: number[]) =>
+    sharedRatePerSpool(cycles) - (Number.isFinite(loadingCycle) && loadingCycle > 0 ? sharedRatePerSpool([...cycles, loadingCycle]) : 0);
+  const slot = (n: 1 | 2 | 3) => activities.find((item) => item.parentKey === 'loading' && item.loadingPartialSlot === n);
+  const partial1 = slot(1);
+  const partial2 = slot(2);
+  const combines = !!partial1 && !!partial2 && !!slot(3);
+  if (activity.loadingPartialSlot === 3) {
+    return combines ? Math.max(0, notWithLoading([activityCycleLength(partial1!), activityCycleLength(partial2!)])) : 0;
+  }
+  const own = activityCycleLength(activity);
+  const other = activity.loadingPartialSlot === 1 ? partial2 : partial1;
+  let rate = notWithLoading([own]);
+  if (combines && other) rate -= notWithLoading([own, activityCycleLength(other)]);
+  return Math.max(0, rate);
+}
+
 /** Expected events per finished spool on one machine, for forecasting only. */
 function triggerRatePerSpool(event: TriggerEvent, activities: ActivityConfig[]): number {
   const cycleOf = (key: ActivityKey) => {
@@ -68,19 +103,10 @@ function triggerRatePerSpool(event: TriggerEvent, activities: ActivityConfig[]):
     return activity ? activityCycleLength(activity) : Infinity;
   };
   if (event === 'loadingPartial') {
-    // A Loading partial only runs at the spool boundaries where full Loading isn't due.
-    const parentCycle = cycleOf('loading');
+    // Every partial actually done (Partial1, Partial2 or a combined Partial3) counts once.
     return activities
       .filter((activity) => activity.parentKey === 'loading')
-      .reduce((total, activity) => {
-        const cycle = activityCycleLength(activity);
-        let rate = ratePerSpool(cycle);
-        if (rate > 0 && Number.isFinite(parentCycle) && parentCycle > 0) {
-          const divisor = greatestCommonDivisor(cycle, parentCycle);
-          if (divisor > 0) rate -= 1 / ((cycle / divisor) * parentCycle);
-        }
-        return total + Math.max(0, rate);
-      }, 0);
+      .reduce((total, activity) => total + (loadingPartialRatePerSpool(activity, activities) ?? 0), 0);
   }
   if (event === 'diesChange') return ratePerSpool(cycleOf('diesChange') * AVERAGE_DIES_PER_CHANGE_EVENT);
   return ratePerSpool(cycleOf(event));
@@ -89,8 +115,12 @@ function triggerRatePerSpool(event: TriggerEvent, activities: ActivityConfig[]):
 /** Spools between occurrences, for forecasts and expected-event counts. An event-triggered Doffing
  * sub happens at most once per Doffing, and at most as often as its trigger events — so its rate is
  * the lower of the two; FirstDoffOnShift happens once per machine per shift (`spoolsPerShift`).
- * Every other activity uses its plain Numerator/Denominator cycle. */
+ * A Loading partial skips the spools where full Loading is due and is combined into Partial3 when
+ * both partials coincide (see loadingPartialRatePerSpool). Every other activity uses its plain
+ * Numerator/Denominator cycle. */
 export function forecastCycleLength(activity: ActivityConfig, activities: ActivityConfig[], spoolsPerShift: number): number {
+  const partialRate = loadingPartialRatePerSpool(activity, activities);
+  if (partialRate !== null) return partialRate > 0 ? 1 / partialRate : Infinity;
   if (!activity.frequencyType) return activityCycleLength(activity);
   const doffing = activities.find((item) => item.key === 'doffing');
   const doffRate = doffing ? ratePerSpool(activityCycleLength(doffing)) : 0;
