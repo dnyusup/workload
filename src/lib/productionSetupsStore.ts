@@ -1,4 +1,4 @@
-import type { LayoutMachine, OperatorStartPoint, PlanningType, ProductionMachineAssignment, ProductionOperator, ProductionSetup, TaskPriorityMode, LayoutWall, LayoutRemark } from '../types';
+import type { LayoutMachine, OperatorStartPoint, ProductionMachineAssignment, ProductionOperator, ProductionSetup, TaskPriorityMode, LayoutWall, LayoutRemark } from '../types';
 import { DEFAULT_PIXELS_PER_METER } from './layoutConstants';
 import { Mpp_wl_productionsetupsesService } from '../generated/services/Mpp_wl_productionsetupsesService';
 import { Mpp_wl_productionsetupoperatorsesService } from '../generated/services/Mpp_wl_productionsetupoperatorsesService';
@@ -37,6 +37,20 @@ const machineRowIdCache = new Map<string, Map<string, string>>();
 
 const ASSIGNED_OPERATOR_SEPARATOR = ';';
 
+/** Split Task operator columns, each a `;`-separated list like mpp_assignedopr. */
+const TASK_OPERATOR_COLUMNS = [
+  ['doffingOperatorIds', 'mpp_doffingoperatorid'],
+  ['loadingOperatorIds', 'mpp_loadingoperatorid'],
+  ['fractureRepairingOperatorIds', 'mpp_fracturerepairingoperatorid'],
+  ['diesChangeOperatorIds', 'mpp_dieschangeoperatorid'],
+  ['defectRepairingOperatorIds', 'mpp_defectrepairingoperatorid'],
+] as const;
+
+/** Per setup, machine rows still carrying the old mpp_planningtype. Under it, Machines Group rows
+ * ignored their per-task columns and Dedicated rows ignored mpp_assignedopr; the first save to such a
+ * row clears the ignored columns and the planning type, so what's stored matches what's shown. */
+const legacyPlanningTypeRows = new Map<string, Map<string, 'MachinesGroup' | 'DedicatedMachines'>>();
+
 function parseAssignedOperators(value: string | undefined | null): string[] | undefined {
   const ids = (value ?? '').split(ASSIGNED_OPERATOR_SEPARATOR).map((id) => id.trim()).filter(Boolean);
   return ids.length > 0 ? ids : undefined;
@@ -47,23 +61,22 @@ function parseYesNo(value: string | undefined | null): boolean | undefined {
   return flag === 'yes' ? true : flag === 'no' ? false : undefined;
 }
 
-function parsePlanningType(value: string | undefined | null): PlanningType | undefined {
+function legacyPlanningType(value: string | undefined | null): 'MachinesGroup' | 'DedicatedMachines' | undefined {
   return value === 'MachinesGroup' || value === 'DedicatedMachines' ? value : undefined;
 }
 
 function machineRowToAssignment(row: Mpp_wl_productionsetupmachineses, constructionLabelById: Map<string, string>): ProductionMachineAssignment {
+  const legacy = legacyPlanningType(row.mpp_planningtype);
+  const taskOperators = legacy === 'MachinesGroup'
+    ? {}
+    : Object.fromEntries(TASK_OPERATOR_COLUMNS.map(([field, column]) => [field, parseAssignedOperators(row[column])]));
   return {
     machineId: row.mpp_machineid,
     constructionDetailId: row.mpp_constructiondetailid ?? undefined,
     constructionDetailLabel: row.mpp_constructiondetailid ? constructionLabelById.get(row.mpp_constructiondetailid) : undefined,
-    doffingOperatorId: row.mpp_doffingoperatorid ?? undefined,
-    loadingOperatorId: row.mpp_loadingoperatorid ?? undefined,
-    fractureRepairingOperatorId: row.mpp_fracturerepairingoperatorid ?? undefined,
-    diesChangeOperatorId: row.mpp_dieschangeoperatorid ?? undefined,
-    defectRepairingOperatorId: row.mpp_defectrepairingoperatorid ?? undefined,
+    ...taskOperators,
     groupName: row.mpp_groupname?.trim() || undefined,
-    planningType: parsePlanningType(row.mpp_planningtype),
-    assignedOperatorIds: parseAssignedOperators(row.mpp_assignedopr),
+    assignedOperatorIds: legacy === 'DedicatedMachines' ? undefined : parseAssignedOperators(row.mpp_assignedopr),
     doffPriority: parseYesNo(row.mpp_doffpriority),
     minRemainForDoffPriority: row.mpp_minremaintaskfordoffpriority ?? undefined,
   };
@@ -121,8 +134,14 @@ export async function loadProductionSetup(id: string, constructionLabelById: Map
   const header = headerResult.data;
 
   const rowIdByMachineId = new Map<string, string>();
-  machineRows.forEach((row) => rowIdByMachineId.set(row.mpp_machineid, row.mpp_wl_productionsetupmachinesid));
+  const legacyRows = new Map<string, 'MachinesGroup' | 'DedicatedMachines'>();
+  machineRows.forEach((row) => {
+    rowIdByMachineId.set(row.mpp_machineid, row.mpp_wl_productionsetupmachinesid);
+    const legacy = legacyPlanningType(row.mpp_planningtype);
+    if (legacy) legacyRows.set(row.mpp_machineid, legacy);
+  });
   machineRowIdCache.set(id, rowIdByMachineId);
+  legacyPlanningTypeRows.set(id, legacyRows);
 
   const { machines: layout, operatorStart, walls, remarks } = parseLayoutBlob(header.mpp_layoutsnapshotjson);
   const operators: ProductionOperator[] = operatorRows.map((row) => ({
@@ -306,6 +325,7 @@ export async function deleteProductionSetup(id: string, onProgress?: (done: numb
   );
   await Mpp_wl_productionsetupsesService.delete(id);
   machineRowIdCache.delete(id);
+  legacyPlanningTypeRows.delete(id);
 }
 
 export async function addProductionOperator(setupId: string, label: string): Promise<ProductionOperator> {
@@ -343,21 +363,20 @@ export async function updateProductionOperatorStartTimes(
  * relationships are meant to prevent, so this clears first and deletes the operator row second. */
 export async function removeProductionOperator(setupId: string, operatorId: string): Promise<void> {
   const id = escapeODataString(operatorId);
+  const columns = ['mpp_assignedopr', ...TASK_OPERATOR_COLUMNS.map(([, column]) => column)] as const;
   const machineRows = await fetchAllPages(Mpp_wl_productionsetupmachinesesService.getAll, {
-    filter: `mpp_productionsetupid eq '${escapeODataString(setupId)}' and (mpp_doffingoperatorid eq '${id}' or mpp_loadingoperatorid eq '${id}' or mpp_fracturerepairingoperatorid eq '${id}' or contains(mpp_assignedopr, '${id}'))`,
+    filter: `mpp_productionsetupid eq '${escapeODataString(setupId)}' and (${columns.map((column) => `contains(${column}, '${id}')`).join(' or ')})`,
   });
   await runWithConcurrency(
     machineRows,
     async (row) => {
       const fields: Record<string, string | null> = {};
-      if (row.mpp_doffingoperatorid === operatorId) fields.mpp_doffingoperatorid = null;
-      if (row.mpp_loadingoperatorid === operatorId) fields.mpp_loadingoperatorid = null;
-      if (row.mpp_fracturerepairingoperatorid === operatorId) fields.mpp_fracturerepairingoperatorid = null;
-      const pool = parseAssignedOperators(row.mpp_assignedopr);
-      if (pool?.includes(operatorId)) {
-        const remaining = pool.filter((poolId) => poolId !== operatorId);
-        fields.mpp_assignedopr = remaining.length > 0 ? remaining.join(ASSIGNED_OPERATOR_SEPARATOR) : null;
-      }
+      columns.forEach((column) => {
+        const ids = parseAssignedOperators(row[column]);
+        if (!ids?.includes(operatorId)) return;
+        const remaining = ids.filter((listId) => listId !== operatorId);
+        fields[column] = remaining.length > 0 ? remaining.join(ASSIGNED_OPERATOR_SEPARATOR) : null;
+      });
       if (Object.keys(fields).length === 0) return;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await Mpp_wl_productionsetupmachinesesService.update(row.mpp_wl_productionsetupmachinesid, fields as any);
@@ -367,8 +386,8 @@ export async function removeProductionOperator(setupId: string, operatorId: stri
   await Mpp_wl_productionsetupoperatorsesService.delete(operatorId);
 }
 
-/** Applies a bulk "Assign Selection" action (Construction / Doffing / Loading / Fracture
- * Repairing / Unplan) or a CSV re-import — one Dataverse call per changed machine row, run with
+/** Applies a bulk "Assign Selection" action (Construction / Multi Task / Split Task operators /
+ * Unplan) or a CSV re-import — one Dataverse call per changed machine row, run with
  * limited concurrency (see BULK_CONCURRENCY) rather than fully sequential. */
 export async function updateMachineAssignments(
   setupId: string,
@@ -376,6 +395,8 @@ export async function updateMachineAssignments(
   onProgress?: (done: number, total: number) => void,
 ): Promise<void> {
   const rowIdByMachineId = machineRowIdCache.get(setupId);
+  const legacyRows = legacyPlanningTypeRows.get(setupId);
+  const joinIds = (ids: string[] | undefined) => (ids?.length ? ids.join(ASSIGNED_OPERATOR_SEPARATOR) : null);
   await runWithConcurrency(
     changes,
     async ({ machineId, patch }) => {
@@ -383,23 +404,26 @@ export async function updateMachineAssignments(
       if (!rowId) return;
       const fields: Record<string, string | number | null> = {};
       if ('constructionDetailId' in patch) fields.mpp_constructiondetailid = patch.constructionDetailId ?? null;
-      if ('doffingOperatorId' in patch) fields.mpp_doffingoperatorid = patch.doffingOperatorId ?? null;
-      if ('loadingOperatorId' in patch) fields.mpp_loadingoperatorid = patch.loadingOperatorId ?? null;
-      if ('fractureRepairingOperatorId' in patch) fields.mpp_fracturerepairingoperatorid = patch.fractureRepairingOperatorId ?? null;
-      if ('diesChangeOperatorId' in patch) fields.mpp_dieschangeoperatorid = patch.diesChangeOperatorId ?? null;
-      if ('defectRepairingOperatorId' in patch) fields.mpp_defectrepairingoperatorid = patch.defectRepairingOperatorId ?? null;
-      if ('groupName' in patch) fields.mpp_groupname = patch.groupName?.trim() || null;
-      if ('planningType' in patch) fields.mpp_planningtype = patch.planningType ?? null;
-      if ('assignedOperatorIds' in patch) {
-        fields.mpp_assignedopr = patch.assignedOperatorIds?.length ? patch.assignedOperatorIds.join(ASSIGNED_OPERATOR_SEPARATOR) : null;
+      const legacy = legacyRows?.get(machineId);
+      if (legacy) {
+        // Clear what the old planning type made the app ignore (see legacyPlanningTypeRows).
+        fields.mpp_planningtype = null;
+        if (legacy === 'MachinesGroup') TASK_OPERATOR_COLUMNS.forEach(([, column]) => (fields[column] = null));
+        else fields.mpp_assignedopr = null;
       }
+      TASK_OPERATOR_COLUMNS.forEach(([field, column]) => {
+        if (field in patch) fields[column] = joinIds(patch[field]);
+      });
+      if ('assignedOperatorIds' in patch) fields.mpp_assignedopr = joinIds(patch.assignedOperatorIds);
+      if ('groupName' in patch) fields.mpp_groupname = patch.groupName?.trim() || null;
       if ('doffPriority' in patch) {
         fields.mpp_doffpriority = patch.doffPriority === undefined ? null : patch.doffPriority ? 'Yes' : 'No';
       }
       if ('minRemainForDoffPriority' in patch) fields.mpp_minremaintaskfordoffpriority = patch.minRemainForDoffPriority ?? null;
       if (Object.keys(fields).length === 0) return;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await Mpp_wl_productionsetupmachinesesService.update(rowId, fields as any);
+      const result = await Mpp_wl_productionsetupmachinesesService.update(rowId, fields as any);
+      if (legacy && result.success) legacyRows?.delete(machineId);
     },
     BULK_CONCURRENCY,
     onProgress,

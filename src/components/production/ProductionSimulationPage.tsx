@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { LayoutMachine, PlanningType, ProductionMachineAssignment, ProductionSetup, TaskPriorityMode } from '../../types';
+import type { LayoutMachine, ProductionMachineAssignment, ProductionSetup, TaskPriorityMode } from '../../types';
 import { loadSavedLayouts, type SavedLayout } from '../../lib/savedLayoutsStore';
 import {
   listProductionSetupSummaries,
@@ -39,7 +39,14 @@ import { ProductionRunView } from './ProductionRunView';
 import { CanvasLegendPanel } from './CanvasLegendPanel';
 import { OperatorStartTimesDialog } from './OperatorStartTimesDialog';
 import { buildCanvasLegendData, type LegendHover } from '../../lib/canvasLegend';
-import { isGroupMachine } from '../../lib/productionActivityRouting';
+import {
+  machineOperatorIds,
+  operatorAssignmentLines,
+  TASK_OPERATOR_FIELDS,
+  TASK_OPERATOR_LABELS,
+  type ProductionActivityFamily,
+  type TaskOperatorField,
+} from '../../lib/productionActivityRouting';
 import { loadDefaultValuesOrBuiltIn } from '../../lib/defaultValuesStore';
 
 const TASK_PRIORITY_OPTIONS: { value: TaskPriorityMode; label: string }[] = [
@@ -47,29 +54,27 @@ const TASK_PRIORITY_OPTIONS: { value: TaskPriorityMode; label: string }[] = [
   { value: 'quickest', label: 'Quickest Task' },
 ];
 
-const PLANNING_TYPE_OPTIONS: { value: PlanningType; label: string }[] = [
-  { value: 'DedicatedMachines', label: 'Dedicated Machines' },
-  { value: 'MachinesGroup', label: 'Machines Group' },
-];
-
-const planningTypeLabel = (value: PlanningType) =>
-  PLANNING_TYPE_OPTIONS.find((option) => option.value === value)?.label ?? value;
-
 /** Order-insensitive key for comparing two operator-id lists (e.g. pending vs applied). */
 const operatorSetKey = (ids: string[] | undefined) => [...new Set(ids ?? [])].sort().join(';');
 
-const CLEARED_DEDICATED_OPERATORS: Partial<ProductionMachineAssignment> = {
-  doffingOperatorId: undefined,
-  loadingOperatorId: undefined,
-  fractureRepairingOperatorId: undefined,
-  diesChangeOperatorId: undefined,
-  defectRepairingOperatorId: undefined,
-};
+/** Split Task rows of Assign Selection, in display order, with their Apply button caption. */
+const TASK_ROWS: { family: ProductionActivityFamily; button: string }[] = [
+  { family: 'doffing', button: 'Doff' },
+  { family: 'loading', button: 'Load' },
+  { family: 'fractureRepairing', button: 'Fract' },
+  { family: 'diesChange', button: 'Dies' },
+  { family: 'defectRepairing', button: 'Defect' },
+];
 
-function dedicatedOperatorIds(a: ProductionMachineAssignment | undefined): string[] {
-  return [a?.doffingOperatorId, a?.loadingOperatorId, a?.fractureRepairingOperatorId, a?.diesChangeOperatorId, a?.defectRepairingOperatorId].filter(
-    (id): id is string => !!id,
-  );
+type TaskOperatorLists = Record<ProductionActivityFamily, string[]>;
+const EMPTY_TASK_LISTS: TaskOperatorLists = { doffing: [], loading: [], fractureRepairing: [], diesChange: [], defectRepairing: [] };
+
+const CLEARED_TASK_OPERATORS: Partial<ProductionMachineAssignment> = Object.fromEntries(
+  Object.values(TASK_OPERATOR_FIELDS).map((field) => [field, undefined]),
+);
+
+function taskOperatorIdsOf(a: ProductionMachineAssignment | undefined): string[] {
+  return Object.values(TASK_OPERATOR_FIELDS).flatMap((field) => a?.[field] ?? []);
 }
 
 /** The value every given assignment shares; undefined when they differ or none is set. */
@@ -89,15 +94,14 @@ function withoutOperator(ids: string[] | undefined, operatorId: string): string[
   return remaining && remaining.length > 0 ? remaining : undefined;
 }
 
-type OperatorAssignmentType = 'multi' | 'split';
-const OPERATOR_ASSIGNMENT_TYPE_STORAGE_KEY = 'workload-production-operator-assignment-type';
+/** Only picks which operator fields Assign Selection shows — never stored, and switching it keeps
+ * the other type's operators (a machine may have both). */
+type AssignType = 'multi' | 'split';
 
-function readOperatorAssignmentType(): OperatorAssignmentType {
-  try {
-    return localStorage.getItem(OPERATOR_ASSIGNMENT_TYPE_STORAGE_KEY) === 'split' ? 'split' : 'multi';
-  } catch {
-    return 'multi';
-  }
+/** Multi Task unless the selection only has Split Task operators. */
+function assignTypeFor(assignments: ProductionMachineAssignment[]): AssignType {
+  if (assignments.some((a) => a.assignedOperatorIds?.length)) return 'multi';
+  return assignments.some((a) => taskOperatorIdsOf(a).length > 0) ? 'split' : 'multi';
 }
 
 type CanvasViewMode = 'construction' | 'operator';
@@ -115,12 +119,12 @@ function readCanvasViewMode(): CanvasViewMode {
 const UNASSIGNED_FILL = '#334155';
 const OPERATOR_VIEW_BASE_FILL = '#0f172a';
 
-type OperatorSlot = { label: string; field: keyof ProductionMachineAssignment };
-const DOFFING_SLOT: OperatorSlot = { label: 'Doffing', field: 'doffingOperatorId' };
-const LOADING_SLOT: OperatorSlot = { label: 'Loading', field: 'loadingOperatorId' };
-const FRACTURE_SLOT: OperatorSlot = { label: 'Fracture Repairing', field: 'fractureRepairingOperatorId' };
-const DEFECT_SLOT: OperatorSlot = { label: 'Defect Repairing', field: 'defectRepairingOperatorId' };
-const DIES_SLOT: OperatorSlot = { label: 'Dies Change', field: 'diesChangeOperatorId' };
+type OperatorSlot = { label: string; field: TaskOperatorField };
+const DOFFING_SLOT: OperatorSlot = { label: 'Doffing', field: 'doffingOperatorIds' };
+const LOADING_SLOT: OperatorSlot = { label: 'Loading', field: 'loadingOperatorIds' };
+const FRACTURE_SLOT: OperatorSlot = { label: 'Fracture Repairing', field: 'fractureRepairingOperatorIds' };
+const DEFECT_SLOT: OperatorSlot = { label: 'Defect Repairing', field: 'defectRepairingOperatorIds' };
+const DIES_SLOT: OperatorSlot = { label: 'Dies Change', field: 'diesChangeOperatorIds' };
 
 /** Body slices shown in Operator View, in order: CB/BU/SP/CH/CR add Defect Repairing, WW/BA/CA
  * add Dies Change instead; any other (or unknown) Area only has the three common tasks. */
@@ -130,9 +134,10 @@ function operatorSlotsForArea(area: string | undefined): OperatorSlot[] {
   return [DOFFING_SLOT, LOADING_SLOT, FRACTURE_SLOT];
 }
 
-/** The operator explicitly assigned to a slot — blank stays blank (gray) until it's filled in. */
+/** Who the Operator View colors a slot with: its first Split Task operator, else the first Multi
+ * Task operator — blank stays blank (gray) until someone may do it. */
 function operatorForSlot(a: ProductionMachineAssignment | undefined, slot: OperatorSlot): string | undefined {
-  return (a?.[slot.field] as string | undefined) || undefined;
+  return a?.[slot.field]?.[0] ?? a?.assignedOperatorIds?.[0];
 }
 
 function downloadCsv(filename: string, headers: string[], rows: (string | number)[][]) {
@@ -669,33 +674,20 @@ function ProductionSetupEditor({
   const [bulkOperatorPrefix, setBulkOperatorPrefix] = useState('Opr');
   const [addingBulkOperators, setAddingBulkOperators] = useState(false);
   const [bulkConstructionId, setBulkConstructionId] = useState('');
-  const [operatorAssignmentType, setOperatorAssignmentType] = useState<OperatorAssignmentType>(
-    readOperatorAssignmentType,
-  );
-  const [bulkMultiOperatorId, setBulkMultiOperatorId] = useState('');
-  const [bulkDoffingOperatorId, setBulkDoffingOperatorId] = useState('');
-  const [bulkLoadingOperatorId, setBulkLoadingOperatorId] = useState('');
-  const [bulkFractureOperatorId, setBulkFractureOperatorId] = useState('');
-  const [bulkDiesChangeOperatorId, setBulkDiesChangeOperatorId] = useState('');
-  const [bulkDefectRepairingOperatorId, setBulkDefectRepairingOperatorId] = useState('');
+  const [assignType, setAssignType] = useState<AssignType>('multi');
+  const [bulkMultiTaskIds, setBulkMultiTaskIds] = useState<string[]>([]);
+  const [bulkTaskIds, setBulkTaskIds] = useState<TaskOperatorLists>(EMPTY_TASK_LISTS);
   // Tracks what's actually applied on the selected machines right now (as of the last selection
   // change or Apply click) — compared against the bulk* form values above to flag an Apply button
-  // yellow whenever the dropdown has moved away from what's currently on the machines.
+  // yellow whenever the form has moved away from what's currently on the machines.
   const [appliedConstructionId, setAppliedConstructionId] = useState('');
-  const [appliedMultiOperatorId, setAppliedMultiOperatorId] = useState('');
-  const [appliedDoffingOperatorId, setAppliedDoffingOperatorId] = useState('');
-  const [appliedLoadingOperatorId, setAppliedLoadingOperatorId] = useState('');
-  const [appliedFractureOperatorId, setAppliedFractureOperatorId] = useState('');
-  const [appliedDiesChangeOperatorId, setAppliedDiesChangeOperatorId] = useState('');
-  const [appliedDefectRepairingOperatorId, setAppliedDefectRepairingOperatorId] = useState('');
-  const [bulkPlanningType, setBulkPlanningType] = useState<PlanningType | ''>('');
+  const [appliedMultiTaskIds, setAppliedMultiTaskIds] = useState<string[]>([]);
+  const [appliedTaskIds, setAppliedTaskIds] = useState<TaskOperatorLists>(EMPTY_TASK_LISTS);
   /** Machine-level Doff Priority; undefined = follow the setup's. */
   const [bulkDoffPriority, setBulkDoffPriority] = useState<boolean | undefined>(undefined);
   const [bulkMinRemain, setBulkMinRemain] = useState<number | undefined>(undefined);
   const [bulkGroupName, setBulkGroupName] = useState('');
   const [appliedGroupName, setAppliedGroupName] = useState('');
-  const [bulkGroupOperatorIds, setBulkGroupOperatorIds] = useState<string[]>([]);
-  const [appliedGroupOperatorIds, setAppliedGroupOperatorIds] = useState<string[]>([]);
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -722,16 +714,9 @@ function ProductionSetupEditor({
   );
   const operatorLabel = (id?: string) => (id ? setup.operators.find((o) => o.id === id)?.label ?? '—' : '—');
 
-  /** The planning type every one of these machines shares, or '' when none is set or they differ. */
-  const commonPlanningType = (machineIds: string[]): PlanningType | '' => {
-    const types = new Set(machineIds.map((id) => assignmentByMachine.get(id)?.planningType ?? ''));
-    return types.size === 1 ? [...types][0] : '';
-  };
-  const appliedPlanningType = commonPlanningType(selectedMachineIds);
-  /** Per-activity breakdown only means something for Dedicated + Split Task; otherwise one operator
-   * (or a shared pool) does every task, so only All Task is shown. */
-  const showsActivityOccupation = (planningType: PlanningType | '') =>
-    planningType === 'DedicatedMachines' && operatorAssignmentType === 'split';
+  /** Per-activity breakdown only means something while assigning Split Task; otherwise operators do
+   * every task, so only All Task is shown. */
+  const showsActivityOccupation = assignType === 'split';
 
   // Every Construction used in this setup gets its own fill (ordered like WL_Products, so it
   // matches the dropdown); every operator likewise gets its own.
@@ -777,45 +762,29 @@ function ProductionSetupEditor({
       return values.size === 1 ? [...values][0] : '';
     };
     const construction = commonValue((a) => a.constructionDetailId, selectedAssignments);
-    const doffing = commonValue((a) => a.doffingOperatorId);
-    const loading = commonValue((a) => a.loadingOperatorId);
-    const fracture = commonValue((a) => a.fractureRepairingOperatorId);
-    const diesChange = commonValue((a) => a.diesChangeOperatorId);
-    const defectRepairing = commonValue((a) => a.defectRepairingOperatorId);
-    const allOperatorIds = plannedAssignments.flatMap((assignment) => [
-      assignment.doffingOperatorId ?? '',
-      assignment.loadingOperatorId ?? '',
-      assignment.fractureRepairingOperatorId ?? '',
-      assignment.diesChangeOperatorId ?? '',
-      assignment.defectRepairingOperatorId ?? '',
-    ]);
-    const multiOperator = allOperatorIds.length > 0 && new Set(allOperatorIds).size === 1 ? allOperatorIds[0] : '';
+    /** The operator list every planned selected machine shares; empty when they differ. */
+    const commonList = (getter: (a: ProductionMachineAssignment) => string[] | undefined): string[] => {
+      const key = commonValue((a) => operatorSetKey(getter(a)));
+      return key ? key.split(';') : [];
+    };
+    const multiTask = commonList((a) => a.assignedOperatorIds);
+    const taskLists = Object.fromEntries(
+      TASK_ROWS.map(({ family }) => [family, commonList((a) => a[TASK_OPERATOR_FIELDS[family]])]),
+    ) as TaskOperatorLists;
     // Intentional selection → form sync (see comment above); the fields stay user-editable after.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setBulkConstructionId(construction);
-    setBulkMultiOperatorId(multiOperator);
-    setBulkDoffingOperatorId(doffing);
-    setBulkLoadingOperatorId(loading);
-    setBulkFractureOperatorId(fracture);
-    setBulkDiesChangeOperatorId(diesChange);
-    setBulkDefectRepairingOperatorId(defectRepairing);
     setAppliedConstructionId(construction);
-    setAppliedMultiOperatorId(multiOperator);
-    setAppliedDoffingOperatorId(doffing);
-    setAppliedLoadingOperatorId(loading);
-    setAppliedFractureOperatorId(fracture);
-    setAppliedDiesChangeOperatorId(diesChange);
-    setAppliedDefectRepairingOperatorId(defectRepairing);
-    setBulkPlanningType(commonPlanningType(selectedMachineIds));
+    setAssignType(assignTypeFor(plannedAssignments));
+    setBulkMultiTaskIds(multiTask);
+    setAppliedMultiTaskIds(multiTask);
+    setBulkTaskIds(taskLists);
+    setAppliedTaskIds(taskLists);
     setBulkDoffPriority(sharedValue(selectedAssignments.map((a) => a.doffPriority)));
     setBulkMinRemain(sharedValue(selectedAssignments.map((a) => a.minRemainForDoffPriority)));
     const groupName = commonValue((a) => a.groupName, selectedAssignments);
-    const groupOperatorKey = commonValue((a) => operatorSetKey(a.assignedOperatorIds));
-    const groupOperatorIds = groupOperatorKey ? groupOperatorKey.split(';') : [];
     setBulkGroupName(groupName);
     setAppliedGroupName(groupName);
-    setBulkGroupOperatorIds(groupOperatorIds);
-    setAppliedGroupOperatorIds(groupOperatorIds);
     // Deliberately NOT depending on setup.assignments: this should only resync when the SELECTION
     // itself changes, not every time any field gets applied — otherwise applying just one of the
     // pending fields (e.g. Doffing) would also silently wipe out the user's still-unapplied
@@ -823,7 +792,7 @@ function ProductionSetupEditor({
     // setup.assignments and stomp over the pending dropdown state. Explicit apply/unplan handlers
     // update applied*/bulk* state themselves for the field(s) they actually touch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedMachineIds, operatorAssignmentType]);
+  }, [selectedMachineIds]);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -858,20 +827,18 @@ function ProductionSetupEditor({
     const a = assignmentByMachine.get(m.id);
     const area = a?.constructionDetailId ? areaByConstructionId.get(a.constructionDetailId) : undefined;
     const slots = operatorSlotsForArea(area);
-    // Group machines split their body by assigned operator rather than by activity slot.
-    const groupMachine = isGroupMachine(a);
-    const handlers = groupMachine ? a?.assignedOperatorIds ?? [] : slots.map((slot) => operatorForSlot(a, slot));
+    // A Multi Task-only machine splits its body by operator; anything with Split Task operators by
+    // activity slot.
+    const multiTaskOnly = (a?.assignedOperatorIds?.length ?? 0) > 0 && taskOperatorIdsOf(a).length === 0;
+    const handlers = multiTaskOnly ? a?.assignedOperatorIds ?? [] : slots.map((slot) => operatorForSlot(a, slot));
     const constructionColor = a?.constructionDetailId ? constructionFillMap.get(a.constructionDetailId) : undefined;
     const tooltip = [
       `Machine ${m.label}`,
       `Construction: ${a?.constructionDetailLabel ?? '—'}`,
       `Area: ${area ?? '—'}`,
       `Group: ${a?.groupName ?? '—'}`,
-      `Planning Type: ${a?.planningType ? planningTypeLabel(a.planningType) : '—'}`,
       `Doff Priority: ${doffPriorityText(a) === '—' ? 'follow setup' : doffPriorityText(a)}`,
-      ...(groupMachine
-        ? [`Operators: ${handlers.map((id) => operatorLabel(id)).join(', ') || '—'}`]
-        : slots.map((slot, i) => `${slot.label}: ${operatorLabel(handlers[i])}`)),
+      ...operatorAssignmentLines(a, (id) => operatorLabel(id)),
     ].join('\n');
 
     if (canvasView === 'operator') {
@@ -923,7 +890,7 @@ function ProductionSetupEditor({
       hints={{
         construction: 'Construction Detail View: body color = Construction. Hover an entry to highlight its machines.',
         operator:
-          'Operator View: Dedicated Machines split the body Doffing | Loading | Fracture Repairing | Defect Repairing (CB/BU/SP/CH/CR) or Dies Change (WW/BA/CA); Machines Group split it by their assigned operators; gray = not assigned yet; border = Construction. Hover an entry to highlight its machines.',
+          'Operator View: machines with Split Task operators split the body Doffing | Loading | Fracture Repairing | Defect Repairing (CB/BU/SP/CH/CR) or Dies Change (WW/BA/CA), each colored by its first operator; Multi Task-only machines split it by their operators; gray = not assigned yet; border = Construction. Hover an entry to highlight its machines.',
       }}
     />
   );
@@ -964,24 +931,11 @@ function ProductionSetupEditor({
     }
   };
 
-  const resetDedicatedOperatorFields = () => {
-    setBulkMultiOperatorId('');
-    setBulkDoffingOperatorId('');
-    setBulkLoadingOperatorId('');
-    setBulkFractureOperatorId('');
-    setBulkDiesChangeOperatorId('');
-    setBulkDefectRepairingOperatorId('');
-    setAppliedMultiOperatorId('');
-    setAppliedDoffingOperatorId('');
-    setAppliedLoadingOperatorId('');
-    setAppliedFractureOperatorId('');
-    setAppliedDiesChangeOperatorId('');
-    setAppliedDefectRepairingOperatorId('');
-  };
-
-  const resetGroupOperatorFields = () => {
-    setBulkGroupOperatorIds([]);
-    setAppliedGroupOperatorIds([]);
+  const resetOperatorFields = () => {
+    setBulkMultiTaskIds([]);
+    setAppliedMultiTaskIds([]);
+    setBulkTaskIds(EMPTY_TASK_LISTS);
+    setAppliedTaskIds(EMPTY_TASK_LISTS);
   };
 
   const unplanSelection = async () => {
@@ -989,9 +943,8 @@ function ProductionSetupEditor({
     await applyBulk({
       constructionDetailId: undefined,
       constructionDetailLabel: undefined,
-      ...CLEARED_DEDICATED_OPERATORS,
+      ...CLEARED_TASK_OPERATORS,
       groupName: undefined,
-      planningType: undefined,
       assignedOperatorIds: undefined,
       doffPriority: undefined,
       minRemainForDoffPriority: undefined,
@@ -1002,9 +955,7 @@ function ProductionSetupEditor({
     setAppliedConstructionId('');
     setBulkGroupName('');
     setAppliedGroupName('');
-    setBulkPlanningType('');
-    resetDedicatedOperatorFields();
-    resetGroupOperatorFields();
+    resetOperatorFields();
   };
 
   const buildBulkOperatorLabels = (prefix: string, count: number): string[] => {
@@ -1077,14 +1028,16 @@ function ProductionSetupEditor({
         operators: setup.operators.filter((o) => o.id !== id),
         assignments: setup.assignments.map((a) => ({
           ...a,
-          doffingOperatorId: a.doffingOperatorId === id ? undefined : a.doffingOperatorId,
-          loadingOperatorId: a.loadingOperatorId === id ? undefined : a.loadingOperatorId,
-          fractureRepairingOperatorId: a.fractureRepairingOperatorId === id ? undefined : a.fractureRepairingOperatorId,
+          ...Object.fromEntries(Object.values(TASK_OPERATOR_FIELDS).map((field) => [field, withoutOperator(a[field], id)])),
           assignedOperatorIds: withoutOperator(a.assignedOperatorIds, id),
         })),
       });
-      setBulkGroupOperatorIds((prev) => prev.filter((poolId) => poolId !== id));
-      setAppliedGroupOperatorIds((prev) => prev.filter((poolId) => poolId !== id));
+      const withoutInLists = (lists: TaskOperatorLists) =>
+        Object.fromEntries(Object.entries(lists).map(([family, ids]) => [family, ids.filter((listId) => listId !== id)])) as TaskOperatorLists;
+      setBulkMultiTaskIds((prev) => prev.filter((listId) => listId !== id));
+      setAppliedMultiTaskIds((prev) => prev.filter((listId) => listId !== id));
+      setBulkTaskIds(withoutInLists);
+      setAppliedTaskIds(withoutInLists);
       onOperatorCountChange(-1);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Failed to remove operator.');
@@ -1098,44 +1051,19 @@ function ProductionSetupEditor({
     setAppliedConstructionId(bulkConstructionId);
   };
 
-  const applyMultiTaskOperator = (operatorId: string) => {
-    const patch = {
-      doffingOperatorId: operatorId || undefined,
-      loadingOperatorId: operatorId || undefined,
-      fractureRepairingOperatorId: operatorId || undefined,
-      diesChangeOperatorId: operatorId || undefined,
-      defectRepairingOperatorId: operatorId || undefined,
-    };
-    // Removing ('') clears every selected machine; assigning skips unplanned ones.
-    void applyBulk(patch, { plannedOnly: !!operatorId });
-    setBulkMultiOperatorId(operatorId);
-    setAppliedMultiOperatorId(operatorId);
+  /** Sets the selection's Multi Task operators. Removing ([]) clears every selected machine;
+   * assigning skips unplanned ones. */
+  const applyMultiTaskOperators = (operatorIds: string[]) => {
+    void applyBulk({ assignedOperatorIds: operatorIds.length > 0 ? operatorIds : undefined }, { plannedOnly: operatorIds.length > 0 });
+    setBulkMultiTaskIds(operatorIds);
+    setAppliedMultiTaskIds(operatorIds);
   };
 
-  /** Operators only make sense under their own planning type, so switching (or clearing) it drops
-   * the other type's operators instead of leaving stale ones behind. */
-  const applyPlanningType = (planningType: PlanningType | '') => {
-    const keepsDedicated = planningType === 'DedicatedMachines';
-    const keepsGroup = planningType === 'MachinesGroup';
-    const selected = selectedMachineIds.map((id) => assignmentByMachine.get(id));
-    const dropsOperators = selected.some(
-      (a) => (!keepsDedicated && dedicatedOperatorIds(a).length > 0) || (!keepsGroup && (a?.assignedOperatorIds?.length ?? 0) > 0),
-    );
-    if (
-      dropsOperators &&
-      !window.confirm('Changing the planning type removes the operators currently assigned to these machines. Continue?')
-    ) {
-      setBulkPlanningType(appliedPlanningType);
-      return;
-    }
-    void applyBulk({
-      planningType: planningType || undefined,
-      ...(keepsDedicated ? {} : CLEARED_DEDICATED_OPERATORS),
-      ...(keepsGroup ? {} : { assignedOperatorIds: undefined }),
-    });
-    setBulkPlanningType(planningType);
-    if (!keepsDedicated) resetDedicatedOperatorFields();
-    if (!keepsGroup) resetGroupOperatorFields();
+  /** Sets one activity's Split Task operators on the selection, same rules as Multi Task. */
+  const applyTaskOperators = (family: ProductionActivityFamily, operatorIds: string[]) => {
+    void applyBulk({ [TASK_OPERATOR_FIELDS[family]]: operatorIds.length > 0 ? operatorIds : undefined }, { plannedOnly: operatorIds.length > 0 });
+    setBulkTaskIds((prev) => ({ ...prev, [family]: operatorIds }));
+    setAppliedTaskIds((prev) => ({ ...prev, [family]: operatorIds }));
   };
 
   /** undefined for both = follow the setup's Doff Priority again. */
@@ -1151,60 +1079,26 @@ function ProductionSetupEditor({
     setAppliedGroupName(groupName.trim());
   };
 
-  const applyGroupOperators = (operatorIds: string[]) => {
-    // Removing ([]) clears every selected machine; assigning skips unplanned ones.
-    void applyBulk({ assignedOperatorIds: operatorIds.length > 0 ? operatorIds : undefined }, { plannedOnly: operatorIds.length > 0 });
-    setBulkGroupOperatorIds(operatorIds);
-    setAppliedGroupOperatorIds(operatorIds);
-  };
-
   const removeConstruction = () => {
     void applyBulk({ constructionDetailId: undefined, constructionDetailLabel: undefined });
     setBulkConstructionId('');
     setAppliedConstructionId('');
   };
 
-  /** Clears one split-task operator field on the selection and resets its row. */
-  const removeTaskOperator = (
-    field: keyof Pick<
-      ProductionMachineAssignment,
-      | 'doffingOperatorId'
-      | 'loadingOperatorId'
-      | 'fractureRepairingOperatorId'
-      | 'diesChangeOperatorId'
-      | 'defectRepairingOperatorId'
-    >,
-    setBulk: (value: string) => void,
-    setApplied: (value: string) => void,
-  ) => {
-    void applyBulk({ [field]: undefined });
-    setBulk('');
-    setApplied('');
-  };
-
-  const changeOperatorAssignmentType = (value: OperatorAssignmentType) => {
-    setOperatorAssignmentType(value);
-    try {
-      localStorage.setItem(OPERATOR_ASSIGNMENT_TYPE_STORAGE_KEY, value);
-    } catch {
-      // The selected mode still applies for this session if browser storage is unavailable.
-    }
-  };
-
   const operatorLabelOrBlank = (id?: string) => (id ? setup.operators.find((o) => o.id === id)?.label ?? '' : '');
+  const operatorLabelsOrBlank = (ids: string[] | undefined) => (ids ?? []).map((id) => operatorLabelOrBlank(id)).filter(Boolean).join(';');
 
   const exportCsv = () => {
     const headers = [
       'Machine',
       'Construction Detail',
       'Group Name',
-      'Planning Type',
+      'Multi Task',
       'Doffing',
       'Loading',
       'FractureRepairing',
       'DiesChange',
       'DefectRepairing',
-      'Operators',
       'Doff Priority',
       'Min Remain Task',
     ];
@@ -1214,13 +1108,8 @@ function ProductionSetupEditor({
         m.label,
         a?.constructionDetailLabel ?? '',
         a?.groupName ?? '',
-        a?.planningType ?? '',
-        operatorLabelOrBlank(a?.doffingOperatorId),
-        operatorLabelOrBlank(a?.loadingOperatorId),
-        operatorLabelOrBlank(a?.fractureRepairingOperatorId),
-        operatorLabelOrBlank(a?.diesChangeOperatorId),
-        operatorLabelOrBlank(a?.defectRepairingOperatorId),
-        (a?.assignedOperatorIds ?? []).map((id) => operatorLabelOrBlank(id)).filter(Boolean).join(';'),
+        operatorLabelsOrBlank(a?.assignedOperatorIds),
+        ...TASK_ROWS.map(({ family }) => operatorLabelsOrBlank(a?.[TASK_OPERATOR_FIELDS[family]])),
         a?.doffPriority === undefined ? '' : a.doffPriority ? 'Yes' : 'No',
         a?.minRemainForDoffPriority ?? '',
       ];
@@ -1250,8 +1139,8 @@ function ProductionSetupEditor({
       diesChange: header.indexOf('dieschange'),
       defectRepairing: header.indexOf('defectrepairing'),
       groupName: header.indexOf('group name'),
-      planningType: header.indexOf('planning type'),
-      operators: header.indexOf('operators'),
+      // "Operators" is what exports made before Multi Task / Split Task called this column.
+      multiTask: header.indexOf('multi task') !== -1 ? header.indexOf('multi task') : header.indexOf('operators'),
       doffPriority: header.indexOf('doff priority'),
       minRemain: header.indexOf('min remain task'),
     };
@@ -1291,15 +1180,6 @@ function ProductionSetupEditor({
         }
       }
       if (colIndex.groupName !== -1) patch.groupName = cols[colIndex.groupName]?.trim() || undefined;
-      if (colIndex.planningType !== -1) {
-        const value = cols[colIndex.planningType]?.trim() ?? '';
-        const planningType = PLANNING_TYPE_OPTIONS.find(
-          (option) => option.value.toLowerCase() === value.toLowerCase() || option.label.toLowerCase() === value.toLowerCase(),
-        )?.value;
-        if (!value) patch.planningType = undefined;
-        else if (planningType) patch.planningType = planningType;
-        else errors.push(`Row ${rowNum}: planning type "${value}" must be DedicatedMachines or MachinesGroup.`);
-      }
       if (colIndex.doffPriority !== -1) {
         const value = (cols[colIndex.doffPriority] ?? '').trim().toLowerCase();
         if (!value) patch.doffPriority = undefined;
@@ -1313,36 +1193,38 @@ function ProductionSetupEditor({
         else if (Number.isFinite(parsed) && parsed >= 0) patch.minRemainForDoffPriority = parsed;
         else errors.push(`Row ${rowNum}: Min Remain Task "${value}" must be a number of minutes or blank.`);
       }
-      if (colIndex.operators !== -1) {
-        const labels = (cols[colIndex.operators] ?? '').split(';').map((label) => label.trim()).filter(Boolean);
+      /** A `;`-separated operator list cell; blank clears it. */
+      const operatorList = (idx: number, colName: string): string[] | undefined => {
         const ids: string[] = [];
-        labels.forEach((label) => {
+        (cols[idx] ?? '').split(';').map((label) => label.trim()).filter(Boolean).forEach((label) => {
           const operatorId = operatorIdByLabel.get(label);
           if (operatorId) ids.push(operatorId);
-          else errors.push(`Row ${rowNum}: operator "${label}" (Operators) is not in this setup — add that operator first.`);
+          else errors.push(`Row ${rowNum}: operator "${label}" (${colName}) is not in this setup — add that operator first.`);
         });
-        patch.assignedOperatorIds = ids.length > 0 ? [...new Set(ids)] : undefined;
-      }
-      const operatorColumns: [keyof ProductionMachineAssignment, number, string][] = [
-        ['doffingOperatorId', colIndex.doffing, 'Doffing'],
-        ['loadingOperatorId', colIndex.loading, 'Loading'],
-        ['fractureRepairingOperatorId', colIndex.fracture, 'FractureRepairing'],
-        ['diesChangeOperatorId', colIndex.diesChange, 'DiesChange'],
-        ['defectRepairingOperatorId', colIndex.defectRepairing, 'DefectRepairing'],
+        return ids.length > 0 ? [...new Set(ids)] : undefined;
+      };
+      if (colIndex.multiTask !== -1) patch.assignedOperatorIds = operatorList(colIndex.multiTask, 'Multi Task');
+      const operatorColumns: [TaskOperatorField, number, string][] = [
+        ['doffingOperatorIds', colIndex.doffing, 'Doffing'],
+        ['loadingOperatorIds', colIndex.loading, 'Loading'],
+        ['fractureRepairingOperatorIds', colIndex.fracture, 'FractureRepairing'],
+        ['diesChangeOperatorIds', colIndex.diesChange, 'DiesChange'],
+        ['defectRepairingOperatorIds', colIndex.defectRepairing, 'DefectRepairing'],
       ];
       operatorColumns.forEach(([field, idx, colName]) => {
-        if (idx === -1) return;
-        const label = cols[idx]?.trim();
-        if (!label) {
-          (patch as Record<string, string | undefined>)[field] = undefined;
-          return;
-        }
-        const operatorId = operatorIdByLabel.get(label);
-        if (!operatorId) {
-          errors.push(`Row ${rowNum}: operator "${label}" (${colName}) is not in this setup — add that operator first.`);
-        } else {
-          (patch as Record<string, string | undefined>)[field] = operatorId;
-        }
+        if (idx !== -1) patch[field] = operatorList(idx, colName);
+      });
+      // An operator is either Multi Task or Split Task on a machine — Multi Task wins.
+      const merged = { ...assignmentByMachine.get(machineId), ...patch } as ProductionMachineAssignment;
+      const multiTask = new Set(merged.assignedOperatorIds ?? []);
+      operatorColumns.forEach(([field, , colName]) => {
+        const clash = (merged[field] ?? []).filter((id) => multiTask.has(id));
+        if (clash.length === 0) return;
+        errors.push(
+          `Row ${rowNum}: ${clash.map((id) => operatorLabelOrBlank(id)).join(', ')} is already Multi Task on this machine — removed from ${colName}.`,
+        );
+        const remaining = (merged[field] ?? []).filter((id) => !multiTask.has(id));
+        patch[field] = remaining.length > 0 ? remaining : undefined;
       });
       patchByMachineId.set(machineId, patch);
     });
@@ -1414,7 +1296,7 @@ function ProductionSetupEditor({
     if (occupation.plannedMachineCount === 0) return ['No Construction assigned yet'];
     return [
       `All Task: ${formatOccupation(occupation.allTask)}`,
-      ...(showsActivityOccupation(commonPlanningType(machineIds)) ? occupation.activities : [])
+      ...(showsActivityOccupation ? occupation.activities : [])
         .filter((row) => row.plannedMinutes > 0)
         .map((row) => `· ${row.label}: ${formatOccupation(row)}`),
     ];
@@ -1435,7 +1317,7 @@ function ProductionSetupEditor({
       ) : (
         [
           selectionOccupation.allTask,
-          ...(showsActivityOccupation(appliedPlanningType) ? selectionOccupation.activities : []).filter((row) => row.plannedMinutes > 0),
+          ...(showsActivityOccupation ? selectionOccupation.activities : []).filter((row) => row.plannedMinutes > 0),
         ].map(
           (row) => (
             <div
@@ -1456,20 +1338,33 @@ function ProductionSetupEditor({
   );
 
   const constructionDirty = bulkConstructionId !== appliedConstructionId;
-  const multiOperatorDirty = bulkMultiOperatorId !== appliedMultiOperatorId;
-  const doffingDirty = bulkDoffingOperatorId !== appliedDoffingOperatorId;
-  const loadingDirty = bulkLoadingOperatorId !== appliedLoadingOperatorId;
-  const fractureDirty = bulkFractureOperatorId !== appliedFractureOperatorId;
-  const diesChangeDirty = bulkDiesChangeOperatorId !== appliedDiesChangeOperatorId;
-  const defectRepairingDirty = bulkDefectRepairingOperatorId !== appliedDefectRepairingOperatorId;
-  const planningTypeDirty = bulkPlanningType !== appliedPlanningType;
+  const multiTaskDirty = operatorSetKey(bulkMultiTaskIds) !== operatorSetKey(appliedMultiTaskIds);
+  const taskDirty = (family: ProductionActivityFamily) => operatorSetKey(bulkTaskIds[family]) !== operatorSetKey(appliedTaskIds[family]);
   const groupNameDirty = bulkGroupName.trim() !== appliedGroupName;
-  const groupOperatorsDirty = operatorSetKey(bulkGroupOperatorIds) !== operatorSetKey(appliedGroupOperatorIds);
   const selectedAssignmentsNow = selectedMachineIds.map((id) => assignmentByMachine.get(id));
   const appliedDoffPriority = sharedValue(selectedAssignmentsNow.map((a) => a?.doffPriority));
   const appliedMinRemain = sharedValue(selectedAssignmentsNow.map((a) => a?.minRemainForDoffPriority));
   const doffPriorityDirty = bulkDoffPriority !== appliedDoffPriority || bulkMinRemain !== appliedMinRemain;
   const effectiveDoffPriority = bulkDoffPriority ?? setup.doffPriority;
+
+  // An operator is Multi Task or Split Task on a machine, never both: whoever is one of them on any
+  // planned selected machine (or picked for it below) is left out of the other type's dropdowns.
+  const plannedSelection = selectedAssignmentsNow.filter((a): a is ProductionMachineAssignment => !!a?.constructionDetailId);
+  const selectionMultiTaskIds = new Set([...plannedSelection.flatMap((a) => a.assignedOperatorIds ?? []), ...bulkMultiTaskIds]);
+  const selectionTaskIds = new Set([...plannedSelection.flatMap((a) => taskOperatorIdsOf(a)), ...Object.values(bulkTaskIds).flat()]);
+  const operatorNames = (ids: string[]) => ids.map((id) => operatorLabel(id)).join(', ');
+  /** The other Assign Type's operators on this selection — still working there, just not shown. */
+  const otherTypeSummary = (() => {
+    if (assignType === 'multi') {
+      const parts = TASK_ROWS.flatMap(({ family }) => {
+        const ids = [...new Set(plannedSelection.flatMap((a) => a[TASK_OPERATOR_FIELDS[family]] ?? []))];
+        return ids.length > 0 ? [`${TASK_OPERATOR_LABELS[family]}: ${operatorNames(ids)}`] : [];
+      });
+      return parts.length > 0 ? `Also Split Task on this selection — ${parts.join('; ')}` : null;
+    }
+    const ids = [...new Set(plannedSelection.flatMap((a) => a.assignedOperatorIds ?? []))];
+    return ids.length > 0 ? `Also Multi Task on this selection: ${operatorNames(ids)}` : null;
+  })();
 
   const removeButton = (title: string, onClick: () => void) => (
     <Button
@@ -1486,155 +1381,95 @@ function ProductionSetupEditor({
     </Button>
   );
 
-  const dedicatedOperatorRows =
-    operatorAssignmentType === 'multi' ? (
+  /** One "pick several operators, then Apply" row with its chips below. */
+  const operatorListRow = ({
+    key,
+    ids,
+    setIds,
+    excluded,
+    placeholder,
+    dirty,
+    applyLabel,
+    applyTitle,
+    removeTitle,
+    onApply,
+  }: {
+    key: string;
+    ids: string[];
+    setIds: (ids: string[]) => void;
+    excluded: Set<string>;
+    placeholder: string;
+    dirty: boolean;
+    applyLabel: string;
+    applyTitle: string;
+    removeTitle: string;
+    onApply: (ids: string[]) => void;
+  }) => (
+    <div key={key} className="production-assign-list">
       <div className="production-assign-row">
         <SearchableSelect
-          value={bulkMultiOperatorId}
-          onChange={setBulkMultiOperatorId}
-          placeholder="Select Operator"
+          value=""
+          onChange={(id) => {
+            if (id && !ids.includes(id)) setIds([...ids, id]);
+          }}
+          placeholder={placeholder}
           searchPlaceholder="Search operator…"
-          options={operatorOptions}
+          options={operatorOptions.filter((option) => !ids.includes(option.value) && !excluded.has(option.value))}
         />
         <Button
           variant="secondary"
-          className={multiOperatorDirty ? 'btn-pending' : ''}
-          onClick={() => applyMultiTaskOperator(bulkMultiOperatorId)}
+          className={dirty ? 'btn-pending' : ''}
+          onClick={() => onApply(ids)}
           disabled={selectedMachineIds.length === 0}
-          title="Apply the selected operator to all activities"
+          title={applyTitle}
         >
-          Apply
+          {applyLabel}
         </Button>
-        {removeButton('Remove operator from all activities of selection', () => applyMultiTaskOperator(''))}
+        {removeButton(removeTitle, () => onApply([]))}
       </div>
-    ) : (
-      <>
-        <div className="production-assign-row">
-          <SearchableSelect
-            value={bulkDoffingOperatorId}
-            onChange={setBulkDoffingOperatorId}
-            placeholder="Select Doffing Operator"
-            searchPlaceholder="Search operator…"
-            options={operatorOptions}
-          />
-          <Button
-            variant="secondary"
-            className={doffingDirty ? 'btn-pending' : ''}
-            onClick={() => {
-              applyBulk({ doffingOperatorId: bulkDoffingOperatorId || undefined }, { plannedOnly: true });
-              setAppliedDoffingOperatorId(bulkDoffingOperatorId);
-            }}
-            disabled={selectedMachineIds.length === 0}
-            title="Apply Doffing operator to selection"
-          >
-            Doff
-          </Button>
-          {removeButton('Remove Doffing operator from selection', () =>
-            removeTaskOperator('doffingOperatorId', setBulkDoffingOperatorId, setAppliedDoffingOperatorId),
-          )}
+      {ids.length > 0 && (
+        <div className="production-operator-chips production-group-operators">
+          {ids.map((id) => (
+            <span key={id} className="production-operator-chip">
+              {operatorLabel(id)}
+              <button type="button" onClick={() => setIds(ids.filter((listId) => listId !== id))} title="Remove from this list">
+                ×
+              </button>
+            </span>
+          ))}
         </div>
-        <div className="production-assign-row">
-          <SearchableSelect
-            value={bulkLoadingOperatorId}
-            onChange={setBulkLoadingOperatorId}
-            placeholder="Select Loading Operator"
-            searchPlaceholder="Search operator…"
-            options={operatorOptions}
-          />
-          <Button
-            variant="secondary"
-            className={loadingDirty ? 'btn-pending' : ''}
-            onClick={() => {
-              applyBulk({ loadingOperatorId: bulkLoadingOperatorId || undefined }, { plannedOnly: true });
-              setAppliedLoadingOperatorId(bulkLoadingOperatorId);
-            }}
-            disabled={selectedMachineIds.length === 0}
-            title="Apply Loading operator to selection"
-          >
-            Load
-          </Button>
-          {removeButton('Remove Loading operator from selection', () =>
-            removeTaskOperator('loadingOperatorId', setBulkLoadingOperatorId, setAppliedLoadingOperatorId),
-          )}
-        </div>
-        <div className="production-assign-row">
-          <SearchableSelect
-            value={bulkFractureOperatorId}
-            onChange={setBulkFractureOperatorId}
-            placeholder="Select Fracture Repairing Operator"
-            searchPlaceholder="Search operator…"
-            options={operatorOptions}
-          />
-          <Button
-            variant="secondary"
-            className={fractureDirty ? 'btn-pending' : ''}
-            onClick={() => {
-              applyBulk({ fractureRepairingOperatorId: bulkFractureOperatorId || undefined }, { plannedOnly: true });
-              setAppliedFractureOperatorId(bulkFractureOperatorId);
-            }}
-            disabled={selectedMachineIds.length === 0}
-            title="Apply Fracture Repairing operator to selection"
-          >
-            Fract
-          </Button>
-          {removeButton('Remove Fracture Repairing operator from selection', () =>
-            removeTaskOperator('fractureRepairingOperatorId', setBulkFractureOperatorId, setAppliedFractureOperatorId),
-          )}
-        </div>
-        <div className="production-assign-row">
-          <SearchableSelect
-            value={bulkDiesChangeOperatorId}
-            onChange={setBulkDiesChangeOperatorId}
-            placeholder="Select Dies Change Operator"
-            searchPlaceholder="Search operator…"
-            options={operatorOptions}
-          />
-          <Button
-            variant="secondary"
-            className={diesChangeDirty ? 'btn-pending' : ''}
-            onClick={() => {
-              applyBulk({ diesChangeOperatorId: bulkDiesChangeOperatorId || undefined }, { plannedOnly: true });
-              setAppliedDiesChangeOperatorId(bulkDiesChangeOperatorId);
-            }}
-            disabled={selectedMachineIds.length === 0}
-            title="Apply Dies Change operator to selection"
-          >
-            Dies
-          </Button>
-          {removeButton('Remove Dies Change operator from selection', () =>
-            removeTaskOperator('diesChangeOperatorId', setBulkDiesChangeOperatorId, setAppliedDiesChangeOperatorId),
-          )}
-        </div>
-        <div className="production-assign-row">
-          <SearchableSelect
-            value={bulkDefectRepairingOperatorId}
-            onChange={setBulkDefectRepairingOperatorId}
-            placeholder="Select Defect Repairing Operator"
-            searchPlaceholder="Search operator…"
-            options={operatorOptions}
-          />
-          <Button
-            variant="secondary"
-            className={defectRepairingDirty ? 'btn-pending' : ''}
-            onClick={() => {
-              applyBulk({ defectRepairingOperatorId: bulkDefectRepairingOperatorId || undefined }, { plannedOnly: true });
-              setAppliedDefectRepairingOperatorId(bulkDefectRepairingOperatorId);
-            }}
-            disabled={selectedMachineIds.length === 0}
-            title="Apply Defect Repairing operator to selection"
-          >
-            Defect
-          </Button>
-          {removeButton('Remove Defect Repairing operator from selection', () =>
-            removeTaskOperator(
-              'defectRepairingOperatorId',
-              setBulkDefectRepairingOperatorId,
-              setAppliedDefectRepairingOperatorId,
-            ),
-          )}
-        </div>
-      </>
-    );
+      )}
+    </div>
+  );
+
+  const operatorRows =
+    assignType === 'multi'
+      ? operatorListRow({
+          key: 'multi',
+          ids: bulkMultiTaskIds,
+          setIds: setBulkMultiTaskIds,
+          excluded: selectionTaskIds,
+          placeholder: 'Add Multi Task Operator',
+          dirty: multiTaskDirty,
+          applyLabel: 'Apply',
+          applyTitle: 'Apply these operators to the selection — any of them may do any task on these machines',
+          removeTitle: 'Remove all Multi Task operators from selection',
+          onApply: applyMultiTaskOperators,
+        })
+      : TASK_ROWS.map(({ family, button }) =>
+          operatorListRow({
+            key: family,
+            ids: bulkTaskIds[family],
+            setIds: (ids) => setBulkTaskIds((prev) => ({ ...prev, [family]: ids })),
+            excluded: selectionMultiTaskIds,
+            placeholder: `Add ${TASK_OPERATOR_LABELS[family]} Operator`,
+            dirty: taskDirty(family),
+            applyLabel: button,
+            applyTitle: `Apply these ${TASK_OPERATOR_LABELS[family]} operators to the selection`,
+            removeTitle: `Remove ${TASK_OPERATOR_LABELS[family]} operators from selection`,
+            onApply: (ids) => applyTaskOperators(family, ids),
+          }),
+        );
 
   const assignSelectionCard = (
     <Card
@@ -1687,93 +1522,21 @@ function ProductionSetupEditor({
         </Button>
         {removeButton('Remove group name from selection', () => applyGroupName(''))}
       </div>
-      <div className="production-assign-row">
+      <div className="production-assign-mode-row">
+        <label htmlFor="production-assign-type">Assign Type</label>
         <select
+          id="production-assign-type"
           className="input"
-          value={bulkPlanningType}
-          onChange={(e) => setBulkPlanningType(e.target.value as PlanningType | '')}
-          aria-label="Planning Type"
-          title="Dedicated Machines: each activity has its own operator. Machines Group: the assigned operators share all of a machine's work."
+          value={assignType}
+          onChange={(event) => setAssignType(event.target.value as AssignType)}
+          title="Multi Task: operators who may do every task on these machines. Split Task: operators per activity. Switching only changes which fields show — operators of the other type stay assigned."
         >
-          <option value="">Select Planning Type</option>
-          {PLANNING_TYPE_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
+          <option value="multi">Multi Task</option>
+          <option value="split">Split Task</option>
         </select>
-        <Button
-          variant="secondary"
-          className={planningTypeDirty ? 'btn-pending' : ''}
-          onClick={() => applyPlanningType(bulkPlanningType)}
-          disabled={selectedMachineIds.length === 0 || !bulkPlanningType}
-          title="Apply planning type to selection"
-        >
-          Apply
-        </Button>
-        {removeButton('Remove planning type (and its operators) from selection', () => applyPlanningType(''))}
       </div>
-      {appliedPlanningType === 'DedicatedMachines' && (
-        <>
-          <div className="production-assign-mode-row">
-            <label htmlFor="production-operator-assignment-type">Opr Assign Type</label>
-            <select
-              id="production-operator-assignment-type"
-              className="input"
-              value={operatorAssignmentType}
-              onChange={(event) => changeOperatorAssignmentType(event.target.value as OperatorAssignmentType)}
-            >
-              <option value="multi">Multi Task</option>
-              <option value="split">Split Task</option>
-            </select>
-          </div>
-          {dedicatedOperatorRows}
-        </>
-      )}
-      {appliedPlanningType === 'MachinesGroup' && (
-        <>
-          <div className="production-assign-row">
-            <SearchableSelect
-              value=""
-              onChange={(id) => {
-                if (id) setBulkGroupOperatorIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
-              }}
-              placeholder="Add Operator"
-              searchPlaceholder="Search operator…"
-              options={operatorOptions.filter((option) => !bulkGroupOperatorIds.includes(option.value))}
-            />
-            <Button
-              variant="secondary"
-              className={groupOperatorsDirty ? 'btn-pending' : ''}
-              onClick={() => applyGroupOperators(bulkGroupOperatorIds)}
-              disabled={selectedMachineIds.length === 0}
-              title="Apply these operators to the selection — any of them may handle any task on these machines"
-            >
-              Apply
-            </Button>
-            {removeButton('Remove all operators from selection', () => applyGroupOperators([]))}
-          </div>
-          {bulkGroupOperatorIds.length > 0 && (
-            <div className="production-operator-chips production-group-operators">
-              {bulkGroupOperatorIds.map((id) => (
-                <span key={id} className="production-operator-chip">
-                  {operatorLabel(id)}
-                  <button
-                    type="button"
-                    onClick={() => setBulkGroupOperatorIds((prev) => prev.filter((poolId) => poolId !== id))}
-                    title="Remove from this list"
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
-        </>
-      )}
-      {!appliedPlanningType && selectedMachineIds.length > 0 && (
-        <p className="data-manager-hint">Apply a Planning Type to assign operators to the selection.</p>
-      )}
+      {operatorRows}
+      {otherTypeSummary && <p className="data-manager-hint">{otherTypeSummary}</p>}
       <div className="production-assign-row production-assign-doff">
         <span className="production-assign-doff-label" title={DOFF_PRIORITY_TOOLTIP}>
           Doff Priority
@@ -2029,43 +1792,38 @@ function ProductionSetupEditor({
                 <th>Machine</th>
                 <th>Construction</th>
                 <th>Group Name</th>
-                <th>Planning Type</th>
-                <th>Doffing</th>
-                <th>Loading</th>
-                <th>Fracture Repairing</th>
-                <th>Dies Change</th>
-                <th>Defect Repairing</th>
-                <th>Operators</th>
+                <th title="Operators who may do every task on the machine">Multi Task</th>
+                {TASK_ROWS.map(({ family }) => (
+                  <th key={family}>{TASK_OPERATOR_LABELS[family]}</th>
+                ))}
+                <th title="Everyone working the machine, Multi Task and Split Task">Operators</th>
                 <th title="Machine's own Doff Priority; — = follows the setup">Doff Priority</th>
               </tr>
             </thead>
             <tbody>
               {setup.layout.map((m) => {
                 const a = assignmentByMachine.get(m.id);
-                const pool = a?.assignedOperatorIds ?? [];
+                // A list can be long — keep the cell to a count, full list on hover.
+                const listCell = (ids: string[] | undefined, title?: string) =>
+                  !ids?.length ? (
+                    '—'
+                  ) : ids.length === 1 && !title ? (
+                    operatorLabel(ids[0])
+                  ) : (
+                    <span className="production-operators-cell" title={title ?? ids.map((id) => operatorLabel(id)).join('\n')}>
+                      {ids.length === 1 ? operatorLabel(ids[0]) : `${ids.length} operators`}
+                    </span>
+                  );
                 return (
                   <tr key={m.id}>
                     <td>{m.label}</td>
                     <td>{a?.constructionDetailLabel ?? '—'}</td>
                     <td>{a?.groupName ?? '—'}</td>
-                    <td>{a?.planningType ? planningTypeLabel(a.planningType) : '—'}</td>
-                    <td>{operatorLabel(a?.doffingOperatorId)}</td>
-                    <td>{operatorLabel(a?.loadingOperatorId)}</td>
-                    <td>{operatorLabel(a?.fractureRepairingOperatorId)}</td>
-                    <td>{operatorLabel(a?.diesChangeOperatorId)}</td>
-                    <td>{operatorLabel(a?.defectRepairingOperatorId)}</td>
-                    <td>
-                      {pool.length === 0 ? (
-                        '—'
-                      ) : pool.length === 1 ? (
-                        operatorLabel(pool[0])
-                      ) : (
-                        // A pool can be long — keep the cell to a count, full list on hover.
-                        <span className="production-operators-cell" title={pool.map((id) => operatorLabel(id)).join('\n')}>
-                          {pool.length} operators
-                        </span>
-                      )}
-                    </td>
+                    <td>{listCell(a?.assignedOperatorIds)}</td>
+                    {TASK_ROWS.map(({ family }) => (
+                      <td key={family}>{listCell(a?.[TASK_OPERATOR_FIELDS[family]])}</td>
+                    ))}
+                    <td>{listCell(machineOperatorIds(a), operatorAssignmentLines(a, (id) => operatorLabel(id)).join('\n'))}</td>
                     <td>{doffPriorityText(a)}</td>
                   </tr>
                 );

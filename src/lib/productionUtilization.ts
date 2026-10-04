@@ -1,6 +1,6 @@
 import type { ActivityKey, ProductionSetup } from '../types';
 import { availableTimeMinutes, distanceMeters } from './calculations';
-import { activityFamily, assignedOperatorIdForActivity, isGroupMachine, operatorSharesForActivity } from './productionActivityRouting';
+import { activityFamily, eligibleOperatorIds, operatorSharesForActivity, TASK_OPERATOR_FIELDS, type TaskOperatorField } from './productionActivityRouting';
 import type { ResolvedConstruction } from './productionConstructionResolver';
 import { forecastCycleLength } from './frequencyTypes';
 
@@ -126,9 +126,14 @@ export function calculatePlannedUtilization(
   >();
   const unresolvedMachineIds: string[] = [];
   let unassignedMinutes = 0;
+  /** The one operator who does this activity on the machine, when there's exactly one. */
+  const soleOperatorId = (assignment: ProductionSetup['assignments'][number] | undefined, activity: string) => {
+    const ids = eligibleOperatorIds(assignment, activity);
+    return ids.length === 1 ? ids[0] : undefined;
+  };
 
-  /** Books a contribution onto whoever handles it — split equally across a MachinesGroup
-   * machine's operators — or onto unassigned demand when nobody does. */
+  /** Books a contribution onto whoever handles it — split equally across everyone who may do it
+   * (Multi Task plus that activity's Split Task operators) — or onto unassigned demand when nobody does. */
   const bookContribution = (
     contribution: PlannedActivityContribution,
     assignment: ProductionSetup['assignments'][number] | undefined,
@@ -218,7 +223,7 @@ export function calculatePlannedUtilization(
         machineId: machine.id,
         machineLabel: machine.label,
         constructionLabel: construction.label,
-        operatorId: isGroupMachine(assignment) ? undefined : assignedOperatorIdForActivity(assignment, activity.key),
+        operatorId: soleOperatorId(assignment, activity.key),
         expectedOccurrences: eventCount,
         ...(quantityBased ? { expectedQuantity } : {}),
         plannedMinutes,
@@ -277,7 +282,7 @@ export function calculatePlannedUtilization(
           machineId: machine.machineId,
           machineLabel: machine.machineLabel,
           constructionLabel: machine.constructionLabel,
-          operatorId: isGroupMachine(assignment) ? undefined : assignedOperatorIdForActivity(assignment, activity.key),
+          operatorId: soleOperatorId(assignment, activity.key),
           expectedOccurrences: machineEventCount,
           ...(quantityBased ? { expectedQuantity: machineExpectedQuantity } : {}),
           plannedMinutes,
@@ -371,12 +376,12 @@ export interface SelectionOccupation {
   activities: SelectionOccupationRow[];
 }
 
-const SELECTION_FAMILIES: { key: NonNullable<ReturnType<typeof activityFamily>>; label: string; field: keyof ProductionSetup['assignments'][number] }[] = [
-  { key: 'doffing', label: 'Doffing', field: 'doffingOperatorId' },
-  { key: 'loading', label: 'Loading', field: 'loadingOperatorId' },
-  { key: 'fractureRepairing', label: 'Fracture Repairing', field: 'fractureRepairingOperatorId' },
-  { key: 'diesChange', label: 'Dies Change', field: 'diesChangeOperatorId' },
-  { key: 'defectRepairing', label: 'Defect Repairing', field: 'defectRepairingOperatorId' },
+const SELECTION_FAMILIES: { key: NonNullable<ReturnType<typeof activityFamily>>; label: string; field: TaskOperatorField }[] = [
+  { key: 'doffing', label: 'Doffing', field: TASK_OPERATOR_FIELDS.doffing },
+  { key: 'loading', label: 'Loading', field: TASK_OPERATOR_FIELDS.loading },
+  { key: 'fractureRepairing', label: 'Fracture Repairing', field: TASK_OPERATOR_FIELDS.fractureRepairing },
+  { key: 'diesChange', label: 'Dies Change', field: TASK_OPERATOR_FIELDS.diesChange },
+  { key: 'defectRepairing', label: 'Defect Repairing', field: TASK_OPERATOR_FIELDS.defectRepairing },
 ];
 
 /** Man occupation of one hypothetical operator handling the selected machines — "All Task" does
@@ -411,14 +416,7 @@ export function calculateSelectionOccupation(
     {
       ...scopedSetup,
       operators: [{ id: ALL, label: 'All Task' }],
-      assignments: assignments.map((assignment) => ({
-        ...assignment,
-        doffingOperatorId: ALL,
-        loadingOperatorId: ALL,
-        fractureRepairingOperatorId: ALL,
-        diesChangeOperatorId: ALL,
-        defectRepairingOperatorId: ALL,
-      })),
+      assignments: assignments.map((assignment) => ({ ...assignment, assignedOperatorIds: [ALL] })),
     },
     resolved,
   );
@@ -428,7 +426,7 @@ export function calculateSelectionOccupation(
       operators: SELECTION_FAMILIES.map((family) => ({ id: familyOperatorId(family.key), label: family.label })),
       assignments: assignments.map((assignment) => ({
         ...assignment,
-        ...Object.fromEntries(SELECTION_FAMILIES.map((family) => [family.field, familyOperatorId(family.key)])),
+        ...Object.fromEntries(SELECTION_FAMILIES.map((family) => [family.field, [familyOperatorId(family.key)]])),
       })),
     },
     resolved,

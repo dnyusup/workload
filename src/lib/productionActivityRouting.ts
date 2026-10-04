@@ -17,52 +17,78 @@ export function activityFamily(key: ActivityKey): ProductionActivityFamily | nul
   return null;
 }
 
-/** Keeps planned workload routing identical to the production simulation. */
-export function assignedOperatorIdForActivity(
-  assignment: ProductionMachineAssignment | undefined,
-  activity: ActivityKey,
-): string | undefined {
-  const family = activityFamily(activity);
-  if (!family || !assignment) return undefined;
-  if (family === 'doffing') return assignment.doffingOperatorId;
-  if (family === 'loading') return assignment.loadingOperatorId;
-  if (family === 'diesChange') return assignment.diesChangeOperatorId ?? assignment.fractureRepairingOperatorId;
-  if (family === 'defectRepairing') return assignment.defectRepairingOperatorId ?? assignment.fractureRepairingOperatorId;
-  return assignment.fractureRepairingOperatorId;
+export type TaskOperatorField =
+  | 'doffingOperatorIds'
+  | 'loadingOperatorIds'
+  | 'fractureRepairingOperatorIds'
+  | 'diesChangeOperatorIds'
+  | 'defectRepairingOperatorIds';
+
+/** The Split Task operator list for each activity family. */
+export const TASK_OPERATOR_FIELDS: Record<ProductionActivityFamily, TaskOperatorField> = {
+  doffing: 'doffingOperatorIds',
+  loading: 'loadingOperatorIds',
+  fractureRepairing: 'fractureRepairingOperatorIds',
+  diesChange: 'diesChangeOperatorIds',
+  defectRepairing: 'defectRepairingOperatorIds',
+};
+
+/** Split Task operators of one family. Dies Change and Defect Repairing fall back to the Fracture
+ * Repairing operators when they have none of their own, as setups made before those columns did. */
+export function taskOperatorIds(assignment: ProductionMachineAssignment | undefined, family: ProductionActivityFamily): string[] {
+  if (!assignment) return [];
+  const own = assignment[TASK_OPERATOR_FIELDS[family]] ?? [];
+  if (own.length > 0 || (family !== 'diesChange' && family !== 'defectRepairing')) return own;
+  return assignment.fractureRepairingOperatorIds ?? [];
 }
 
-/** Every operator that works on this machine in either planning type (per-activity slots plus the
- * MachinesGroup pool), deduplicated. */
+/** Everyone who may do this activity on this machine: its Multi Task operators plus that
+ * activity's Split Task operators, deduplicated. Keeps planned workload routing identical to the
+ * production simulation. */
+export function eligibleOperatorIds(assignment: ProductionMachineAssignment | undefined, activity: ActivityKey): string[] {
+  if (!assignment) return [];
+  const family = activityFamily(activity);
+  return [...new Set([...(assignment.assignedOperatorIds ?? []), ...(family ? taskOperatorIds(assignment, family) : [])])];
+}
+
+/** Every operator that works on this machine (Multi Task plus every Split Task list), deduplicated. */
 export function machineOperatorIds(assignment: ProductionMachineAssignment | undefined): string[] {
   if (!assignment) return [];
   return [
-    ...new Set(
-      [
-        assignment.doffingOperatorId,
-        assignment.loadingOperatorId,
-        assignment.fractureRepairingOperatorId,
-        assignment.diesChangeOperatorId,
-        assignment.defectRepairingOperatorId,
-        ...(assignment.assignedOperatorIds ?? []),
-      ].filter((id): id is string => !!id),
-    ),
+    ...new Set([
+      ...(assignment.assignedOperatorIds ?? []),
+      ...Object.values(TASK_OPERATOR_FIELDS).flatMap((field) => assignment[field] ?? []),
+    ]),
   ];
 }
 
-export function isGroupMachine(assignment: ProductionMachineAssignment | undefined): boolean {
-  return assignment?.planningType === 'MachinesGroup';
+export const TASK_OPERATOR_LABELS: Record<ProductionActivityFamily, string> = {
+  doffing: 'Doffing',
+  loading: 'Loading',
+  fractureRepairing: 'Fracture Repairing',
+  diesChange: 'Dies Change',
+  defectRepairing: 'Defect Repairing',
+};
+
+/** Tooltip lines for a machine's operators: its Multi Task operators, then each Split Task list
+ * that has anyone ("—" when the machine has no operator at all). */
+export function operatorAssignmentLines(assignment: ProductionMachineAssignment | undefined, labelOf: (id: string) => string): string[] {
+  const names = (ids: string[] | undefined) => (ids ?? []).map(labelOf).join(', ');
+  const lines = [
+    ...(assignment?.assignedOperatorIds?.length ? [`Multi Task: ${names(assignment.assignedOperatorIds)}`] : []),
+    ...(Object.keys(TASK_OPERATOR_FIELDS) as ProductionActivityFamily[])
+      .filter((family) => assignment?.[TASK_OPERATOR_FIELDS[family]]?.length)
+      .map((family) => `${TASK_OPERATOR_LABELS[family]}: ${names(assignment?.[TASK_OPERATOR_FIELDS[family]])}`),
+  ];
+  return lines.length > 0 ? lines : ['Operators: —'];
 }
 
-/** Who carries an activity's workload on this machine, and what fraction each carries — the whole
- * of it for the one dedicated operator, or an equal split across a MachinesGroup machine's pool. */
+/** Who carries an activity's workload on this machine, and what fraction each carries — an equal
+ * split across everyone who may do it. */
 export function operatorSharesForActivity(
   assignment: ProductionMachineAssignment | undefined,
   activity: ActivityKey,
 ): { operatorId: string; share: number }[] {
-  if (isGroupMachine(assignment)) {
-    const pool = [...new Set(assignment?.assignedOperatorIds ?? [])];
-    return pool.map((operatorId) => ({ operatorId, share: 1 / pool.length }));
-  }
-  const operatorId = assignedOperatorIdForActivity(assignment, activity);
-  return operatorId ? [{ operatorId, share: 1 }] : [];
+  const operatorIds = eligibleOperatorIds(assignment, activity);
+  return operatorIds.map((operatorId) => ({ operatorId, share: 1 / operatorIds.length }));
 }

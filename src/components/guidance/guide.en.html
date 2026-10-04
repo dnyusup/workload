@@ -92,17 +92,17 @@
       <p>Select machines on the canvas (click or drag), then work down the panel. Each field has an <span class="ui">Apply</span> button and a remove button. An Apply button turns yellow when its field has changes not yet applied.</p>
       <ol class="steps">
         <li><strong>Construction Detail</strong> of the machines.</li>
-        <li><strong>Group Name</strong>: a free-text label to group machines.</li>
-        <li><strong>Planning Type</strong>: pick it and Apply. Operator assignment appears only after this.
+        <li><strong>Group Name</strong>: a free-text label for reporting machines together.</li>
+        <li><strong>Assign Type</strong>: only picks which operator fields show; it isn't saved.
           <ul>
-            <li><em>Dedicated Machines</em> → choose <span class="ui">Opr Assign Type</span>: <em>Multi Task</em> (one operator for every activity) or <em>Split Task</em> (an operator per activity: Doff, Load, Fract, Dies, Defect).</li>
-            <li><em>Machines Group</em> → add several operators. Any of them may do any task on those machines.</li>
+            <li><em>Multi Task</em> → add one or more operators. Any of them may do any task on those machines.</li>
+            <li><em>Split Task</em> → add one or more operators per activity: Doff, Load, Fract, Dies, Defect. They only do that activity.</li>
           </ul>
         </li>
         <li><strong>Doff Priority</strong> (optional): a toggle and Min Remain Task for the selected machines only. The remove button sets them back to follow the setup.</li>
       </ol>
-      <div class="note warn"><p>Changing a machine's Planning Type removes the previous type's operators from it (you're asked to confirm).</p></div>
-      <p>The <strong>Man Occupation (1 operator)</strong> panel shows the selected machines' workload if one operator handled them. Per-activity rows appear only for Dedicated + Split Task.</p>
+      <div class="note"><p>A machine can have Multi Task and Split Task operators at once. Switching Assign Type keeps the other type's operators; a hint below lists them. An operator is one or the other on a machine: someone already Multi Task on the selection isn't offered in Split Task, and the other way round. A machine with no operator yet opens as Multi Task.</p></div>
+      <p>The <strong>Man Occupation (1 operator)</strong> panel shows the selected machines' workload if one operator handled them. Per-activity rows appear while Assign Type is Split Task.</p>
 
       <h3>Operators card</h3>
       <ul>
@@ -113,8 +113,8 @@
       <h3>Canvas &amp; Machine Assignments</h3>
       <ul>
         <li><strong>Construction Detail View</strong> colors machines by Construction. <strong>Operator View</strong> splits each machine body by operator. Hover a legend entry to highlight its machines.</li>
-        <li>The <strong>Machine Assignments</strong> table lists every column per machine: Construction, Group Name, Planning Type, the operator per activity, Operators (Machines Group; hover to see the list), and the machine's Doff Priority ("—" = follows the setup).</li>
-        <li>Use <span class="ui">Export CSV</span>, edit in Excel, then <span class="ui">Import CSV</span>. The Operators column takes operator names separated by <code>;</code>. Doff Priority takes <code>Yes</code>, <code>No</code> or blank; Min Remain Task takes minutes or blank (blank = follow the setup).</li>
+        <li>The <strong>Machine Assignments</strong> table lists every column per machine: Construction, Group Name, Multi Task, the operators per activity, Operators (everyone on the machine; hover to see who does what), and the machine's Doff Priority ("—" = follows the setup).</li>
+        <li>Use <span class="ui">Export CSV</span>, edit in Excel, then <span class="ui">Import CSV</span>. The Multi Task and activity columns take operator names separated by <code>;</code>. Doff Priority takes <code>Yes</code>, <code>No</code> or blank; Min Remain Task takes minutes or blank (blank = follow the setup).</li>
       </ul>
 
       <h3>Running the simulation</h3>
@@ -193,8 +193,8 @@
       </table></div>
       <p>An event counts when it's finished, on the same machine. Several events before one Doffing still give the sub-task once.</p>
 
-      <h3>Dedicated Machines vs Machines Group</h3>
-      <p><em>Dedicated</em>: each activity has its own operator. <em>Machines Group</em>: every operator assigned to the machine shares its work; only one operator works a machine at a time. One setup can mix both, per machine. A machine with no Planning Type is simulated as Dedicated.</p>
+      <h3>Multi Task vs Split Task</h3>
+      <p>A task on a machine may be done by the machine's Multi Task operators and by that activity's Split Task operators, whoever is free first (by Task Priority). Only one operator works a machine at a time. Sub-tasks (e.g. ScanMES, Loading Partial) follow their parent activity. Loading waits until the Doffing is done when the operator can't do the Doffing too. Dies Change and Defect Repairing use their own operators; with none set they fall back to the Fracture Repairing operators. In the forecast, an activity's workload is split evenly across everyone who may do it.</p>
 
       <h3>Breaks (Lunch, Meeting, Other)</h3>
       <p>When a break is due, the operator first finishes the visit they're on, then takes the full break. Machines that need work wait during the break. In Production Simulation, start minutes can differ per operator (the ⚙️ button).</p>
@@ -233,8 +233,8 @@
         <dt>OEE Availability</dt><dd>(Planned production time − downtime) ÷ planned production time.</dd>
         <dt>Reject % / Quality</dt><dd>Share of reject tonnage; reduces good tonnage and OEE (Production Simulation).</dd>
         <dt>Manhour/ton, Machhours/ton</dt><dd>Operator hours or machine hours per ton of output.</dd>
-        <dt>Planning Type</dt><dd>Dedicated Machines or Machines Group, per machine.</dd>
-        <dt>Group Name</dt><dd>A free-text label to group machines.</dd>
+        <dt>Multi Task / Split Task</dt><dd>Operators who may do every task on a machine / only one activity on it.</dd>
+        <dt>Group Name</dt><dd>A free-text label for reporting machines together.</dd>
         <dt>Doff Priority / Min Remain Task</dt><dd>Pausing work for Doffing when at least Min Remain Task minutes of the visit are left. Set per setup, and in Production Simulation per machine too.</dd>
         <dt>WLM / Output model</dt><dd>A simulation result saved in WL_Outputmodels, with versions.</dd>
         <dt>Inherited condition</dt><dd>Starting machine conditions + seed from a saved result, to replay a simulation.</dd>

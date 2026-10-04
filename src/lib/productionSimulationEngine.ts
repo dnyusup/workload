@@ -23,7 +23,7 @@ import { buildWallGraph, type WallGraph } from './wallRouting';
 
 /** How far operators keep from a wall's end when walking around it. */
 const WALL_CLEARANCE_METERS = 0.5;
-import { activityFamily, assignedOperatorIdForActivity, isGroupMachine } from './productionActivityRouting';
+import { activityFamily, taskOperatorIds, TASK_OPERATOR_FIELDS, type ProductionActivityFamily } from './productionActivityRouting';
 import type { ResolvedConstruction } from './productionConstructionResolver';
 import { frequencyTypeIsDue, triggerEventOf, type TriggerEvent } from './frequencyTypes';
 import { isDoffingActivity, nextTaskOf, remainingVisitMinutes, snapshotVisit } from './doffPriority';
@@ -35,6 +35,7 @@ function emptyCounts(activities: ActivityConfig[]): Record<ActivityKey, number> 
 
 const GLOBAL_EVENT_ACTIVITIES = new Set(['fractureRepairing', 'diesChange', 'defectRepairing']);
 const AVERAGE_DIES_PER_CHANGE_EVENT = (7 + 26) / 2;
+const EMPTY_SET: ReadonlySet<string> = new Set();
 
 /** Root activity family an activity key belongs to (doffing / loading / fractureRepairing),
  * matching the `<family>` / `<family>-sub-*` / `<family>-*` key conventions used throughout the
@@ -126,7 +127,7 @@ export class ProductionSimulationEngine {
    * Per operator rather than global — at a few thousand machines some Doffing comes due almost
    * every step, which would invalidate every operator's cached answer constantly. */
   private doffCheckEpochByOperator = new Map<string, number>();
-  /** Every operator that may work each machine (per-activity slots, or the MachinesGroup pool). */
+  /** Every operator that may work each machine (Multi Task plus every Split Task list). */
   private operatorsByMachineId = new Map<string, Set<string>>();
   /** Per operator, the last Doff Priority check that came out false. Within one visit and zone the
    * remaining visit time only shrinks, so that answer holds until the epoch, zone or visit changes —
@@ -146,20 +147,20 @@ export class ProductionSimulationEngine {
   /** Built once at construction time (assignments never change mid-run) so per-Construction
    * fracture logic never has to re-filter the full machine list every tick sub-step. */
   private machinesByConstruction = new Map<string, ProdMachine[]>();
-  /** Built once at construction time — every task's assignedOperatorId comes from its own
-   * machine's assignment (see operatorIdForTask), so an operator can only ever have work on the
-   * machines assigned to it. pickNextTarget scans just those instead of every machine: it runs
+  /** Built once at construction time — who may do a task comes from its own machine's assignment
+   * (see eligibleFor), so an operator can only ever have work on the machines assigned to it. pickNextTarget scans just those instead of every machine: it runs
    * for each idle operator on every 0.02-min sub-step, and scanning the full list there made a
    * tick cost O(machines × operators) — the dominant cost at a few thousand machines. Kept in
    * this.machines order so candidate order (and so tie-breaking) is unchanged. */
   private machinesByOperator = new Map<string, ProdMachine[]>();
   private machineById = new Map<string, ProdMachine>();
   private assignmentByMachineId = new Map<string, ProductionMachineAssignment>();
-  /** MachinesGroup machines only (a machine is in here exactly when it's planned as a group): its
-   * tasks carry no assignedOperatorId — any operator in the pool takes all of its pending work, and
-   * the machine lock keeps two of them from servicing it at once. Every other machine keeps the
-   * per-activity DedicatedMachines routing. */
-  private operatorPoolByMachineId = new Map<string, Set<string>>();
+  /** Per machine: its Multi Task operators, who may take any of its pending work. */
+  private multiTaskByMachineId = new Map<string, Set<string>>();
+  /** Per machine and activity family: everyone who may do that work (Multi Task plus that family's
+   * Split Task operators). The machine lock keeps two of them from servicing it at once. */
+  private eligibleByMachineId = new Map<string, Map<ProductionActivityFamily, Set<string>>>();
+  private familyByActivity = new Map<ActivityKey, ProductionActivityFamily | null>();
 
   constructor(setup: ProductionSetup, resolved: Map<string, ResolvedConstruction>, resolveErrors: string[] = []) {
     this.setup = setup;
@@ -247,19 +248,15 @@ export class ProductionSimulationEngine {
       this.machineById.set(m.id, m);
       const assignment = this.assignmentByMachineId.get(m.id);
       if (!assignment) return;
-      const groupMachine = isGroupMachine(assignment);
-      const operatorIds = groupMachine
-        ? new Set((assignment.assignedOperatorIds ?? []).filter((id) => knownOperatorIds.has(id)))
-        : new Set(
-            [
-              assignment.doffingOperatorId,
-              assignment.loadingOperatorId,
-              assignment.fractureRepairingOperatorId,
-              assignment.diesChangeOperatorId,
-              assignment.defectRepairingOperatorId,
-            ].filter((id): id is string => !!id),
-          );
-      if (groupMachine) this.operatorPoolByMachineId.set(m.id, operatorIds);
+      const known = (ids: string[]) => ids.filter((id) => knownOperatorIds.has(id));
+      const multiTask = new Set(known(assignment.assignedOperatorIds ?? []));
+      const eligible = new Map<ProductionActivityFamily, Set<string>>();
+      (Object.keys(TASK_OPERATOR_FIELDS) as ProductionActivityFamily[]).forEach((family) => {
+        eligible.set(family, new Set([...multiTask, ...known(taskOperatorIds(assignment, family))]));
+      });
+      const operatorIds = new Set([...multiTask, ...[...eligible.values()].flatMap((ids) => [...ids])]);
+      this.multiTaskByMachineId.set(m.id, multiTask);
+      this.eligibleByMachineId.set(m.id, eligible);
       this.operatorsByMachineId.set(m.id, operatorIds);
       operatorIds.forEach((id) => {
         const list = this.machinesByOperator.get(id);
@@ -400,16 +397,25 @@ export class ProductionSimulationEngine {
     if (this.log.length > 300) this.log.shift();
   }
 
-  private operatorIdForTask(machineAssignment: ProdMachine, activity: ActivityKey): string | undefined {
-    if (this.operatorPoolByMachineId.has(machineAssignment.id)) return undefined;
-    return assignedOperatorIdForActivity(this.assignmentByMachineId.get(machineAssignment.id), activity);
+  private familyOf(activity: ActivityKey): ProductionActivityFamily | null {
+    let family = this.familyByActivity.get(activity);
+    if (family === undefined) {
+      family = activityFamily(activity);
+      this.familyByActivity.set(activity, family);
+    }
+    return family;
   }
 
-  /** Whether anyone will ever pick this task up — its own operator, or (MachinesGroup) anyone in
-   * the machine's pool. */
-  private hasHandler(machine: ProdMachine, assignedOperatorId: string | undefined): boolean {
-    const pool = this.operatorPoolByMachineId.get(machine.id);
-    return pool ? pool.size > 0 : !!assignedOperatorId;
+  /** Everyone who may do this activity on this machine; an activity outside the five families can
+   * only be done by its Multi Task operators. */
+  private eligibleFor(machine: ProdMachine, activity: ActivityKey): ReadonlySet<string> {
+    const family = this.familyOf(activity);
+    return (family ? this.eligibleByMachineId.get(machine.id)?.get(family) : this.multiTaskByMachineId.get(machine.id)) ?? EMPTY_SET;
+  }
+
+  /** Whether anyone will ever pick this task up. */
+  private hasHandler(machine: ProdMachine, activity: ActivityKey): boolean {
+    return this.eligibleFor(machine, activity).size > 0;
   }
 
   /** If both Loading Partial1 and Partial2 just came due together on the same machine, the
@@ -429,7 +435,6 @@ export class ProductionSimulationEngine {
       activity: partial3.key,
       label: partial3.label,
       timeMinutes: partial3.timeMinutes,
-      assignedOperatorId: this.operatorIdForTask(machine, partial3.key),
     };
     const remaining = newTasks.filter((t) => t.activity !== partial1.key && t.activity !== partial2.key);
     remaining.splice(insertAt, 0, combined);
@@ -455,7 +460,7 @@ export class ProductionSimulationEngine {
       if (activity.loadingInterrupt) return;
       if (activity.frequencyType) {
         if (doffingDue && activity.parentKey === 'doffing' && frequencyTypeIsDue(activity.frequencyType, eventsSinceLastDoff, firstDoffOfShift)) {
-          newTasks.push({ activity: key, label: activity.label, timeMinutes: activity.timeMinutes, assignedOperatorId: this.operatorIdForTask(machine, key) });
+          newTasks.push({ activity: key, label: activity.label, timeMinutes: activity.timeMinutes });
         }
         return;
       }
@@ -468,8 +473,7 @@ export class ProductionSimulationEngine {
         const parentDue = parent ? (dueCounts.get(parent.key) ?? 0) > (handledCounts.get(parent.key) ?? 0) : false;
         const altersWithParent = parent?.key === 'loading';
         if (!altersWithParent || !parentDue) {
-          const assignedOperatorId = this.operatorIdForTask(machine, key);
-          if (!this.hasHandler(machine, assignedOperatorId)) {
+          if (!this.hasHandler(machine, key)) {
             const warnKey = `${machine.id}:${key}`;
             if (!this.warnedNoOperator.has(warnKey)) {
               this.warnedNoOperator.add(warnKey);
@@ -480,7 +484,6 @@ export class ProductionSimulationEngine {
             activity: key,
             label: activity.label,
             timeMinutes: activity.timeMinutes,
-            assignedOperatorId,
             loadingPayoffOnly: activity.loadingInterrupt,
             defectTakeupOnly: activity.defectTakeupOnly,
           });
@@ -505,11 +508,7 @@ export class ProductionSimulationEngine {
       newTasks.forEach((t) => {
         if (existingKeys.has(t.activity)) return;
         machine.pendingTasks.push(t);
-        if (isDoffingActivity(t.activity)) {
-          const pool = this.operatorPoolByMachineId.get(machine.id);
-          if (pool) pool.forEach((id) => this.bumpDoffCheck(id));
-          else if (t.assignedOperatorId) this.bumpDoffCheck(t.assignedOperatorId);
-        }
+        if (isDoffingActivity(t.activity)) this.eligibleFor(machine, t.activity).forEach((id) => this.bumpDoffCheck(id));
       });
       this.addLog(atMin, `${machine.label} needs ${newTasks.map((t) => t.label).join(', ')}`);
     }
@@ -552,12 +551,10 @@ export class ProductionSimulationEngine {
     );
     if (machine.spoolsSinceLoading + fractionalProgress < cycle ||
       machine.pendingTasks.some((task) => task.activity === 'loading')) return;
-    const assignedOperatorId = this.operatorIdForTask(machine, 'loading');
     machine.pendingTasks.push({
       activity: 'loading',
       label: activity.label,
       timeMinutes: activity.timeMinutes,
-      assignedOperatorId,
       loadingPayoffOnly: true,
     });
     machine.runtimeRemainingMin = Math.max(0, machine.nextCompletionAt - atMin);
@@ -595,15 +592,14 @@ export class ProductionSimulationEngine {
     const target = candidates[Math.floor(Math.random() * candidates.length)];
     if (target.pendingTasks.some((t) => t.activity === 'fractureRepairing')) return false;
     const activity = findActivity(target.activities, 'fractureRepairing');
-    const assignedOperatorId = this.operatorIdForTask(target, 'fractureRepairing');
-    if (!this.hasHandler(target, assignedOperatorId)) {
+    if (!this.hasHandler(target, 'fractureRepairing')) {
       const warnKey = `${target.id}:fractureRepairing`;
       if (!this.warnedNoOperator.has(warnKey)) {
         this.warnedNoOperator.add(warnKey);
         this.warnings.push(`Machine ${target.label}: "${activity.label}" is due but has no operator assigned.`);
       }
     }
-    target.pendingTasks.push({ activity: 'fractureRepairing', label: activity.label, timeMinutes: activity.timeMinutes, assignedOperatorId });
+    target.pendingTasks.push({ activity: 'fractureRepairing', label: activity.label, timeMinutes: activity.timeMinutes });
     const constructionLabel = this.constructionLabelById.get(constructionId) ?? constructionId;
     if (isStopActivity(target.activities, 'fractureRepairing')) {
       target.runtimeRemainingMin = Math.max(0, target.nextCompletionAt - atMin);
@@ -640,8 +636,7 @@ export class ProductionSimulationEngine {
             : 0
         : undefined;
     if (activityKey === 'diesChange' && (!quantity || quantity <= 0)) return false;
-    const assignedOperatorId = this.operatorIdForTask(target, activityKey);
-    if (!this.hasHandler(target, assignedOperatorId)) {
+    if (!this.hasHandler(target, activityKey)) {
       const warnKey = `${target.id}:${activityKey}`;
       if (!this.warnedNoOperator.has(warnKey)) {
         this.warnedNoOperator.add(warnKey);
@@ -655,7 +650,6 @@ export class ProductionSimulationEngine {
       timeMinutes: activity.timeMinutes * (quantity ?? 1),
       quantity,
       defectTakeupOnly: activity.defectTakeupOnly,
-      assignedOperatorId,
     });
     if (activityKey === 'diesChange' && state) state.scheduledDies += quantity ?? 0;
     const constructionLabel = this.constructionLabelById.get(constructionId) ?? constructionId;
@@ -747,27 +741,20 @@ export class ProductionSimulationEngine {
   }
 
   /** A Loading-family task can't start until the machine has actually been Doffed — physically
-   * you can't load a machine that still has its finished spool on it. When Doffing and Loading are
-   * split across two different operators, that dependency isn't automatic anymore (a single
-   * operator naturally does them in order during one visit, but two operators act independently),
-   * so block the Loading task from being offered until any pending Doffing task assigned to a
-   * DIFFERENT operator is gone. Same-operator or unassigned-doffing cases are left alone — either
-   * order is already correct (one visit) or there's nothing to wait for. */
-  private isTaskReady(machine: ProdMachine, task: PendingTask): boolean {
-    if (activityFamily(task.activity) !== 'loading') return true;
-    return !machine.pendingTasks.some(
-      (t) => activityFamily(t.activity) === 'doffing' && t.assignedOperatorId && t.assignedOperatorId !== task.assignedOperatorId,
-    );
+   * you can't load a machine that still has its finished spool on it. An operator who may also do
+   * the Doffing does both in order in one visit; one who may not has to wait until it's gone. A
+   * Doffing nobody may do is left alone — there's nothing to wait for. */
+  private isTaskReady(machine: ProdMachine, task: PendingTask, operatorId: string): boolean {
+    if (this.familyOf(task.activity) !== 'loading') return true;
+    return !machine.pendingTasks.some((t) => {
+      if (this.familyOf(t.activity) !== 'doffing') return false;
+      const doffers = this.eligibleFor(machine, t.activity);
+      return doffers.size > 0 && !doffers.has(operatorId);
+    });
   }
 
   private tasksFor(operatorId: string, machine: ProdMachine): PendingTask[] {
-    const pool = this.operatorPoolByMachineId.get(machine.id);
-    if (pool) {
-      // One operator does every task in one visit, so Doffing-before-Loading ordering is already
-      // natural and isTaskReady's cross-operator wait doesn't apply.
-      return pool.has(operatorId) ? [...machine.pendingTasks] : [];
-    }
-    return machine.pendingTasks.filter((t) => t.assignedOperatorId === operatorId && this.isTaskReady(machine, t));
+    return machine.pendingTasks.filter((t) => this.eligibleFor(machine, t.activity).has(operatorId) && this.isTaskReady(machine, t, operatorId));
   }
 
   private pickNextTarget(operator: ProductionOperatorRuntimeState): ProdMachine | null {
@@ -840,12 +827,12 @@ export class ProductionSimulationEngine {
     return breaks.find((b) => !b.done && clockCursor >= b.startAt) ?? null;
   }
 
-  /** A suspended visit on this machine this operator may pick back up: its own (dedicated
-   * machines), or any pool member's (MachinesGroup). */
+  /** A suspended visit on this machine this operator may pick back up: their own (Split Task
+   * work), or any Multi Task operator's when one of those left it. */
   private canResume(operatorId: string, machine: ProdMachine): boolean {
     const visit = this.suspendedVisits.get(machine.id);
     if (!visit) return false;
-    return visit.ownerOperatorId ? visit.ownerOperatorId === operatorId : !!this.operatorPoolByMachineId.get(machine.id)?.has(operatorId);
+    return visit.ownerOperatorId ? visit.ownerOperatorId === operatorId : !!this.multiTaskByMachineId.get(machine.id)?.has(operatorId);
   }
 
   /** Everything this operator's visit to the machine would do now: the rest of a suspended visit
@@ -875,10 +862,7 @@ export class ProductionSimulationEngine {
   }
 
   private hasDoffingFor(operatorId: string, machine: ProdMachine): boolean {
-    const pool = this.operatorPoolByMachineId.get(machine.id);
-    return machine.pendingTasks.some(
-      (t) => isDoffingActivity(t.activity) && (pool ? pool.has(operatorId) : t.assignedOperatorId === operatorId),
-    );
+    return machine.pendingTasks.some((t) => isDoffingActivity(t.activity) && this.eligibleFor(machine, t.activity).has(operatorId));
   }
 
   /** Doffing priority: leave the current visit when another of this operator's machines needs
@@ -919,7 +903,7 @@ export class ProductionSimulationEngine {
     if (machine) {
       this.suspendedVisits.set(machine.id, {
         ...snapshotVisit(operator),
-        ownerOperatorId: this.operatorPoolByMachineId.has(machine.id) ? undefined : operator.id,
+        ownerOperatorId: this.multiTaskByMachineId.get(machine.id)?.has(operator.id) ? undefined : operator.id,
       });
       // A stopped machine stays stopped, now waiting for its work to be picked back up.
       if (machine.status === 'being-serviced') {

@@ -20,7 +20,7 @@ import { buildSetupConstructionColorMap } from '../../lib/constructionColors';
 import { isFinishProductSpoolType } from '../../lib/productType';
 import { estimateProductionEvents } from '../../lib/productionEstimate';
 import { RPC_OCCUPATION_LABEL, summarizeOperatorTimelines } from '../../lib/operatorOccupation';
-import { isGroupMachine, machineOperatorIds } from '../../lib/productionActivityRouting';
+import { machineOperatorIds, operatorAssignmentLines } from '../../lib/productionActivityRouting';
 import { buildCanvasLegendData, type LegendHover } from '../../lib/canvasLegend';
 import { CanvasLegendPanel } from './CanvasLegendPanel';
 import { ProductionReportView } from './ProductionReportView';
@@ -1317,16 +1317,8 @@ const MachinesLayer = memo(function MachinesLayer({
           ? [
               `Machine ${m.label}`,
               `Construction: ${assignment?.constructionDetailLabel ?? '—'}`,
-              ...(isGroupMachine(assignment)
-                ? [
-                    `Group: ${assignment?.groupName ?? '—'}`,
-                    `Operators: ${(assignment?.assignedOperatorIds ?? []).map((id) => operatorLabelById(id)).join(', ') || '—'}`,
-                  ]
-                : [
-                    `Doffing: ${operatorLabelById(assignment?.doffingOperatorId)}`,
-                    `Loading: ${operatorLabelById(assignment?.loadingOperatorId)}`,
-                    `Fracture Repairing: ${operatorLabelById(assignment?.fractureRepairingOperatorId)}`,
-                  ]),
+              `Group: ${assignment?.groupName ?? '—'}`,
+              ...operatorAssignmentLines(assignment, operatorLabelById),
             ].join('\n')
           : undefined;
         return (

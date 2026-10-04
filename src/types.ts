@@ -222,10 +222,6 @@ export interface PendingTask {
   timeMinutes: number;
   /** Number of dies changed for a DiesChange event, when applicable. */
   quantity?: number;
-  /** Production Simulation only: which ProductionOperator this specific task belongs to (resolved
-   * from the machine's per-activity operator assignment). Undefined in the single-operator
-   * Simulator, where every task implicitly belongs to the one shared operator. */
-  assignedOperatorId?: string;
   /** Weight-based Loading is performed entirely at the Pay Off zone. */
   loadingPayoffOnly?: boolean;
   defectTakeupOnly?: boolean;
@@ -302,8 +298,8 @@ export interface ServiceSegment {
 export interface SuspendedVisit {
   tasks: PendingTask[];
   segments: ServiceSegment[];
-  /** Production Simulation, dedicated machines: only this operator may resume it. Undefined = any
-   * operator allowed on the machine (the single-operator Simulator, or a MachinesGroup pool). */
+  /** Production Simulation: only this operator may resume it (they were doing Split Task work).
+   * Undefined = any of the machine's Multi Task operators may (or the single-operator Simulator). */
   ownerOperatorId?: string;
 }
 
@@ -432,28 +428,22 @@ export interface ProductionMachineAssignment {
   machineId: string;
   constructionDetailId?: string;
   constructionDetailLabel?: string;
-  doffingOperatorId?: string;
-  loadingOperatorId?: string;
-  fractureRepairingOperatorId?: string;
-  diesChangeOperatorId?: string;
-  defectRepairingOperatorId?: string;
-  /** Free-text label for machines planned together. */
+  /** Split Task: the operators that may do just that activity family on this machine. */
+  doffingOperatorIds?: string[];
+  loadingOperatorIds?: string[];
+  fractureRepairingOperatorIds?: string[];
+  diesChangeOperatorIds?: string[];
+  defectRepairingOperatorIds?: string[];
+  /** Free-text label for reporting machines planned together. */
   groupName?: string;
-  /** Undefined = not chosen yet; the simulation then routes it like DedicatedMachines, so setups
-   * planned before this existed keep running. */
-  planningType?: PlanningType;
-  /** MachinesGroup only — every operator that may handle this machine. Any of them takes whatever
-   * task comes due on it; the per-activity *OperatorId slots above stay empty. */
+  /** Multi Task: operators that may do every task on this machine, whoever is free first. A machine
+   * can have these and Split Task operators at once; an operator is in one or the other, never both. */
   assignedOperatorIds?: string[];
   /** Whether this machine's Doffing may interrupt an operator's other work, and the least visit
    * time that must still be left for it to; undefined = follow the setup's own settings. */
   doffPriority?: boolean;
   minRemainForDoffPriority?: number;
 }
-
-/** DedicatedMachines: each activity on a machine is routed to its own assigned operator.
- * MachinesGroup: a machine's operators share all of its work, whoever is free first. */
-export type PlanningType = 'DedicatedMachines' | 'MachinesGroup';
 
 export interface ProductionSetup {
   id: string;

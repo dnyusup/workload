@@ -92,17 +92,17 @@
       <p>Pilih mesin di kanvas (klik atau drag), lalu isi dari atas ke bawah. Setiap field punya tombol <span class="ui">Apply</span> dan tombol hapus. Tombol Apply berwarna kuning kalau isiannya belum di-apply.</p>
       <ol class="steps">
         <li><strong>Construction Detail</strong> mesin.</li>
-        <li><strong>Group Name</strong>: label bebas untuk mengelompokkan mesin.</li>
-        <li><strong>Planning Type</strong>: pilih lalu Apply. Bagian assign operator baru muncul setelah ini.
+        <li><strong>Group Name</strong>: label bebas untuk pelaporan mesin yang dikelompokkan.</li>
+        <li><strong>Assign Type</strong>: hanya menentukan field operator yang tampil; tidak disimpan.
           <ul>
-            <li><em>Dedicated Machines</em> → pilih <span class="ui">Opr Assign Type</span>: <em>Multi Task</em> (satu operator untuk semua aktivitas) atau <em>Split Task</em> (operator per aktivitas: Doff, Load, Fract, Dies, Defect).</li>
-            <li><em>Machines Group</em> → tambahkan beberapa operator. Siapa pun di antara mereka bisa mengerjakan tugas apa pun di mesin itu.</li>
+            <li><em>Multi Task</em> → tambahkan satu atau beberapa operator. Siapa pun di antara mereka bisa mengerjakan tugas apa pun di mesin itu.</li>
+            <li><em>Split Task</em> → tambahkan satu atau beberapa operator per aktivitas: Doff, Load, Fract, Dies, Defect. Mereka hanya mengerjakan aktivitas itu.</li>
           </ul>
         </li>
         <li><strong>Doff Priority</strong> (opsional): toggle dan Min Remain Task khusus mesin terpilih. Tombol hapus mengembalikannya agar ikut setting setup.</li>
       </ol>
-      <div class="note warn"><p>Mengganti Planning Type menghapus operator dari tipe sebelumnya di mesin itu (ada konfirmasi dulu).</p></div>
-      <p>Panel <strong>Man Occupation (1 operator)</strong> menunjukkan beban mesin terpilih bila dikerjakan satu operator. Baris per aktivitas hanya tampil untuk Dedicated + Split Task.</p>
+      <div class="note"><p>Satu mesin bisa punya operator Multi Task dan Split Task sekaligus. Mengganti Assign Type tidak menghapus operator tipe lainnya; keterangan di bawahnya menampilkan siapa saja. Satu operator hanya masuk salah satu di sebuah mesin: operator yang sudah Multi Task di mesin terpilih tidak muncul di Split Task, begitu juga sebaliknya. Mesin yang belum punya operator terbuka sebagai Multi Task.</p></div>
+      <p>Panel <strong>Man Occupation (1 operator)</strong> menunjukkan beban mesin terpilih bila dikerjakan satu operator. Baris per aktivitas tampil saat Assign Type Split Task.</p>
 
       <h3>Card Operators</h3>
       <ul>
@@ -113,8 +113,8 @@
       <h3>Kanvas &amp; Machine Assignments</h3>
       <ul>
         <li><strong>Construction Detail View</strong> mewarnai mesin per Construction. <strong>Operator View</strong> membagi badan mesin per operator. Arahkan kursor ke legend untuk menyorot mesinnya.</li>
-        <li>Tabel <strong>Machine Assignments</strong> menampilkan semua kolom per mesin: Construction, Group Name, Planning Type, operator per aktivitas, Operators (Machines Group; arahkan kursor untuk melihat daftarnya), dan Doff Priority mesin ("—" = ikut setup).</li>
-        <li>Gunakan <span class="ui">Export CSV</span>, edit di Excel, lalu <span class="ui">Import CSV</span>. Kolom Operators diisi nama operator dipisah <code>;</code>. Kolom Doff Priority diisi <code>Yes</code>, <code>No</code>, atau kosong; Min Remain Task diisi angka menit atau kosong (kosong = ikut setup).</li>
+        <li>Tabel <strong>Machine Assignments</strong> menampilkan semua kolom per mesin: Construction, Group Name, Multi Task, operator per aktivitas, Operators (semua operator di mesin itu; arahkan kursor untuk melihat siapa mengerjakan apa), dan Doff Priority mesin ("—" = ikut setup).</li>
+        <li>Gunakan <span class="ui">Export CSV</span>, edit di Excel, lalu <span class="ui">Import CSV</span>. Kolom Multi Task dan kolom aktivitas diisi nama operator dipisah <code>;</code>. Kolom Doff Priority diisi <code>Yes</code>, <code>No</code>, atau kosong; Min Remain Task diisi angka menit atau kosong (kosong = ikut setup).</li>
       </ul>
 
       <h3>Menjalankan simulasi</h3>
@@ -193,8 +193,8 @@
       </table></div>
       <p>Event dihitung saat selesai dikerjakan, di mesin yang sama. Beberapa event sebelum satu Doffing tetap menghasilkan satu kali subtask.</p>
 
-      <h3>Dedicated Machines vs Machines Group</h3>
-      <p><em>Dedicated</em>: setiap aktivitas punya operatornya sendiri. <em>Machines Group</em>: semua operator yang di-assign ke mesin berbagi pekerjaannya; satu mesin hanya dikerjakan satu operator pada satu waktu. Satu setup bisa mencampur keduanya per mesin. Mesin yang Planning Type-nya kosong disimulasikan seperti Dedicated.</p>
+      <h3>Multi Task vs Split Task</h3>
+      <p>Satu task di mesin bisa dikerjakan operator Multi Task mesin itu dan operator Split Task aktivitas tersebut, siapa yang lebih dulu kosong (sesuai Task Priority). Satu mesin hanya dikerjakan satu operator pada satu waktu. Subtask (misalnya ScanMES, Loading Partial) ikut aktivitas induknya. Loading menunggu Doffing selesai kalau operatornya tidak bisa mengerjakan Doffing juga. Dies Change dan Defect Repairing memakai operatornya sendiri; kalau kosong, ikut operator Fracture Repairing. Di forecast, beban satu aktivitas dibagi rata ke semua operator yang bisa mengerjakannya.</p>
 
       <h3>Break (Lunch, Meeting, Other)</h3>
       <p>Saat jam break tiba, operator menyelesaikan kunjungan yang sedang dikerjakan dulu, lalu break dengan durasi penuh. Selama break, mesin yang butuh dikerjakan menunggu. Di Production Simulation, jam mulai bisa berbeda per operator (tombol ⚙️).</p>
@@ -233,8 +233,8 @@
         <dt>OEE Availability</dt><dd>(Waktu produksi terencana − downtime) ÷ waktu produksi terencana.</dd>
         <dt>Reject % / Quality</dt><dd>Persentase tonase reject; mengurangi tonase baik dan OEE (Production Simulation).</dd>
         <dt>Manhour/ton, Machhours/ton</dt><dd>Jam operator atau jam mesin per ton output.</dd>
-        <dt>Planning Type</dt><dd>Dedicated Machines atau Machines Group, per mesin.</dd>
-        <dt>Group Name</dt><dd>Label bebas untuk mengelompokkan mesin.</dd>
+        <dt>Multi Task / Split Task</dt><dd>Operator yang bisa mengerjakan semua task di mesin / hanya satu aktivitas di mesin itu.</dd>
+        <dt>Group Name</dt><dd>Label bebas untuk pelaporan mesin yang dikelompokkan.</dd>
         <dt>Doff Priority / Min Remain Task</dt><dd>Menunda pekerjaan demi Doffing bila sisa kunjungan ≥ Min Remain Task menit. Diatur per setup, dan di Production Simulation bisa juga per mesin.</dd>
         <dt>WLM / Output model</dt><dd>Hasil simulasi yang disimpan di WL_Outputmodels, dengan versi.</dd>
         <dt>Inherited condition</dt><dd>Kondisi awal mesin + seed dari hasil tersimpan untuk memutar ulang simulasi.</dd>
