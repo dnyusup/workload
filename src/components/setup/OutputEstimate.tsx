@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
-import { activityCycleLength, deriveMachineSpec } from '../../lib/calculations';
-import type { ActivityConfig, AppConfig } from '../../types';
-import type { SingleOperatorForecast } from '../../lib/singleOperatorUtilization';
+import type { AppConfig } from '../../types';
+import { forecastOutputSummary, type SingleOperatorForecast } from '../../lib/singleOperatorUtilization';
 import { Card } from '../ui/Card';
 
 function fmt(value: number) {
@@ -17,11 +16,6 @@ function percentage(value: number, denominator: number) {
   return denominator > 0 ? fmt((value / denominator) * 100) : 0;
 }
 
-function estimatedQuantity(activity: ActivityConfig, spools: number) {
-  const cycle = activityCycleLength(activity);
-  return Number.isFinite(cycle) && cycle > 0 ? spools / cycle : 0;
-}
-
 export function OutputEstimate({
   config,
   forecast,
@@ -32,36 +26,19 @@ export function OutputEstimate({
   /** Rendered to the right of the "Output Estimate" heading. */
   headerControls?: ReactNode;
 }) {
-  const derived = deriveMachineSpec(config.spec);
-  const runtimePerSpool = derived.runtimePerSpool;
-  const plannedMachineMinutes = forecast.assignedMachineCount * Math.max(0, config.operator.shiftTime);
-  const machineMinutesBeforeWaiting = forecast.expectedFinishedSpools * runtimePerSpool;
-  const waitingMinutes = Math.min(plannedMachineMinutes, forecast.forecastWaitingMinutes);
-  const producedMachineMinutes = Math.max(0, machineMinutesBeforeWaiting - waitingMinutes);
-  const estimatedSpools = runtimePerSpool > 0 ? producedMachineMinutes / runtimePerSpool : 0;
-  const tonage = (estimatedSpools * derived.spoolWeight) / 1000;
-  const shiftHours = Math.max(0, config.operator.shiftTime) / 60;
-  const totalDowntimeMinutes = Math.min(
+  const summary = forecastOutputSummary(config, forecast);
+  const {
     plannedMachineMinutes,
-    forecast.activityContributions.reduce((total, contribution) => total + contribution.downtimeMinutes, 0) + waitingMinutes,
-  );
-  const availability = plannedMachineMinutes > 0
-    ? Math.max(0, ((plannedMachineMinutes - totalDowntimeMinutes) / plannedMachineMinutes) * 100)
-    : 100;
-  const outputOee = plannedMachineMinutes > 0 ? (producedMachineMinutes / plannedMachineMinutes) * 100 : 0;
-  const manHourPerTon = tonage > 0 ? shiftHours / tonage : 0;
-  const machHoursPerTon = tonage > 0 ? (forecast.assignedMachineCount * shiftHours) / tonage : 0;
-  const idleMinutes = Math.max(
-    0,
-    forecast.availableMinutes - forecast.forecastServiceMinutes - forecast.forecastWalkingMinutes,
-  );
-
-  const ratePerTon = (keys: string[]) => {
-    const quantity = config.activities
-      .filter((activity) => keys.includes(activity.key))
-      .reduce((total, activity) => total + estimatedQuantity(activity, estimatedSpools), 0);
-    return tonage > 0 ? quantity / tonage : 0;
-  };
+    waitingMinutes,
+    totalDowntimeMinutes,
+    availabilityPercent: availability,
+  } = summary.downtime;
+  const estimatedSpools = summary.spools;
+  const tonage = summary.tonage;
+  const outputOee = summary.outputOeePercent;
+  const manHourPerTon = summary.manHourPerTon;
+  const machHoursPerTon = summary.machHoursPerTon;
+  const idleMinutes = summary.idleMinutes;
 
   const activityByKey = new Map(forecast.activityContributions.map((contribution) => [contribution.key, contribution]));
   const handlingContributions = forecast.activityContributions.filter(
@@ -104,15 +81,15 @@ export function OutputEstimate({
           </div>
           <div className="metric-row" title="Estimasi total Fracture Repairing dibagi tonage">
             <span>Fracture/Ton (estimate)</span>
-            <strong>{fmt(ratePerTon(['fractureRepairing']))}</strong>
+            <strong>{fmt(summary.fracturePerTon)}</strong>
           </div>
           <div className="metric-row" title="Estimasi total Dies Change dibagi tonage">
             <span>Dies/Ton (estimate)</span>
-            <strong>{fmt(ratePerTon(['diesChange']))}</strong>
+            <strong>{fmt(summary.diesPerTon)}</strong>
           </div>
           <div className="metric-row" title="Estimasi total Defect Repairing dibagi tonage">
             <span>Defect/Ton (estimate)</span>
-            <strong>{fmt(ratePerTon(['defectRepairing']))}</strong>
+            <strong>{fmt(summary.defectPerTon)}</strong>
           </div>
         </Card>
 

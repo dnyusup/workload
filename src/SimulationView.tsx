@@ -40,6 +40,8 @@ export function SimulationView({
 }) {
   const { state, playing, speed, controls } = useSimulation(config);
   const { user } = useAuth();
+  /** Dashboard column width once its left edge is dragged; null = the CSS default. Not remembered. */
+  const [dashboardWidth, setDashboardWidth] = useState<number | null>(null);
   const [savingWlm, setSavingWlm] = useState(false);
   const [savedWlm, setSavedWlm] = useState(false);
   const [saveWlmError, setSaveWlmError] = useState<string | null>(null);
@@ -330,7 +332,10 @@ export function SimulationView({
       )}
       {loadingInheritedConditions && <p className="simulation-save-hint">Loading inherited machine conditions…</p>}
       {inheritedConditionHint && <p className="simulation-save-hint">{inheritedConditionHint}</p>}
-      <div className="simulation-body">
+      <div
+        className="simulation-body"
+        style={dashboardWidth ? ({ '--dashboard-width': `${dashboardWidth}px` } as React.CSSProperties) : undefined}
+      >
         <LayoutCanvas
           state={state}
           area={config.spec.area}
@@ -372,7 +377,7 @@ export function SimulationView({
             />
           }
         />
-        <Dashboard state={state} config={config} />
+        <Dashboard state={state} config={config} onWidthChange={setDashboardWidth} />
       </div>
       {outputPreview && (
         <OutputModelDetailDialog row={outputPreview} eyebrow="Simulation result · not saved" onClose={() => setOutputPreview(null)} />

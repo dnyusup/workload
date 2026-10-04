@@ -6,7 +6,8 @@ import { Mpp_wl_productionsetupmachinesesService } from '../generated/services/M
 import type { Mpp_wl_productionsetupmachineses } from '../generated/models/Mpp_wl_productionsetupmachinesesModel';
 import { fetchAllPages, escapeODataString, runWithConcurrency } from './dataversePaging';
 import { parseLayoutBlob, serializeLayoutBlob } from './savedLayoutsStore';
-import { BUILT_IN_DEFAULTS, type DefaultValues } from './defaultValuesStore';
+import { BUILT_IN_DEFAULTS, loadDefaultValuesOrBuiltIn, type DefaultValues } from './defaultValuesStore';
+import { formatWaitingModel, parseWaitingModel } from './waitingModel';
 
 /** How many Dataverse requests to keep in flight at once for bulk create/update/delete loops
  * (one row per machine) — high enough to meaningfully cut wall-clock time versus fully
@@ -151,6 +152,8 @@ export async function loadProductionSetup(id: string, constructionLabelById: Map
     meetingStartAt: row.mpp_meetingstartatminutes ?? undefined,
   }));
   const assignmentByMachineId = new Map(machineRows.map((row) => [row.mpp_machineid, machineRowToAssignment(row, constructionLabelById)]));
+  // Setups saved before the waiting model existed follow Setting → Default Values.
+  const waitingModel = parseWaitingModel(header.mpp_optimizemodel) ?? (await loadDefaultValuesOrBuiltIn()).waitingModel;
   // Every machine in the layout snapshot gets an assignment entry even if its Dataverse row
   // somehow went missing, so the UI never has to null-check `assignments.find(...)`.
   const assignments: ProductionMachineAssignment[] = layout.map((m) => assignmentByMachineId.get(m.id) ?? { machineId: m.id });
@@ -174,6 +177,7 @@ export async function loadProductionSetup(id: string, constructionLabelById: Map
     rpc: header.mpp_rpc ?? 12,
     doffPriority: (header.mpp_doffpriority ?? '').trim().toLowerCase() === 'yes',
     minRemainForDoffPriority: header.mpp_minremaintaskfordoffpriority ?? BUILT_IN_DEFAULTS.minRemainForDoffPriority,
+    waitingModel,
     updatedAt: header.modifiedon ? new Date(header.modifiedon).getTime() : Date.now(),
   };
 }
@@ -207,6 +211,7 @@ export async function createProductionSetup(
     mpp_rpc: defaults.rpc,
     mpp_doffpriority: defaults.doffPriority ? 'Yes' : 'No',
     mpp_minremaintaskfordoffpriority: defaults.minRemainForDoffPriority,
+    mpp_optimizemodel: formatWaitingModel(defaults.waitingModel),
     // Active state, matching WL_Layouts' `0 | 1` statecode enum.
     statecode: 0,
   });
@@ -249,6 +254,7 @@ export async function createProductionSetup(
     rpc: defaults.rpc,
     doffPriority: defaults.doffPriority,
     minRemainForDoffPriority: defaults.minRemainForDoffPriority,
+    waitingModel: defaults.waitingModel,
     updatedAt: Date.now(),
   };
 }
@@ -269,6 +275,7 @@ export async function updateProductionSetupHeader(
       | 'rpc'
       | 'doffPriority'
       | 'minRemainForDoffPriority'
+      | 'waitingModel'
     >
   >,
 ): Promise<void> {
@@ -283,6 +290,7 @@ export async function updateProductionSetupHeader(
   if (patch.rpc !== undefined) fields.mpp_rpc = patch.rpc;
   if (patch.doffPriority !== undefined) fields.mpp_doffpriority = patch.doffPriority ? 'Yes' : 'No';
   if (patch.minRemainForDoffPriority !== undefined) fields.mpp_minremaintaskfordoffpriority = patch.minRemainForDoffPriority;
+  if (patch.waitingModel !== undefined) fields.mpp_optimizemodel = formatWaitingModel(patch.waitingModel);
   if (patch.movement !== undefined) {
     fields.mpp_walkingspeed = patch.movement.walkingSpeed;
     fields.mpp_pixelspermeter = DEFAULT_PIXELS_PER_METER;

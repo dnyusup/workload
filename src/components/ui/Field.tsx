@@ -32,13 +32,17 @@ export function SelectInput<T extends string>({
   value,
   options,
   onChange,
+  disabled = false,
+  title,
 }: {
   value: T;
   options: { value: T; label: string }[];
   onChange: (v: T) => void;
+  disabled?: boolean;
+  title?: string;
 }) {
   return (
-    <select className="input" value={value} onChange={(e) => onChange(e.target.value as T)}>
+    <select className="input" value={value} disabled={disabled} title={title} onChange={(e) => onChange(e.target.value as T)}>
       {options.map((opt) => (
         <option key={opt.value} value={opt.value}>
           {opt.label}

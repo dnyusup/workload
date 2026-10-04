@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { LayoutMachine, ProductionMachineAssignment, ProductionSetup, TaskPriorityMode } from '../../types';
+import type { LayoutMachine, ProductionMachineAssignment, ProductionSetup, TaskPriorityMode, WaitingModel } from '../../types';
+import { WAITING_MODEL_LABELS } from '../../lib/waitingModel';
+import { WaitingModelInfoDialog } from '../setup/WaitingModelInfoDialog';
 import { loadSavedLayouts, type SavedLayout } from '../../lib/savedLayoutsStore';
 import {
   listProductionSetupSummaries,
@@ -58,6 +60,10 @@ const TASK_PRIORITY_OPTIONS: { value: TaskPriorityMode; label: string }[] = [
   { value: 'nearest', label: 'Nearest Task' },
   { value: 'quickest', label: 'Quickest Task' },
 ];
+
+const WAITING_MODEL_OPTIONS: { value: WaitingModel; label: string }[] = (['none', 'wright', 'finiteSource'] as WaitingModel[]).map(
+  (value) => ({ value, label: WAITING_MODEL_LABELS[value] }),
+);
 
 /** Order-insensitive key for comparing two operator-id lists (e.g. pending vs applied). */
 const operatorSetKey = (ids: string[] | undefined) => [...new Set(ids ?? [])].sort().join(';');
@@ -318,6 +324,8 @@ export function ProductionSimulationPage() {
     setLoadingSetup(true);
     setSetupError(null);
     loadProductionSetup(selectedId, constructionLabelById)
+      // Only an Admin picks the waiting model; everyone else's forecast follows Default Values.
+      .then(async (setup) => (isAdmin ? setup : { ...setup, waitingModel: (await loadDefaultValuesOrBuiltIn()).waitingModel }))
       .then((setup) => {
         if (!cancelled) setSelectedSetup(setup);
       })
@@ -330,8 +338,9 @@ export function ProductionSimulationPage() {
     return () => {
       cancelled = true;
     };
+    // isAdmin: reload once sign-in settles, so an Admin sees the setup's own waiting model.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId, loadingProducts]);
+  }, [selectedId, loadingProducts, isAdmin]);
 
   const createSetup = async () => {
     const layout = savedLayouts.find((l) => l.id === creatingFromLayoutId);
@@ -671,6 +680,8 @@ function ProductionSetupEditor({
   plannedUtilizationLoading: boolean;
   resolvedConstructions: Map<string, ResolvedConstruction> | null;
 }) {
+  /** Only an Admin picks the waiting model; for everyone else it follows Default Values. */
+  const canChangeWaitingModel = useAuth().user.role === 'admin';
   const [selectedMachineIds, setSelectedMachineIds] = useState<string[]>([]);
   const [newOperatorName, setNewOperatorName] = useState('');
   const [addingOperator, setAddingOperator] = useState(false);
@@ -699,6 +710,7 @@ function ProductionSetupEditor({
   const [actionError, setActionError] = useState<string | null>(null);
   const [plannedUtilizationOpen, setPlannedUtilizationOpen] = useState(false);
   const [startTimesOpen, setStartTimesOpen] = useState(false);
+  const [waitingModelInfoOpen, setWaitingModelInfoOpen] = useState(false);
   const [plannedUtilizationFullscreen, setPlannedUtilizationFullscreen] = useState(false);
   const plannedUtilizationPanelRef = useRef<HTMLDivElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -1623,6 +1635,33 @@ function ProductionSetupEditor({
               onChange={(v) => onHeaderChange({ minRemainForDoffPriority: Number.isFinite(v) ? v : 0 })}
             />
           </Field>
+          <Field
+            label="Waiting Model"
+            tooltip="How the man occupation forecast (operators and machine selections) estimates machines waiting for an operator."
+          >
+            <div className="waiting-model-field">
+              <SelectInput
+                value={setup.waitingModel}
+                options={WAITING_MODEL_OPTIONS}
+                onChange={(waitingModel) => onHeaderChange({ waitingModel })}
+                disabled={!canChangeWaitingModel}
+                title={canChangeWaitingModel ? undefined : 'Only Admin can change the waiting model — follows Setting → Default Values'}
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                className="waiting-model-info-button"
+                onClick={() => setWaitingModelInfoOpen(true)}
+                title="What each waiting model means, and its formula"
+                aria-label="Waiting model information"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M12 11v6M12 7.5v.01" />
+                </svg>
+              </Button>
+            </div>
+          </Field>
           <Field label="Walking Speed (m/min)">
             <NumberInput value={setup.movement.walkingSpeed} min={0} onChange={(v) => onHeaderChange({ movement: { ...setup.movement, walkingSpeed: v } })} />
           </Field>
@@ -1660,6 +1699,7 @@ function ProductionSetupEditor({
             onClose={() => setStartTimesOpen(false)}
           />
         )}
+        {waitingModelInfoOpen && <WaitingModelInfoDialog selected={setup.waitingModel} onClose={() => setWaitingModelInfoOpen(false)} />}
         <div className="production-operator-add">
           <input
             className="input"

@@ -50,7 +50,15 @@ export interface OperatorConfig {
   /** See DoffPrioritySettings. Optional so configs saved before this existed still load (= off). */
   doffPriority?: boolean;
   minRemainForDoffPriority?: number;
+  /** How the forecast estimates machines waiting for the operator (see WaitingModel); undefined =
+   * the built-in default. */
+  waitingModel?: WaitingModel;
 }
+
+/** Machine interference — machines waiting because they need the one operator at the same time:
+ * Wright's formula, the finite-source queue (M/M/1//N, "machine repairman"), or none (machines only
+ * wait for the backlog, the work beyond the operator's available time). */
+export type WaitingModel = 'none' | 'wright' | 'finiteSource';
 
 /** When on, an operator mid-visit leaves the rest of that visit for later as soon as another machine
  * needs Doffing — provided at least `minRemainForDoffPriority` minutes of the visit are still left
@@ -474,6 +482,8 @@ export interface ProductionSetup {
   rpc: number;
   doffPriority: boolean;
   minRemainForDoffPriority: number;
+  /** How the man occupation forecast estimates machines waiting for an operator (mpp_optimizemodel). */
+  waitingModel: WaitingModel;
   updatedAt: number;
 }
 

@@ -1,5 +1,7 @@
+import { useMemo, useRef, useState, type ReactNode } from 'react';
 import type { AppConfig, DowntimeReason, SimulationState } from '../../types';
 import { deriveMachineSpec } from '../../lib/calculations';
+import { calculateSingleOperatorForecast, forecastOutputSummary } from '../../lib/singleOperatorUtilization';
 import { Card } from '../ui/Card';
 import { useFillToWindowBottom } from '../../hooks/useFillToWindowBottom';
 
@@ -13,6 +15,13 @@ function fmtTime(min: number) {
   const m = totalMinutes % 60;
   return `${h}h ${m}m`;
 }
+
+/** The setup's forecast for the same line, shown after the actual value for comparison. */
+function Est({ children }: { children: ReactNode }) {
+  return <span className="metric-est" title="Forecast for the full shift (Output Estimate)"> / ~{children}</span>;
+}
+
+const FORECAST_NOTE = '/ ~ = forecast for the full shift';
 
 function runningMinutesFromTimeline(machines: SimulationState['machines']) {
   return machines.reduce(
@@ -45,10 +54,62 @@ function colorForDowntime(key: string, index: number) {
   return downtimeColors[key] ?? palette[index % palette.length];
 }
 
-export function Dashboard({ state, config }: { state: SimulationState; config: AppConfig }) {
+const MIN_DASHBOARD_WIDTH = 280;
+const MAX_DASHBOARD_WIDTH_RATIO = 0.6;
+
+export function Dashboard({
+  state,
+  config,
+  onWidthChange,
+}: {
+  state: SimulationState;
+  config: AppConfig;
+  /** Dragging the panel's left edge reports the new width (px) for the layout to apply. */
+  onWidthChange?: (width: number) => void;
+}) {
   // Reaches the bottom of the window even when the canvas column is shorter (e.g. zoomed out).
   const { ref: dashboardOuterRef, minHeight: dashboardMinHeight } = useFillToWindowBottom<HTMLDivElement>();
+  const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const [resizing, setResizing] = useState(false);
+  const startResize = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    // Starts from whatever width the panel has now (the CSS default until it's first dragged).
+    resizeRef.current = { startX: e.clientX, startWidth: dashboardOuterRef.current?.getBoundingClientRect().width ?? 360 };
+    setResizing(true);
+  };
+  const moveResize = (e: React.PointerEvent<HTMLDivElement>) => {
+    const drag = resizeRef.current;
+    if (!drag || !onWidthChange) return;
+    // Dragging the left edge leftwards widens the panel.
+    const maxWidth = Math.max(MIN_DASHBOARD_WIDTH, window.innerWidth * MAX_DASHBOARD_WIDTH_RATIO);
+    onWidthChange(Math.min(maxWidth, Math.max(MIN_DASHBOARD_WIDTH, drag.startWidth - (e.clientX - drag.startX))));
+  };
+  const endResize = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.currentTarget.releasePointerCapture(e.pointerId);
+    resizeRef.current = null;
+    setResizing(false);
+  };
   const { metrics, machines, log } = state;
+  const forecast = useMemo(() => calculateSingleOperatorForecast(config), [config]);
+  const fc = useMemo(() => forecastOutputSummary(config, forecast), [config, forecast]);
+  const forecastHandling = new Map(forecast.activityContributions.map((c) => [c.key, c.handlingMinutes]));
+  /** Forecast share of the operator's net available time, like the actual rows' (%). */
+  const forecastPct = (minutes: number) => (forecast.availableMinutes > 0 ? (minutes / forecast.availableMinutes) * 100 : 0);
+  /** Forecast occurrences per activity, at the forecast's OEE (same events as the fx calculation). */
+  const firstDoffKeys = new Set(config.activities.filter((a) => a.frequencyType === 'FirstDoffOnShift').map((a) => a.key));
+  const forecastEvents = new Map(
+    forecast.breakdown.activities.map((step) => [
+      step.key,
+      // Once per machine per shift, however long the machine runs.
+      firstDoffKeys.has(step.key) ? step.events : step.events * forecast.breakdown.scale,
+    ]),
+  );
+  const forecastSpoolsPerMachine = forecast.breakdown.expectedSpoolsPerMachine * forecast.breakdown.scale;
+  const forecastDowntime = new Map<string, number>([
+    ...fc.downtime.activityDowntime.map((row) => [row.key, row.minutes] as [string, number]),
+    ['waiting', fc.downtime.waitingMinutes],
+  ]);
   const busyMin = metrics.walkingMin + metrics.servicingMin;
   const workedElapsed = Math.max(0, metrics.clockMin - metrics.breakElapsedMin);
   const utilization = workedElapsed > 0 ? (busyMin / workedElapsed) * 100 : 0;
@@ -114,103 +175,174 @@ export function Dashboard({ state, config }: { state: SimulationState; config: A
 
   return (
     <div className="dashboard-scroll-outer" ref={dashboardOuterRef} style={dashboardMinHeight ? { minHeight: dashboardMinHeight } : undefined}>
+    {onWidthChange && (
+      <div
+        className={`dashboard-resize-handle${resizing ? ' active' : ''}`}
+        onPointerDown={startResize}
+        onPointerMove={moveResize}
+        onPointerUp={endResize}
+        onPointerCancel={endResize}
+        title="Drag to resize the panel"
+        aria-hidden="true"
+      />
+    )}
     <div className="dashboard">
       <Card
         title="Output (Running Time)"
-        subtitle="Estimated from total machine running time; spool quantity can be decimal"
+        subtitle={`Estimated from total machine running time; spool quantity can be decimal · ${FORECAST_NOTE}`}
       >
         <div className="metric-row">
           <span>#Spool (running time)</span>
-          <strong>{fmt(runningTimeSpools)}</strong>
+          <strong>
+            {fmt(runningTimeSpools)}
+            <Est>{fmt(fc.spools)}</Est>
+          </strong>
         </div>
         <div className="metric-row">
           <span>Total running time</span>
-          <strong>{fmt(totalRunningMachineMin)} min</strong>
+          <strong>
+            {fmt(totalRunningMachineMin)} min
+            <Est>{fmt(fc.downtime.producedMachineMinutes)} min</Est>
+          </strong>
         </div>
         <div className="metric-row">
           <span>Tonage</span>
-          <strong>{fmt(runningTimeTonage)} ton</strong>
+          <strong>
+            {fmt(runningTimeTonage)} ton
+            <Est>{fmt(fc.tonage)} ton</Est>
+          </strong>
         </div>
         <div className="metric-row">
           <span>OEE (running time)</span>
-          <strong>{fmt(runningTimeOee)}%</strong>
+          <strong>
+            {fmt(runningTimeOee)}%
+            <Est>{fmt(fc.outputOeePercent)}%</Est>
+          </strong>
         </div>
         <div className="metric-row">
           <span>Manhour/ton</span>
-          <strong>{fmt(runningTimeManHourPerTon)}</strong>
+          <strong>
+            {fmt(runningTimeManHourPerTon)}
+            <Est>{fmt(fc.manHourPerTon)}</Est>
+          </strong>
         </div>
         <div className="metric-row">
           <span>Machhours/ton</span>
-          <strong>{fmt(runningTimeMachHoursPerTon)}</strong>
+          <strong>
+            {fmt(runningTimeMachHoursPerTon)}
+            <Est>{fmt(fc.machHoursPerTon)}</Est>
+          </strong>
         </div>
         <div className="metric-row" title="Total Fracture Repairing dibagi tonage dari running time">
           <span>Fracture/Ton (running time)</span>
-          <strong>{fmt(runningTimeFracturePerTon)}</strong>
+          <strong>
+            {fmt(runningTimeFracturePerTon)}
+            <Est>{fmt(fc.fracturePerTon)}</Est>
+          </strong>
         </div>
         <div className="metric-row" title="Total Dies Change events dibagi tonage dari running time">
           <span>Dies/Ton (running time)</span>
-          <strong>{fmt(runningTimeDiesPerTon)}</strong>
+          <strong>
+            {fmt(runningTimeDiesPerTon)}
+            <Est>{fmt(fc.diesPerTon)}</Est>
+          </strong>
         </div>
         <div className="metric-row" title="Total Defect Repairing dibagi tonage dari running time">
           <span>Defect/Ton (running time)</span>
-          <strong>{fmt(runningTimeDefectPerTon)}</strong>
+          <strong>
+            {fmt(runningTimeDefectPerTon)}
+            <Est>{fmt(fc.defectPerTon)}</Est>
+          </strong>
         </div>
       </Card>
 
-      <Card title="Output" subtitle="Actual finished spools this shift — OEE here excludes machine time still mid-spool">
+      <Card title="Output" subtitle={`Actual finished spools this shift — OEE here excludes machine time still mid-spool · ${FORECAST_NOTE}`}>
         <div className="metric-row">
           <span>#Spool</span>
-          <strong>{totalSpools}</strong>
+          <strong>
+            {totalSpools}
+            <Est>{fmt(fc.spools)}</Est>
+          </strong>
         </div>
         <div className="metric-row">
           <span>Tonage</span>
-          <strong>{fmt(tonage)} ton</strong>
+          <strong>
+            {fmt(tonage)} ton
+            <Est>{fmt(fc.tonage)} ton</Est>
+          </strong>
         </div>
         <div className="metric-row">
           <span>OEE (finished spool)</span>
-          <strong>{fmt(outputOee)}%</strong>
+          <strong>
+            {fmt(outputOee)}%
+            <Est>{fmt(fc.outputOeePercent)}%</Est>
+          </strong>
         </div>
         <div className="metric-row">
           <span>Manhour/ton</span>
-          <strong>{fmt(manHourPerTon)}</strong>
+          <strong>
+            {fmt(manHourPerTon)}
+            <Est>{fmt(fc.manHourPerTon)}</Est>
+          </strong>
         </div>
         <div className="metric-row">
           <span>Machhours/ton</span>
-          <strong>{fmt(machHoursPerTon)}</strong>
+          <strong>
+            {fmt(machHoursPerTon)}
+            <Est>{fmt(fc.machHoursPerTon)}</Est>
+          </strong>
         </div>
         <div className="metric-row" title="Total Fracture Repairing ÷ Tonage">
           <span>Fracture/Ton (actual)</span>
-          <strong>{fmt(actualFracturePerTon)}</strong>
+          <strong>
+            {fmt(actualFracturePerTon)}
+            <Est>{fmt(fc.fracturePerTon)}</Est>
+          </strong>
         </div>
         <div className="metric-row" title="Total Dies Change events ÷ Tonage">
           <span>Dies/Ton (actual)</span>
-          <strong>{fmt(actualDiesPerTon)}</strong>
+          <strong>
+            {fmt(actualDiesPerTon)}
+            <Est>{fmt(fc.diesPerTon)}</Est>
+          </strong>
         </div>
         <div className="metric-row" title="Total Defect Repairing events ÷ Tonage">
           <span>Defect/Ton (actual)</span>
-          <strong>{fmt(actualDefectPerTon)}</strong>
+          <strong>
+            {fmt(actualDefectPerTon)}
+            <Est>{fmt(fc.defectPerTon)}</Est>
+          </strong>
         </div>
       </Card>
 
-      <Card title="Man Occupation" subtitle="Calculated against net working time (excluding lunch/meeting)">
+      <Card title="Man Occupation" subtitle={`Calculated against net working time (excluding lunch/meeting) · ${FORECAST_NOTE}`}>
         <div className="util-bar">
           <div className="util-segment util-walk" style={{ width: `${(metrics.walkingMin / (workedElapsed || 1)) * 100}%` }} />
           <div className="util-segment util-service" style={{ width: `${(metrics.servicingMin / (workedElapsed || 1)) * 100}%` }} />
         </div>
         <div className="metric-row">
           <span>Man Occupation</span>
-          <strong>{fmt(utilization)}%</strong>
+          <strong>
+            {fmt(utilization)}%
+            <Est>{fmt(forecast.forecastUtilizationPercent)}%</Est>
+          </strong>
         </div>
         <div className="metric-row small">
           <span>Walking</span>
           <span>
             {fmtTime(metrics.walkingMin)} ({fmt(utilizationPct(metrics.walkingMin))}%)
+            <Est>
+              {fmtTime(forecast.forecastWalkingMinutes)} ({fmt(forecastPct(forecast.forecastWalkingMinutes))}%)
+            </Est>
           </span>
         </div>
         <div className="metric-row small">
           <span>Total handle</span>
           <span>
             {fmtTime(metrics.servicingMin)} ({fmt(utilizationPct(metrics.servicingMin))}%)
+            <Est>
+              {fmtTime(forecast.forecastServiceMinutes)} ({fmt(forecastPct(forecast.forecastServiceMinutes))}%)
+            </Est>
           </span>
         </div>
         {config.activities.map((activity) => (
@@ -219,6 +351,9 @@ export function Dashboard({ state, config }: { state: SimulationState; config: A
             <span>
               {fmtTime(metrics.servicingByActivity[activity.key] ?? 0)} (
               {fmt(utilizationPct(metrics.servicingByActivity[activity.key] ?? 0))}%)
+              <Est>
+                {fmtTime(forecastHandling.get(activity.key) ?? 0)} ({fmt(forecastPct(forecastHandling.get(activity.key) ?? 0))}%)
+              </Est>
             </span>
           </div>
         ))}
@@ -235,6 +370,9 @@ export function Dashboard({ state, config }: { state: SimulationState; config: A
             <span>Others (RPC)</span>
             <span>
               {fmtTime(rpcMin)} ({fmt(utilizationPct(rpcMin))}%)
+              <Est>
+                {fmtTime(forecastHandling.get('rpc') ?? 0)} ({fmt(forecastPct(forecastHandling.get('rpc') ?? 0))}%)
+              </Est>
             </span>
           </div>
         )}
@@ -242,6 +380,9 @@ export function Dashboard({ state, config }: { state: SimulationState; config: A
           <span>Idle</span>
           <span>
             {fmtTime(metrics.idleMin)} ({fmt(utilizationPct(metrics.idleMin))}%)
+            <Est>
+              {fmtTime(fc.idleMinutes)} ({fmt(forecastPct(fc.idleMinutes))}%)
+            </Est>
           </span>
         </div>
       </Card>
@@ -249,21 +390,28 @@ export function Dashboard({ state, config }: { state: SimulationState; config: A
       <Card
         title="OEE & Downtime"
         className="dashboard-oee-card"
-        subtitle="Availability across assigned machines (Performance & Quality assumed at 100%)"
+        subtitle={`Availability across assigned machines (Performance & Quality assumed at 100%) · ${FORECAST_NOTE}`}
       >
         <div className="oee-gauge-row">
           <div className="oee-gauge">
             <span className="oee-value">{fmt(oee)}%</span>
             <span className="oee-caption">OEE (Availability)</span>
+            <span className="oee-forecast" title="Forecast for the full shift (Output Estimate)">~{fmt(fc.downtime.availabilityPercent)}% forecast</span>
           </div>
           <div className="metric-col">
             <div className="metric-row small">
               <span>Planned production</span>
-              <span>{fmt(plannedProductionMin)} machine-minutes</span>
+              <span>
+                {fmt(plannedProductionMin)} machine-minutes
+                <Est>{fmt(fc.downtime.plannedMachineMinutes)}</Est>
+              </span>
             </div>
             <div className="metric-row small">
               <span>Total downtime</span>
-              <span>{fmt(totalDowntimeMin)} machine-minutes</span>
+              <span>
+                {fmt(totalDowntimeMin)} machine-minutes
+                <Est>{fmt(fc.downtime.totalDowntimeMinutes)}</Est>
+              </span>
             </div>
           </div>
         </div>
@@ -279,6 +427,10 @@ export function Dashboard({ state, config }: { state: SimulationState; config: A
                 </div>
                 <span className="downtime-value">
                   {fmt(d.value)}m ({fmt(pct)}%)
+                  <Est>
+                    {fmt(forecastDowntime.get(d.key) ?? 0)}m (
+                    {fmt(fc.downtime.plannedMachineMinutes > 0 ? ((forecastDowntime.get(d.key) ?? 0) / fc.downtime.plannedMachineMinutes) * 100 : 0)}%)
+                  </Est>
                 </span>
               </div>
             );
@@ -288,14 +440,14 @@ export function Dashboard({ state, config }: { state: SimulationState; config: A
 
       <Card
         title="Completed Activities"
-        subtitle={`vs theoretical estimate (± ${metrics.theoreticalSpoolsPerShift} spools/machine per shift)`}
+        subtitle={`vs forecast (~${fmt(forecastSpoolsPerMachine)} spools/machine per shift at ${fmt(forecast.breakdown.scale * 100)}% OEE)`}
       >
         {config.activities.map((activity) => (
           <div className="metric-row" key={activity.key}>
             <span>{activity.label}</span>
             <strong>
               {metrics.completedByActivity[activity.key] ?? 0}
-              <span className="metric-est"> / ~{metrics.expectedEventsByActivity[activity.key] ?? 0}</span>
+              <Est>{fmt(forecastEvents.get(activity.key) ?? metrics.expectedEventsByActivity[activity.key] ?? 0)}</Est>
             </strong>
           </div>
         ))}

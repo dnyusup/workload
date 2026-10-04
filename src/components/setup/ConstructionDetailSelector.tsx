@@ -180,6 +180,7 @@ export function ConstructionDetailSelector({
           meetingStartAt: defaults.meetingStartAt,
           doffPriority: defaults.doffPriority,
           minRemainForDoffPriority: defaults.minRemainForDoffPriority,
+          waitingModel: defaults.waitingModel,
         },
         movement: { walkingSpeed: defaults.walkingSpeed, pixelsPerMeter: DEFAULT_PIXELS_PER_METER },
         rpcPercent: defaults.rpc,

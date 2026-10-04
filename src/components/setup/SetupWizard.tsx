@@ -1,5 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAppConfig } from '../../context/appConfig';
+import { useAuth } from '../../context/auth';
+import { loadDefaultValuesOrBuiltIn } from '../../lib/defaultValuesStore';
 import { deriveMachineSpec, syncAutoActivityValues } from '../../lib/calculations';
 import { rebuildLoadingActivities } from '../../lib/productCatalog';
 import {
@@ -17,7 +19,7 @@ import { OutputEstimate } from './OutputEstimate';
 import { LayoutBuilder } from './LayoutBuilder';
 import { ConstructionDetailSelector } from './ConstructionDetailSelector';
 import { LayoutSelector } from './LayoutSelector';
-import type { AppConfig } from '../../types';
+import type { AppConfig, WaitingModel } from '../../types';
 
 const STEPS = ['Setup', 'Machine Layout'];
 
@@ -29,18 +31,36 @@ export function SetupWizard({ onStart }: { onStart: () => void }) {
   const [constructionBaseline, setConstructionBaseline] = useState<AppConfig | null>(
     () => (config.selectedProductId ? config : null),
   );
+  const { user, loading: authLoading } = useAuth();
+  const isAdmin = user.role === 'admin';
+  // Only an Admin picks the waiting model; everyone else follows Default Values — also for a setup
+  // kept in the browser from before an Admin changed it.
+  useEffect(() => {
+    // Wait for sign-in: until then everyone looks like a guest, and an Admin's pick would be lost.
+    if (authLoading || isAdmin) return;
+    let cancelled = false;
+    void loadDefaultValuesOrBuiltIn().then(({ waitingModel }) => {
+      if (cancelled) return;
+      setConfig((prev) => (prev.operator.waitingModel === waitingModel ? prev : { ...prev, operator: { ...prev.operator, waitingModel } }));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, isAdmin, setConfig]);
   const derived = deriveMachineSpec(config.spec);
   const forecast = calculateSingleOperatorForecast(config);
-  const optimizeUtilization = () => {
-    setConfig((prev) => {
-      const machineCount = recommendedMachineCountForForecast(prev);
-      return {
-        ...prev,
-        operator: { ...prev.operator, machHandled: machineCount },
-        assignedMachineIds: previewAssignedMachineIds(prev, machineCount),
-      };
-    });
+  const optimizedConfig = (config: AppConfig): AppConfig => {
+    const machineCount = recommendedMachineCountForForecast(config);
+    return {
+      ...config,
+      operator: { ...config.operator, machHandled: machineCount },
+      assignedMachineIds: previewAssignedMachineIds(config, machineCount),
+    };
   };
+  const optimizeUtilization = () => setConfig((prev) => optimizedConfig(prev));
+  /** The waiting model changes what Optimize finds, so switching it re-optimizes right away. */
+  const changeWaitingModel = (waitingModel: WaitingModel) =>
+    setConfig((prev) => optimizedConfig({ ...prev, operator: { ...prev.operator, waitingModel } }));
 
   const layoutIds = new Set(config.layout.map((m) => m.id));
   const assignedCount = (config.assignedMachineIds ?? []).filter((id) => layoutIds.has(id)).length;
@@ -126,12 +146,14 @@ export function SetupWizard({ onStart }: { onStart: () => void }) {
                 forecast={forecast}
                 headerControls={
                   <AssignedMachinesControl
+                    config={config}
                     machHandled={config.operator.machHandled}
                     forecast={forecast}
                     onOptimize={optimizeUtilization}
                     onChange={(machHandled) =>
                       setConfig((prev) => ({ ...prev, operator: { ...prev.operator, machHandled } }))
                     }
+                    onWaitingModelChange={changeWaitingModel}
                   />
                 }
               />

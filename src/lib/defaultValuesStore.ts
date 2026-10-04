@@ -1,7 +1,9 @@
-import type { TaskPriorityMode } from '../types';
+import type { TaskPriorityMode, WaitingModel } from '../types';
 import { Mpp_wl_defaultvaluesService } from '../generated/services/Mpp_wl_defaultvaluesService';
 import type { Mpp_wl_defaultvalues } from '../generated/models/Mpp_wl_defaultvaluesModel';
 import { fetchAllPages } from './dataversePaging';
+import { DEFAULT_WAITING_MODEL } from './singleOperatorUtilization';
+import { formatWaitingModel, parseWaitingModel } from './waitingModel';
 
 /** Starting values for a new Production Setup and for the Work Load Simulator's setup whenever a
  * Construction Detail is picked — maintained by admins in Setting → Default Values. */
@@ -16,6 +18,7 @@ export interface DefaultValues {
   walkingSpeed: number;
   doffPriority: boolean;
   minRemainForDoffPriority: number;
+  waitingModel: WaitingModel;
 }
 
 /** Used for any parameter WL_DefaultValues has no (valid) row for yet. */
@@ -30,6 +33,7 @@ export const BUILT_IN_DEFAULTS: DefaultValues = {
   walkingSpeed: 60,
   doffPriority: false,
   minRemainForDoffPriority: 5,
+  waitingModel: DEFAULT_WAITING_MODEL,
 };
 
 /** WL_DefaultValues.mpp_parameters name for each setting (matched case-insensitively). */
@@ -44,6 +48,7 @@ const PARAMETER_NAMES: Record<keyof DefaultValues, string> = {
   walkingSpeed: 'WalkingSpeed',
   doffPriority: 'DoffPriority',
   minRemainForDoffPriority: 'MinRemainTaskForDoffPriority',
+  waitingModel: 'WaitingModel',
 };
 
 const KEYS = Object.keys(PARAMETER_NAMES) as (keyof DefaultValues)[];
@@ -64,6 +69,7 @@ function parseValue<K extends keyof DefaultValues>(key: K, raw: string | undefin
     const flag = text.toLowerCase();
     return (flag === 'yes' ? true : flag === 'no' ? false : undefined) as DefaultValues[K] | undefined;
   }
+  if (key === 'waitingModel') return parseWaitingModel(text) as DefaultValues[K] | undefined;
   if (key === 'taskPriority') {
     const mode = text.toLowerCase();
     return (mode === 'nearest' || mode === 'quickest' ? mode : undefined) as DefaultValues[K] | undefined;
@@ -94,6 +100,7 @@ export async function loadDefaultValuesOrBuiltIn(): Promise<DefaultValues> {
 
 function formatValue(key: keyof DefaultValues, value: DefaultValues[keyof DefaultValues]): string {
   if (key === 'doffPriority') return value ? 'Yes' : 'No';
+  if (key === 'waitingModel') return formatWaitingModel(value as DefaultValues['waitingModel']);
   return String(value);
 }
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { TaskPriorityMode } from '../../types';
+import type { TaskPriorityMode, WaitingModel } from '../../types';
 import { BUILT_IN_DEFAULTS, loadDefaultValues, saveDefaultValues, type DefaultValues } from '../../lib/defaultValuesStore';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
@@ -12,7 +12,17 @@ const TASK_PRIORITY_OPTIONS: { value: TaskPriorityMode; label: string }[] = [
   { value: 'quickest', label: 'Quickest Task' },
 ];
 
-const NUMBER_FIELDS: { key: Exclude<keyof DefaultValues, 'taskPriority' | 'doffPriority' | 'minRemainForDoffPriority'>; label: string; min: number }[] = [
+const WAITING_MODEL_OPTIONS: { value: WaitingModel; label: string }[] = [
+  { value: 'none', label: 'None (backlog only)' },
+  { value: 'wright', label: "Wright's formula" },
+  { value: 'finiteSource', label: 'Finite source (M/M/1//N)' },
+];
+
+const NUMBER_FIELDS: {
+  key: Exclude<keyof DefaultValues, 'taskPriority' | 'doffPriority' | 'minRemainForDoffPriority' | 'waitingModel'>;
+  label: string;
+  min: number;
+}[] = [
   { key: 'shiftTime', label: 'Shift Time (min)', min: 0 },
   { key: 'lunchTime', label: 'Lunch Time (min)', min: 0 },
   { key: 'lunchStartAt', label: 'Lunch starts at minute', min: 0 },
@@ -109,6 +119,12 @@ function DefaultValuesCard() {
                 readOnly={!draft.doffPriority}
                 onChange={(v) => set('minRemainForDoffPriority', Number.isFinite(v) ? v : 0)}
               />
+            </Field>
+            <Field
+              label="Waiting Model"
+              tooltip="How the Work Load Simulator forecast estimates machines waiting because they need the operator at the same time (machine interference)."
+            >
+              <SelectInput value={draft.waitingModel} options={WAITING_MODEL_OPTIONS} onChange={(v) => set('waitingModel', v)} />
             </Field>
           </div>
           {message && <p className="data-manager-hint">{message}</p>}

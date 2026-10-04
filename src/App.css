@@ -963,6 +963,174 @@
   white-space: nowrap;
 }
 
+.waiting-model-select.input {
+  width: auto;
+  min-width: 150px;
+  padding-right: 28px;
+}
+
+.waiting-model-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.waiting-model-field > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.waiting-model-info-button {
+  min-width: 36px;
+  padding-left: 9px;
+  padding-right: 9px;
+}
+
+.waiting-model-info-button svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+/* Waiting models info dialog and the side-by-side models in the fx dialog. */
+.waiting-info-dialog {
+  width: min(760px, 100%);
+}
+
+.waiting-info-model.is-selected,
+.fx-model.is-selected {
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.35) inset;
+}
+
+.waiting-info-model h4,
+.fx-model h5 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.waiting-info-badge {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(56, 189, 248, 0.15);
+  color: #7dd3fc;
+  font-size: 0.66rem;
+  font-weight: 600;
+}
+
+.waiting-info-formulas {
+  margin: 8px 0;
+  padding-left: 18px;
+  color: #cbd5e1;
+  font-size: 0.76rem;
+}
+
+.waiting-info-formulas li + li {
+  margin-top: 4px;
+}
+
+.waiting-info-formulas code {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  white-space: pre-wrap;
+}
+
+.fx-inputs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0 18px;
+  margin-bottom: 10px;
+}
+
+.fx-model {
+  padding: 10px 12px;
+  border: 1px solid #1e293b;
+  border-radius: 10px;
+  background: #0f172a;
+}
+
+.fx-model h5 {
+  margin: 0 0 6px;
+  color: #cbd5e1;
+  font-size: 0.78rem;
+}
+
+.forecast-fx-button {
+  min-width: 36px;
+  padding-left: 10px;
+  padding-right: 10px;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-weight: 700;
+}
+
+.forecast-fx-button i {
+  font-style: italic;
+}
+
+/* ---- Forecast Man Occupation calculation (fx) dialog ---- */
+.fx-dialog {
+  width: min(1080px, 100%);
+}
+
+.fx-step {
+  padding: 4px 0;
+  font-size: 0.78rem;
+}
+
+.fx-step + .fx-step {
+  border-top: 1px dashed rgba(148, 163, 184, 0.14);
+}
+
+.fx-step-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: #94a3b8;
+}
+
+.fx-step-value {
+  color: #e2e8f0;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.fx-step.is-strong .fx-step-line span:first-child,
+.fx-step.is-strong .fx-step-value {
+  color: #f1f5f9;
+  font-weight: 700;
+}
+
+.fx-formula {
+  margin-top: 2px;
+  color: #64748b;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.fx-table-wrap {
+  overflow-x: auto;
+}
+
+.fx-table td,
+.fx-table tfoot th {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.fx-table tfoot th {
+  color: #e2e8f0;
+  border-top: 1px solid #334155;
+}
+
+.fx-note {
+  margin: 8px 0 0;
+  color: #94a3b8;
+  font-size: 0.74rem;
+}
+
 .optimize-utilization-button svg {
   width: 15px;
   height: 15px;
@@ -1998,7 +2166,9 @@
 
 .simulation-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--dashboard-width, 340px);
+  /* Work Load Simulator: wider on wider screens so actual + forecast values fit; Production Run
+   * sets --dashboard-width from its drag handle. */
+  grid-template-columns: minmax(0, 1fr) var(--dashboard-width, clamp(360px, 30vw, 520px));
   gap: 16px;
   /* Left column's natural (unconstrained) height sets the shared row height; the dashboard
    * stretches to match it and scrolls independently within that height instead of the two
@@ -2329,12 +2499,20 @@
 .metric-row {
   display: flex;
   justify-content: space-between;
+  gap: 10px;
   padding: 6px 0;
   font-size: 0.85rem;
   color: #cbd5e1;
 }
 
+/* The value side may wrap (e.g. actual / ~forecast) instead of running out of the card. */
+.metric-row > :last-child {
+  min-width: 0;
+  text-align: right;
+}
+
 .metric-est {
+  white-space: nowrap;
   font-weight: 400;
   color: #64748b;
   font-size: 0.75rem;
@@ -2576,6 +2754,14 @@
   line-height: 1.2;
 }
 
+.oee-forecast {
+  position: relative;
+  margin-top: 2px;
+  font-size: 0.55rem;
+  color: #64748b;
+  text-align: center;
+}
+
 .metric-col {
   flex: 1;
 }
@@ -2588,7 +2774,7 @@
 
 .downtime-row {
   display: grid;
-  grid-template-columns: 100px minmax(40px, 1fr) 92px;
+  grid-template-columns: 100px minmax(30px, 1fr) minmax(0, max-content);
   align-items: center;
   gap: 8px;
   font-size: 0.75rem;
@@ -2609,7 +2795,6 @@
 .downtime-value {
   text-align: right;
   color: #cbd5e1;
-  white-space: nowrap;
 }
 
 .queue-list {

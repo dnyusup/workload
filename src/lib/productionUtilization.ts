@@ -3,6 +3,7 @@ import { availableTimeMinutes, distanceMeters } from './calculations';
 import { activityFamily, eligibleOperatorIds, operatorSharesForActivity, TASK_OPERATOR_FIELDS, type TaskOperatorField } from './productionActivityRouting';
 import type { ResolvedConstruction } from './productionConstructionResolver';
 import { forecastCycleLength } from './frequencyTypes';
+import { DEFAULT_WAITING_MODEL, machineInterference } from './singleOperatorUtilization';
 
 const AVERAGE_DIES_PER_CHANGE_EVENT = (7 + 26) / 2;
 const GLOBAL_EVENT_ACTIVITIES = new Set(['fractureRepairing', 'diesChange', 'defectRepairing']);
@@ -31,6 +32,10 @@ export interface PlannedOperatorUtilization {
   forecastWalkingMinutes: number;
   /** Work that would remain queued after the net available operator time is consumed. */
   forecastWaitingMinutes: number;
+  /** Machine time lost waiting for this operator: the larger of machine interference (the setup's
+   * waiting model) and the backlog. Its machines then make fewer spools, so the forecast handling
+   * and walking above are already reduced by it. */
+  machineWaitingMinutes: number;
   utilizationPercent: number;
   forecastUtilizationPercent: number;
   contributions: PlannedActivityContribution[];
@@ -107,12 +112,15 @@ export function calculatePlannedUtilization(
     forecastServiceMinutes: 0,
     forecastWalkingMinutes: 0,
     forecastWaitingMinutes: 0,
+    machineWaitingMinutes: 0,
     utilizationPercent: 0,
     forecastUtilizationPercent: 0,
     contributions: [] as PlannedActivityContribution[],
   }));
   const operatorByIdForLoad = new Map(operators.map((operator) => [operator.operatorId, operator]));
   const operatorVisits = new Map<string, Map<string, number>>();
+  /** Per operator, the forecast scale (machine availability) of each machine it works. */
+  const operatorMachineScales = new Map<string, Map<string, number>>();
   const machines: PlannedMachineUtilization[] = [];
   const machinePlansByConstruction = new Map<
     string,
@@ -164,6 +172,9 @@ export function calculatePlannedUtilization(
               ...(contribution.expectedQuantity !== undefined ? { expectedQuantity: contribution.expectedQuantity * share } : {}),
             },
       );
+      const scales = operatorMachineScales.get(operatorId) ?? new Map<string, number>();
+      scales.set(contribution.machineId, forecastScale);
+      operatorMachineScales.set(operatorId, scales);
       const visitsByMachine = operatorVisits.get(operatorId) ?? new Map<string, number>();
       visitsByMachine.set(contribution.machineId, Math.max(visitsByMachine.get(contribution.machineId) ?? 0, visits * share));
       operatorVisits.set(operatorId, visitsByMachine);
@@ -337,10 +348,35 @@ export function calculatePlannedUtilization(
         operator.forecastWalkingMinutes = estimatedDistance / walkingSpeed;
       }
     }
-    const forecastBusyMinutes = operator.forecastServiceMinutes + operator.forecastWalkingMinutes;
-    operator.forecastWaitingMinutes = Math.max(0, forecastBusyMinutes - availableMinutes);
+    // Machines waiting for the operator make fewer spools, leaving the operator less to do, which
+    // shortens the waiting — solved per operator the same way as the Work Load Simulator forecast.
+    const scales = [...(operatorMachineScales.get(operator.operatorId)?.values() ?? [])];
+    const machineCount = scales.length;
+    const averageScale = machineCount > 0 ? scales.reduce((total, scale) => total + scale, 0) / machineCount : 0;
+    const shift = Math.max(0, setup.shiftTime);
+    const fullBusy = operator.forecastServiceMinutes + operator.forecastWalkingMinutes;
+    const waitingModel = setup.waitingModel ?? DEFAULT_WAITING_MODEL;
+    const passAt = (waitingPerMachine: number) => {
+      const runningShare = shift > 0 ? Math.max(0, shift - waitingPerMachine) / shift : 0;
+      const busy = fullBusy * runningShare;
+      const backlog = Math.max(0, busy - availableMinutes);
+      const interference = machineInterference(waitingModel, machineCount, shift * averageScale * runningShare, busy);
+      return { runningShare, busy, backlog, waiting: Math.min(shift * machineCount, Math.max(backlog, interference.minutes)) };
+    };
+    let waitingPerMachine = 0;
+    let pass = passAt(0);
+    for (let i = 0; i < 100 && machineCount > 0; i += 1) {
+      const produced = pass.waiting / machineCount;
+      if (Math.abs(produced - waitingPerMachine) < 0.001) break;
+      waitingPerMachine = (waitingPerMachine + produced) / 2;
+      pass = passAt(waitingPerMachine);
+    }
+    operator.forecastServiceMinutes *= pass.runningShare;
+    operator.forecastWalkingMinutes *= pass.runningShare;
+    operator.forecastWaitingMinutes = pass.backlog;
+    operator.machineWaitingMinutes = waitingPerMachine * machineCount;
     operator.forecastUtilizationPercent = availableMinutes > 0
-      ? Math.min(100, (forecastBusyMinutes / availableMinutes) * 100)
+      ? Math.min(100, (pass.busy / availableMinutes) * 100)
       : 0;
   });
 

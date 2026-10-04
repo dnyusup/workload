@@ -42,6 +42,7 @@ function defaultConfig(): AppConfig {
       taskPriority: BUILT_IN_DEFAULTS.taskPriority,
       doffPriority: BUILT_IN_DEFAULTS.doffPriority,
       minRemainForDoffPriority: BUILT_IN_DEFAULTS.minRemainForDoffPriority,
+      waitingModel: BUILT_IN_DEFAULTS.waitingModel,
     },
     activities: defaultActivities(derived.spoolWeight, defaultSpec.fracturePerTon),
     movement: { walkingSpeed: BUILT_IN_DEFAULTS.walkingSpeed, pixelsPerMeter: DEFAULT_PIXELS_PER_METER },

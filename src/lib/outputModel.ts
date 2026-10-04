@@ -2,7 +2,8 @@ import type { Mpp_wl_outputmodelses } from '../generated/models/Mpp_wl_outputmod
 import type { Mpp_wl_productses } from '../generated/models/Mpp_wl_productsesModel';
 import { Mpp_wl_outputmodelsesService } from '../generated/services/Mpp_wl_outputmodelsesService';
 import { Mpp_wl_productsesService } from '../generated/services/Mpp_wl_productsesService';
-import { calculateSingleOperatorForecast } from './singleOperatorUtilization';
+import { calculateSingleOperatorForecast, DEFAULT_WAITING_MODEL } from './singleOperatorUtilization';
+import { formatWaitingModel } from './waitingModel';
 import { deriveMachineSpec } from './calculations';
 import type { AppConfig, InheritedSimulationSnapshot, SimulationState } from '../types';
 import type { Mpp_wl_outputmodelsesBase } from '../generated/models/Mpp_wl_outputmodelsesModel';
@@ -196,6 +197,7 @@ export function buildOutputModelPayload(
     mpp_meetingtime: config.operator.meetingTime,
     mpp_meetingstarttime: config.operator.meetingStartAt,
     mpp_rpc: config.rpcPercent ?? 12,
+    mpp_optimizemodel: formatWaitingModel(config.operator.waitingModel ?? DEFAULT_WAITING_MODEL),
     mpp_numberofmachinesassigned: state.metrics.assignedMachineCount,
     mpp_plannedmanoccupation: storedPercentage(forecast.forecastUtilizationPercent),
     mpp_actualmanoccupation: storedPercentage(actualManOccupation),

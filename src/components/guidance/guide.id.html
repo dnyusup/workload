@@ -45,7 +45,7 @@
         <li><strong>Pilih Construction Detail</strong> di bagian atas (bisa difilter per Area, Mach, Product). Aplikasi mengisi Machine Specification dari WL_Products dan Activity Table dari WL_Activities. Setting operator (Task Priority, shift, lunch, meeting, RPC, Walking Speed, Doff Priority) diisi dari <span class="ui">Setting → Default Values</span>.</li>
         <li><strong>Machine Specification</strong>: LayLength, NoOfWires, Speed, SpoolLength, LinearDensity, Fracture/Dies/Defect per ton, POlength. Dari sini dihitung Spool Weight dan Runtime/spool.</li>
         <li><strong>Operator Activities</strong>: Task Priority, Shift Time, Lunch/Meeting (durasi dan menit mulainya), break tambahan (<span class="ui">+ Add activity</span>), Available Time beserta Walking Speed (m/menit) di sampingnya, serta <span class="ui">Doff Priority</span> dan <span class="ui">Min Remain Task for Doff Priority</span> di bagian paling bawah.</li>
-        <li><strong>Output Estimate</strong>: perkiraan output dan man occupation sebelum simulasi dijalankan. Atur <span class="ui"># Assigned Machines</span>, atau klik <span class="ui">Optimize Man Occupation</span> agar aplikasi mencari jumlah mesin terbanyak tanpa backlog.</li>
+        <li><strong>Output Estimate</strong>: perkiraan output dan man occupation sebelum simulasi dijalankan. Atur <span class="ui"># Assigned Machines</span>, atau klik <span class="ui">Optimize Man Occupation</span> agar aplikasi mencari jumlah mesin terbanyak yang masih sanggup dikerjakan operator (Forecast Man Occupation sampai 100%, tanpa backlog). Mesin tetap menunggu walaupun man occupation di bawah 100%, yaitu saat beberapa mesin butuh operator bersamaan (machine interference); dropdown sebelum tombol Optimize (khusus Admin; selain Admin mengikuti Setting → Default Values) memilih cara menghitungnya: rumus <em>Wright</em>, antrean <em>Finite source</em> (M/M/1//N), atau <em>None</em> (tanpa interference: mesin hanya menunggu karena backlog). Mengganti pilihan ini langsung menjalankan Optimize, dan Save WLM ikut menyimpannya (OptimizeModel). Waiting for Operator adalah nilai terbesar antara interference dan backlog. Nilai ini mengurangi OEE, lalu spool per mesin (Shift × OEE ÷ runtime) dan beban operator dihitung dari OEE tersebut, diselesaikan bersamaan karena produksi yang turun juga berarti pekerjaan dan waktu tunggu yang turun. Tombol <span class="ui"><i>f</i>x</span> di samping Forecast Man Occupation menampilkan perhitungannya langkah demi langkah: waktu tersedia, availability mesin, beban tiap aktivitas, jalan kaki, interference, dan downtime mesin.</li>
         <li><strong>Activity Table</strong>: Time, Frequency Type, Numerator, Denominator, dan Mach Condition per aktivitas. <span class="ui">RPC %</span> ada di kanan judul tabel. Tambah sub-aktivitas dengan <span class="ui">+ Sub Doffing</span> atau <span class="ui">+ Sub Loading</span>.</li>
       </ol>
       <div class="note"><p>Tombol ikon panah melingkar mengembalikan semua isian ke kondisi saat Construction Detail dipilih.</p></div>
@@ -62,7 +62,7 @@
       <ul>
         <li><span class="ui">▶ Play</span>, <span class="ui">⏸ Pause</span>, pilihan kecepatan, dan <span class="ui">Reset</span>. # Mach Assigned dan Fracture per Ton hanya bisa diubah setelah Reset.</li>
         <li><strong>Operator Timeline</strong> dan <strong>Machine Timeline</strong> menampilkan apa yang terjadi tiap menit. Klik segmen operator untuk menandai mesin terkait, klik baris mesin untuk ringkasan mesin itu.</li>
-        <li><strong>Dashboard</strong>: Output (Running Time), Output, Man Occupation, OEE &amp; Downtime, Completed Activities, Activity Log.</li>
+        <li><strong>Dashboard</strong>: Output (Running Time), Output, Man Occupation, OEE &amp; Downtime, Completed Activities, Activity Log. Setiap nilai diikuti <code>/ ~</code> dan forecast-nya untuk satu shift penuh (dari Output Estimate), jadi hasil aktual dan forecast bisa dibandingkan. Tarik tepi kiri panel untuk melebarkan atau menyempitkannya.</li>
         <li><span class="ui">Save WLM</span> menyimpan hasil ke WL_Outputmodels. Kalau Construction Detail itu sudah punya hasil tersimpan, muncul perbandingan dengan versi lama; Anda bisa mengganti versi lama atau menyimpan versi baru (Version remark wajib diisi untuk versi baru).</li>
         <li>Setelah shift selesai: lihat detail output, atau <span class="ui">Copy output</span> (format tab, bisa ditempel ke Excel).</li>
       </ul>
@@ -84,7 +84,7 @@
       <h3>Membuat Production Setup</h3>
       <ol class="steps">
         <li>Pilih Layout, isi nama setup, klik <span class="ui">+ New Setup</span>. Layout disalin ke setup (perubahan layout sesudahnya tidak ikut). Nilai awal shift dan movement diambil dari Setting → Default Values.</li>
-        <li>Isi <strong>Shift &amp; Movement Settings</strong>: Task Priority, Shift/Lunch/Meeting, RPC %, Doff Priority, Min Remain Task, Walking Speed.</li>
+        <li>Isi <strong>Shift &amp; Movement Settings</strong>: Task Priority, Shift/Lunch/Meeting, RPC %, Doff Priority, Min Remain Task, Waiting Model (khusus Admin — selain Admin mengikuti Setting → Default Values; cara forecast man occupation menghitung mesin yang menunggu operator; tombol <span class="ui">ⓘ</span> menjelaskan tiap pilihan), Walking Speed.</li>
         <li>Tambah operator di card <strong>Operators</strong>: satu per satu, atau sekaligus dengan prefix dan jumlah (contoh <code>Opr_0001</code>). Angka di samping nama operator adalah forecast man occupation-nya.</li>
       </ol>
 
@@ -147,7 +147,7 @@
       <h3>Manage Users</h3>
       <p>Cari orang berdasarkan email lalu beri peran Admin atau Contribute.</p>
       <h3>Setting → Default Values</h3>
-      <p>Nilai awal untuk Production Setup baru dan untuk Work Load Simulator setiap kali Construction Detail dipilih: Task Priority, Shift Time, Lunch Time, Lunch starts at, Meeting Time, Meeting starts at, RPC %, Walking Speed, Doff Priority, Min Remain Task for Doff Priority. Klik <span class="ui">Save</span> untuk menyimpan.</p>
+      <p>Nilai awal untuk Production Setup baru dan untuk Work Load Simulator setiap kali Construction Detail dipilih: Task Priority, Shift Time, Lunch Time, Lunch starts at, Meeting Time, Meeting starts at, RPC %, Walking Speed, Doff Priority, Min Remain Task for Doff Priority, dan Waiting Model (Work Load Simulator). Klik <span class="ui">Save</span> untuk menyimpan.</p>
     </section>
 
     <section>
