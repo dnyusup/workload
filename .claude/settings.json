@@ -170,7 +170,15 @@
       "Bash(node \"C:/Users/DENI~1.YUS/AppData/Local/Temp/claude/c--Users-deni-yusup-powerapps-code-WorkLoad/6aef9193-7703-4c6d-9d7f-50697731bc86/scratchpad/editProdForecastAlign.cjs\")",
       "Bash(node \"C:/Users/DENI~1.YUS/AppData/Local/Temp/claude/c--Users-deni-yusup-powerapps-code-WorkLoad/6aef9193-7703-4c6d-9d7f-50697731bc86/scratchpad/editRunViewForecast.cjs\")",
       "Bash(node \"C:/Users/DENI~1.YUS/AppData/Local/Temp/claude/c--Users-deni-yusup-powerapps-code-WorkLoad/6aef9193-7703-4c6d-9d7f-50697731bc86/scratchpad/editProdDowntime.cjs\")",
-      "Bash(git commit -q -m 'Update local Claude Code command permissions *)"
+      "Bash(git commit -q -m 'Update local Claude Code command permissions *)",
+      "Bash(cd \"c:/Users/deni.yusup/powerapps_code/WorkLoad\" && grep -o 'pac code [a-z-]* [^\"\\\\\\\\]*' \"C:/Users/deni.yusup/.claude/projects/c--Users-deni-yusup-powerapps-code-WorkLoad/6aef9193-7703-4c6d-9d7f-50697731bc86.jsonl\" | sort | uniq -c | head; grep -o '\"Bash\\(pac[^\"]*' .claude/settings.json | head)",
+      "Bash(grep -n -o '.\\\\{0,80\\\\}<strong>WL_Products</strong>.\\\\{0,300\\\\}' guide.en.html guide.id.html)",
+      "Bash(grep -n -o '.\\\\{0,60\\\\}WL_Products.\\\\{0,200\\\\}' guide.en.html)",
+      "Bash(grep -o '.\\\\{0,40\\\\}Setting → Default Values</span>.\\\\{0,10\\\\}')",
+      "Bash(grep -n \"useRef<HTMLDivElement>\\\\|<table className=\\\\\"table products-table\\\\\">\\\\|className={col.key === 'mpp_area' ? 'products-area-column' : undefined}\\\\|className={\\\\`table-sortable-header\\\\|\\) : col.type === 'area' ? \\(\" src/components/data/ProductsManager.tsx)",
+      "Bash(sed -i \"1s/.*/import { useEffect, useState } from 'react';/\" src/components/data/OutputModelDetailDialog.tsx)",
+      "Bash(sed -i \"3s#.*#import { loadOutputModelStartCondition, percentageForDisplay } from '../../lib/outputModel';#\" src/components/data/OutputModelDetailDialog.tsx)",
+      "Bash(sed -i \"16s#\\\\$#\\\\nimport { OUTPUT_MODEL_LIST_SELECT } from '../../lib/outputModelColumns';#\" src/components/setup/ConstructionDetailSelector.tsx)"
     ]
   }
 }
