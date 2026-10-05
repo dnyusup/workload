@@ -116,7 +116,7 @@ export function BatchSimulationDialog({
   };
 
   const exportLog = () => {
-    const header = ['Construction Detail', 'Area', 'Status', 'Result', 'Machines', 'Forecast Man Occupation %', 'Actual Man Occupation %', 'Ton/Shift', 'Message', 'Seconds'];
+    const header = ['Construction Detail', 'Area', 'Status', 'Result', 'Machines', 'Forecast Man Occupation %', 'Actual Man Occupation %', 'Ton/Shift', 'Forecast OEE %', 'Actual OEE %', 'Forecast MHPT', 'Actual MHPT', 'Message', 'Seconds'];
     const rows = done.map((entry) => [
       entry.constructionDetail,
       entry.area,
@@ -126,6 +126,10 @@ export function BatchSimulationDialog({
       entry.forecastManOccupation !== undefined ? entry.forecastManOccupation.toFixed(1) : '',
       entry.actualManOccupation !== undefined ? entry.actualManOccupation.toFixed(1) : '',
       entry.tonPerShift !== undefined ? entry.tonPerShift.toFixed(3) : '',
+      entry.forecastOee !== undefined ? entry.forecastOee.toFixed(1) : '',
+      entry.actualOee !== undefined ? entry.actualOee.toFixed(1) : '',
+      entry.forecastMhpt !== undefined ? entry.forecastMhpt.toFixed(3) : '',
+      entry.actualMhpt !== undefined ? entry.actualMhpt.toFixed(3) : '',
       entry.message,
       (entry.durationMs / 1000).toFixed(1),
     ]);
@@ -205,6 +209,10 @@ export function BatchSimulationDialog({
                         <th>Forecast MO</th>
                         <th>Actual MO</th>
                         <th>Ton/Shift</th>
+                        <th title="Machine efficiency (OEE) from the forecast">Forecast OEE</th>
+                        <th title="Machine efficiency (OEE) of the simulated shift">Actual OEE</th>
+                        <th title="Man hours per ton from the forecast">Forecast MHPT</th>
+                        <th title="Man hours per ton of the simulated shift">Actual MHPT</th>
                         <th>Message</th>
                       </tr>
                     </thead>
@@ -220,12 +228,16 @@ export function BatchSimulationDialog({
                           <td>{entry.forecastManOccupation !== undefined ? `${entry.forecastManOccupation.toFixed(1)}%` : '—'}</td>
                           <td>{entry.actualManOccupation !== undefined ? `${entry.actualManOccupation.toFixed(1)}%` : '—'}</td>
                           <td>{entry.tonPerShift !== undefined ? entry.tonPerShift.toFixed(2) : '—'}</td>
+                          <td>{entry.forecastOee !== undefined ? `${entry.forecastOee.toFixed(1)}%` : '—'}</td>
+                          <td>{entry.actualOee !== undefined ? `${entry.actualOee.toFixed(1)}%` : '—'}</td>
+                          <td>{entry.forecastMhpt !== undefined ? entry.forecastMhpt.toFixed(2) : '—'}</td>
+                          <td>{entry.actualMhpt !== undefined ? entry.actualMhpt.toFixed(2) : '—'}</td>
                           <td className="batch-message">{entry.message}</td>
                         </tr>
                       ))}
                       {visible.length === 0 && (
                         <tr>
-                          <td colSpan={8} className="data-manager-hint">
+                          <td colSpan={12} className="data-manager-hint">
                             Nothing here.
                           </td>
                         </tr>

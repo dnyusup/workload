@@ -11,7 +11,7 @@ import { loadDefaultLayouts, loadDefaultValues } from './defaultValuesStore';
 import { buildOutputModelPayload, createOutputModel, percentageForDisplay, replaceOutputModel } from './outputModel';
 import { loadSavedLayouts } from './savedLayoutsStore';
 import { optimizeAndSimulate, type BatchSimulationResult } from './batchSimulationCore';
-import { calculateSingleOperatorForecast } from './singleOperatorUtilization';
+import { calculateSingleOperatorForecast, forecastOutputSummary } from './singleOperatorUtilization';
 
 /** Every batch result is saved as this version of the Construction Detail, replacing it if it exists. */
 const BATCH_VERSION = '0001';
@@ -29,6 +29,12 @@ export interface BatchLogEntry {
   forecastManOccupation?: number;
   actualManOccupation?: number;
   tonPerShift?: number;
+  /** Machine efficiency (OEE) %, as saved: planned (forecast) and from the simulated shift. */
+  forecastOee?: number;
+  actualOee?: number;
+  /** Man hours per ton: from the forecast output, and from the simulated shift (as saved). */
+  forecastMhpt?: number;
+  actualMhpt?: number;
   /** Why it failed, or a short note on success. */
   message: string;
   durationMs: number;
@@ -260,6 +266,10 @@ export async function runBatchSimulation({
             forecastManOccupation: forecast.forecastUtilizationPercent,
             actualManOccupation: percentageForDisplay(payload.mpp_actualmanoccupation),
             tonPerShift: payload.mpp_tonspershift,
+            forecastOee: percentageForDisplay(payload.mpp_plannedmachineefficiency),
+            actualOee: percentageForDisplay(payload.mpp_actualmachineefficiency),
+            forecastMhpt: forecastOutputSummary(result.config, forecast).manHourPerTon,
+            actualMhpt: payload.mpp_manhoursperton,
             message: action === 'replaced' ? 'Version 0001 replaced.' : 'Version 0001 created.',
             durationMs: performance.now() - started,
           });
