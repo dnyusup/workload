@@ -5541,3 +5541,105 @@
   background: rgba(148, 163, 184, 0.15);
   color: #cbd5e1;
 }
+
+/* Setting page: one tab per section, each a list of "Title : field" rows. */
+.settings-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.settings-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid #1e293b;
+}
+
+.settings-tabs button {
+  padding: 8px 16px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  margin-bottom: -1px;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.settings-tabs button:hover {
+  color: #e2e8f0;
+}
+
+.settings-tabs button.active {
+  border-color: #1e293b;
+  background: rgba(56, 189, 248, 0.08);
+  color: #e2e8f0;
+  box-shadow: inset 0 2px 0 #38bdf8;
+}
+
+.settings-group + .settings-group {
+  margin-top: 20px;
+}
+
+.settings-group-title {
+  margin: 0 0 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #1e293b;
+  color: #38bdf8;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.settings-group-rows {
+  display: flex;
+  flex-direction: column;
+  max-width: 720px;
+}
+
+.settings-row {
+  display: grid;
+  grid-template-columns: minmax(0, 280px) 12px minmax(0, 360px);
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.settings-row + .settings-row {
+  border-top: 1px dashed rgba(30, 41, 59, 0.8);
+}
+
+.settings-row-label {
+  color: #cbd5e1;
+  font-size: 0.85rem;
+}
+
+.settings-row-colon {
+  color: #64748b;
+  text-align: center;
+}
+
+.settings-row-control {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.settings-row-control > .input,
+.settings-row-control > select {
+  width: 100%;
+}
+
+@media (max-width: 640px) {
+  .settings-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .settings-row-colon {
+    display: none;
+  }
+}

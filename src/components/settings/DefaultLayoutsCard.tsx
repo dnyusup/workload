@@ -5,7 +5,7 @@ import { fetchAllPages } from '../../lib/dataversePaging';
 import { Mpp_wl_productsesService } from '../../generated/services/Mpp_wl_productsesService';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
-import { Field } from '../ui/Field';
+import { SettingGroup, SettingRow } from './SettingRow';
 
 /** Default layout per Area (WL_DefaultValues `Layout-<Area>` rows): the Work Load Simulator uses it
  * whenever a Construction Detail of that Area is picked. */
@@ -87,12 +87,12 @@ export function DefaultLayoutsCard() {
         <p className="data-manager-hint">No Area found in WL_Products.</p>
       ) : (
         <>
-          <div className="grid-2">
+          <SettingGroup title="Layout per Area">
             {areas.map((area) => {
               const value = draft[area] ?? '';
               const missing = value && !layouts.some((layout) => layout.id === value);
               return (
-                <Field key={area} label={`Layout-${area}`}>
+                <SettingRow key={area} label={`Layout-${area}`}>
                   <select
                     className="input"
                     value={value}
@@ -109,10 +109,10 @@ export function DefaultLayoutsCard() {
                       </option>
                     ))}
                   </select>
-                </Field>
+                </SettingRow>
               );
             })}
-          </div>
+          </SettingGroup>
           {message && <p className="data-manager-hint">{message}</p>}
         </>
       )}
