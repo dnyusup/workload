@@ -1565,7 +1565,7 @@ function ProductionSetupEditor({
           placeholder={`${setup.minRemainForDoffPriority} (setup)`}
           value={bulkMinRemain ?? ''}
           disabled={!effectiveDoffPriority}
-          title="Min Remain Task for Doff Priority (min) — blank follows the setup"
+          title="Min Remain Task for Doff Priority (min) — blank follows the Construction Detail (WL_Products) where set, else the setup"
           aria-label="Min Remain Task for Doff Priority (min)"
           onChange={(e) => {
             const parsed = parseFloat(e.target.value);
@@ -1585,7 +1585,7 @@ function ProductionSetupEditor({
       </div>
       {selectedMachineIds.length > 0 && bulkDoffPriority === undefined && bulkMinRemain === undefined && (
         <p className="data-manager-hint">
-          Doff Priority follows the setup ({setup.doffPriority ? `Yes, ${setup.minRemainForDoffPriority} min` : 'No'}).
+          Doff Priority follows the Construction Detail (WL_Products) where set, else the setup ({setup.doffPriority ? `Yes, ${setup.minRemainForDoffPriority} min` : 'No'}).
         </p>
       )}
     </Card>

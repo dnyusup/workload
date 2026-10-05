@@ -238,7 +238,7 @@ export function MachineAssignmentsTable({
     {
       key: 'doffPriority',
       header: 'Doff Priority',
-      title: "Machine's own Doff Priority; — = follows the setup",
+      title: "Machine's own Doff Priority; — = follows its Construction Detail's (WL_Products) where set, else the setup",
       total: total(totals.ownDoffPriority, 'own'),
       totalTitle: 'Machines with their own Doff Priority',
       cell: (r) => doffPriorityText(r.assignment),

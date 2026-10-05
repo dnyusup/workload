@@ -182,6 +182,14 @@
           "x-ms-schema-name": "mpp_DiesTon",
           "maxLength": 100
         },
+        "mpp_doffpriority": {
+          "type": "string",
+          "title": "DoffPriority",
+          "x-ms-dataverse-attribute": "mpp_doffpriority",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "mpp_DoffPriority",
+          "maxLength": 100
+        },
         "mpp_fractureperton": {
           "type": "string",
           "title": "Fracture/Ton",
@@ -212,6 +220,13 @@
           "x-ms-dataverse-type": "StringType",
           "x-ms-schema-name": "mpp_machinecode",
           "maxLength": 100
+        },
+        "mpp_minremaintaskfordoffpriority": {
+          "type": "string",
+          "title": "MinRemainTaskforDoffPriority",
+          "x-ms-dataverse-attribute": "mpp_minremaintaskfordoffpriority",
+          "x-ms-dataverse-type": "DecimalType",
+          "x-ms-schema-name": "mpp_MinRemainTaskforDoffPriority"
         },
         "mpp_numberoffibers": {
           "type": "string",
@@ -270,6 +285,14 @@
           "x-ms-dataverse-attribute": "mpp_spooltype",
           "x-ms-dataverse-type": "StringType",
           "x-ms-schema-name": "mpp_spooltype",
+          "maxLength": 100
+        },
+        "mpp_taskpriority": {
+          "type": "string",
+          "title": "taskpriority",
+          "x-ms-dataverse-attribute": "mpp_taskpriority",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "mpp_taskpriority",
           "maxLength": 100
         },
         "mpp_tensilegroup": {

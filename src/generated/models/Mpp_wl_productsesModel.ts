@@ -20,10 +20,12 @@ export interface Mpp_wl_productsesBase {
   mpp_constructiondetailcode?: string;
   mpp_defectston?: string;
   mpp_dieston?: string;
+  mpp_doffpriority?: string;
   mpp_fractureperton?: string;
   mpp_laylength?: number;
   mpp_lineardensity?: string;
   mpp_machinecode?: string;
+  mpp_minremaintaskfordoffpriority?: number;
   mpp_numberoffibers?: number;
   mpp_polength1?: number;
   mpp_polength2?: number;
@@ -32,6 +34,7 @@ export interface Mpp_wl_productsesBase {
   mpp_speed?: string;
   mpp_spoollength?: number;
   mpp_spooltype?: string;
+  mpp_taskpriority?: string;
   mpp_tensilegroup?: string;
   mpp_wl_productsid: string;
   overriddencreatedon?: string;

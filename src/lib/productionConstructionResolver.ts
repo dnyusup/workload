@@ -2,7 +2,7 @@ import { Mpp_wl_activitiesService } from '../generated/services/Mpp_wl_activitie
 import type { Mpp_wl_activities } from '../generated/models/Mpp_wl_activitiesModel';
 import type { Mpp_wl_productses } from '../generated/models/Mpp_wl_productsesModel';
 import type { ActivityConfig, ActivityKey, MachineSpecInput } from '../types';
-import { buildActivitiesFromRows, mapProductToSpec } from './productCatalog';
+import { buildActivitiesFromRows, mapProductToSpec, productOperatorSettings, type ProductOperatorSettings } from './productCatalog';
 import { activityCycleLength, deriveMachineSpec, ensureCoreActivities } from './calculations';
 import { fetchAllPages } from './dataversePaging';
 
@@ -17,6 +17,8 @@ export interface ResolvedConstruction {
   activities: ActivityConfig[];
   runtimePerSpool: number;
   cycleLengths: Record<ActivityKey, number>;
+  /** The product's own Task/Doff Priority — where set, it wins over the setup's for its machines. */
+  operatorSettings: ProductOperatorSettings;
 }
 
 export interface ConstructionAttributes {
@@ -118,6 +120,7 @@ export async function resolveConstructions(
       activities,
       runtimePerSpool: derived.runtimePerSpool > 0 ? derived.runtimePerSpool : 1,
       cycleLengths,
+      operatorSettings: productOperatorSettings(product),
     });
   }
 

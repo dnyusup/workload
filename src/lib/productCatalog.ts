@@ -1,7 +1,7 @@
 import type { Mpp_wl_activities } from '../generated/models/Mpp_wl_activitiesModel';
 import { Mpp_wl_activitiesmpp_taskname } from '../generated/models/Mpp_wl_activitiesModel';
 import type { Mpp_wl_productses } from '../generated/models/Mpp_wl_productsesModel';
-import type { ActivityConfig, MachCondition, MachineSpecInput } from '../types';
+import type { ActivityConfig, MachCondition, MachineSpecInput, TaskPriorityMode } from '../types';
 import { deriveMachineSpec, fractureRepairingDenominator } from './calculations';
 import { parseFrequencyType } from './frequencyTypes';
 
@@ -57,6 +57,30 @@ export function mapProductToSpec(product: Mpp_wl_productses): MachineSpecInput {
     poLength2: parseNumber(product.mpp_polength2, 0),
     poLength3: parseNumber(product.mpp_polength3, 0),
   };
+}
+
+/** A Construction Detail's own operator settings (WL_Products TaskPriority / DoffPriority /
+ * MinRemainTaskForDoffPriority). Each is optional: blank leaves it to Default Values in the Work
+ * Load Simulator, or to the Production Setup in Production Simulation. */
+export interface ProductOperatorSettings {
+  taskPriority?: TaskPriorityMode;
+  doffPriority?: boolean;
+  minRemainForDoffPriority?: number;
+}
+
+export function productOperatorSettings(
+  product: Pick<Mpp_wl_productses, 'mpp_taskpriority' | 'mpp_doffpriority' | 'mpp_minremaintaskfordoffpriority'>,
+): ProductOperatorSettings {
+  const settings: ProductOperatorSettings = {};
+  const task = (product.mpp_taskpriority ?? '').trim().toLowerCase();
+  if (task.startsWith('nearest')) settings.taskPriority = 'nearest';
+  else if (task.startsWith('quickest')) settings.taskPriority = 'quickest';
+  const doff = (product.mpp_doffpriority ?? '').trim().toLowerCase();
+  if (doff === 'yes' || doff === 'true') settings.doffPriority = true;
+  else if (doff === 'no' || doff === 'false') settings.doffPriority = false;
+  const minRemain = parseNumber(product.mpp_minremaintaskfordoffpriority, NaN);
+  if (Number.isFinite(minRemain) && minRemain >= 0) settings.minRemainForDoffPriority = minRemain;
+  return settings;
 }
 
 export function isLoadingTaskRow(row: Mpp_wl_activities): boolean {

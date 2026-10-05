@@ -14,7 +14,9 @@ import type {
   ProductionSimulationState,
   ServiceSegment,
   SuspendedVisit,
+  TaskPriorityMode,
 } from '../types';
+import type { ProductOperatorSettings } from './productCatalog';
 import { availableTimeMinutes, deriveMachineSpec, distanceMeters } from './calculations';
 import { machineWidthPx, machineHeightPx } from './layoutConstants';
 import { buildServiceSegments } from './machineZones';
@@ -51,6 +53,8 @@ interface ProdMachine extends MachineRuntimeState {
    * servicing the same machine at once even though different activities on it can belong to
    * different operators. Released once that operator finishes its visit. */
   lockedByOperatorId: string | null;
+  /** Its Construction Detail's own Task/Doff Priority (blank = the setup's). */
+  productSettings: ProductOperatorSettings;
 }
 
 interface BreakDef {
@@ -155,6 +159,7 @@ export class ProductionSimulationEngine {
   private machinesByOperator = new Map<string, ProdMachine[]>();
   private machineById = new Map<string, ProdMachine>();
   private assignmentByMachineId = new Map<string, ProductionMachineAssignment>();
+  private taskPriorityByOperator = new Map<string, TaskPriorityMode>();
   /** Per machine: its Multi Task operators, who may take any of its pending work. */
   private multiTaskByMachineId = new Map<string, Set<string>>();
   /** Per machine and activity family: everyone who may do that work (Multi Task plus that family's
@@ -164,7 +169,6 @@ export class ProductionSimulationEngine {
 
   constructor(setup: ProductionSetup, resolved: Map<string, ResolvedConstruction>, resolveErrors: string[] = []) {
     this.setup = setup;
-    this.anyDoffPriority = setup.doffPriority || setup.assignments.some((a) => a.doffPriority === true);
     this.wallGraph = buildWallGraph(setup.walls ?? [], WALL_CLEARANCE_METERS * (setup.movement.pixelsPerMeter || 20));
     this.warnings.push(...resolveErrors);
 
@@ -234,10 +238,12 @@ export class ProductionSimulationEngine {
         runtimePerSpool,
         spoolWeight,
         lockedByOperatorId: null,
+        productSettings: construction?.operatorSettings ?? {},
       };
       return machine;
     });
 
+    this.anyDoffPriority = this.machines.some((m) => m.status !== 'unassigned' && this.doffPriorityEnabled(m, assignmentByMachine.get(m.id)));
     resolved.forEach((construction, id) => this.constructionLabelById.set(id, construction.label));
     // First match wins, same as the setup.assignments.find() lookup this replaces.
     setup.assignments.forEach((a) => {
@@ -762,7 +768,7 @@ export class ProductionSimulationEngine {
     }
     if (candidates.length === 0) return null;
     const pxPerM = this.setup.movement.pixelsPerMeter;
-    if (this.setup.taskPriority === 'quickest') {
+    if (this.taskPriorityOf(operator.id) === 'quickest') {
       return pickLowestScore(
         candidates,
         (m) => this.estimateServiceEtaMin(operator, m, this.tasksFor(operator.id, m), true),
@@ -832,12 +838,29 @@ export class ProductionSimulationEngine {
     return [...suspended, ...buildServiceSegments(tasks, machine.x, machine.y, machine.orientation, machine.pairSide, this.setup.movement.walkingSpeed, this.setup.movement.pixelsPerMeter, machine.widthPx, machine.heightPx, machine.axis, this.setup.rpc)];
   }
 
-  /** Doff Priority of the machine that needs Doffing: its own setting where set, else the setup's. */
+/** Task Priority of an operator: the one its machines' Construction Details set (WL_Products) when
+   * they all come to the same — a machine without its own follows the setup — else the setup's.
+   * Nearest and Quickest rank machines differently, so one operator can't mix them. */
+  private taskPriorityOf(operatorId: string): TaskPriorityMode {
+    let mode = this.taskPriorityByOperator.get(operatorId);
+    if (mode) return mode;
+    const modes = new Set((this.machinesByOperator.get(operatorId) ?? []).map((m) => m.productSettings.taskPriority ?? this.setup.taskPriority));
+    mode = modes.size === 1 ? [...modes][0] : this.setup.taskPriority;
+    this.taskPriorityByOperator.set(operatorId, mode);
+    return mode;
+  }
+
+  private doffPriorityEnabled(machine: ProdMachine, assignment: ProductionMachineAssignment | undefined): boolean {
+    return assignment?.doffPriority ?? machine.productSettings.doffPriority ?? this.setup.doffPriority;
+  }
+
+  /** Doff Priority of the machine that needs Doffing: its own setting where set, else its
+   * Construction Detail's (WL_Products), else the setup's. */
   private doffPriorityOf(machine: ProdMachine): { enabled: boolean; minRemain: number } {
     const assignment = this.assignmentByMachineId.get(machine.id);
     return {
-      enabled: assignment?.doffPriority ?? this.setup.doffPriority,
-      minRemain: assignment?.minRemainForDoffPriority ?? this.setup.minRemainForDoffPriority,
+      enabled: this.doffPriorityEnabled(machine, assignment),
+      minRemain: assignment?.minRemainForDoffPriority ?? machine.productSettings.minRemainForDoffPriority ?? this.setup.minRemainForDoffPriority,
     };
   }
 

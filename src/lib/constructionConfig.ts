@@ -4,13 +4,14 @@ import type { AppConfig } from '../types';
 import { deriveMachineSpec, ensureCoreActivities, syncAutoActivityValues } from './calculations';
 import type { DefaultValues } from './defaultValuesStore';
 import { DEFAULT_PIXELS_PER_METER } from './layoutConstants';
-import { buildActivitiesFromRows, isLoadingTaskRow, mapProductToSpec } from './productCatalog';
+import { buildActivitiesFromRows, isLoadingTaskRow, mapProductToSpec, productOperatorSettings } from './productCatalog';
 import type { SavedLayout } from './savedLayoutsStore';
 import { previewAssignedMachineIds, recommendedMachineCountForForecast } from './singleOperatorUtilization';
 
 /**
  * The Work Load Simulator setup for one Construction Detail: its spec from WL_Products, its
- * Activity Table from WL_Activities, every operator setting from Default Values, and — when given —
+ * Activity Table from WL_Activities, every operator setting from Default Values (Task/Doff Priority
+ * from the product itself where filled in), and — when given —
  * the Area's default layout with a fresh assignment. Shared by picking a Construction Detail and by
  * Batch Simulation, so both start from exactly the same setup.
  */
@@ -29,6 +30,7 @@ export function buildConstructionConfig({
   layout: SavedLayout | null;
 }): { config: AppConfig; errors: string[] } {
   const spec = mapProductToSpec(product);
+  const productSettings = productOperatorSettings(product);
   const derived = deriveMachineSpec(spec);
   const built = buildActivitiesFromRows(activityRows, product, derived.spoolWeight, spec.fracturePerTon);
   // Synced the way Start does it (auto Num/Dem, Dies/Defect per ton), so a batch run, a replay and a
@@ -45,14 +47,15 @@ export function buildConstructionConfig({
     operator: {
       ...base.operator,
       extraBreaks: [],
-      taskPriority: defaults.taskPriority,
+      // The Construction Detail's own Task/Doff Priority (WL_Products) wins where it's filled in.
+      taskPriority: productSettings.taskPriority ?? defaults.taskPriority,
       shiftTime: defaults.shiftTime,
       lunchTime: defaults.lunchTime,
       lunchStartAt: defaults.lunchStartAt,
       meetingTime: defaults.meetingTime,
       meetingStartAt: defaults.meetingStartAt,
-      doffPriority: defaults.doffPriority,
-      minRemainForDoffPriority: defaults.minRemainForDoffPriority,
+      doffPriority: productSettings.doffPriority ?? defaults.doffPriority,
+      minRemainForDoffPriority: productSettings.minRemainForDoffPriority ?? defaults.minRemainForDoffPriority,
       waitingModel: defaults.waitingModel,
       optimizeStepUpBelow: defaults.optimizeStepUpBelow,
     },
