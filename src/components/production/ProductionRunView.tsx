@@ -1201,7 +1201,7 @@ export function ProductionRunView({
               </div>
             </Card>
 
-            <Card title="Completed Activities" subtitle="vs theoretical full-shift estimate (same formula as the Workload Simulator)">
+            <Card title="Completed Activities" subtitle="vs full-shift forecast at each machine's forecast OEE (same as the Workload Simulator)">
               {completedRows.length === 0 && <p className="empty-hint">Nothing completed yet.</p>}
               {completedRows.map(([label, value]) => (
                 <div className="metric-row" key={label}>

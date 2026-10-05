@@ -1,5 +1,5 @@
 import type { ActivityKey, ProductionSetup } from '../types';
-import { availableTimeMinutes, distanceMeters } from './calculations';
+import { applyRpc, availableTimeMinutes, distanceMeters } from './calculations';
 import { activityFamily, eligibleOperatorIds, operatorSharesForActivity, TASK_OPERATOR_FIELDS, type TaskOperatorField } from './productionActivityRouting';
 import type { ResolvedConstruction } from './productionConstructionResolver';
 import { forecastCycleLength } from './frequencyTypes';
@@ -45,6 +45,11 @@ export interface PlannedMachineUtilization {
   machineId: string;
   machineLabel: string;
   constructionLabel: string;
+  /** Share of the shift the machine runs after its Stop activities (the forecast scale). */
+  availability: number;
+  /** availability × the share left after waiting for its operator(s) — what its forecast events
+   * (contributions' expectedOccurrences are at 100%) come out at. */
+  oee: number;
   contributions: PlannedActivityContribution[];
 }
 
@@ -222,9 +227,9 @@ export function calculatePlannedUtilization(
       const eventCount = !quantityBased
         ? expectedOccurrences
         : expectedQuantity / AVERAGE_DIES_PER_CHANGE_EVENT;
-      const plannedMinutes = quantityBased
-        ? expectedQuantity * Math.max(0, activity.timeMinutes)
-        : eventCount * Math.max(0, activity.timeMinutes);
+      // Handling includes the RPC allowance, as the simulation does it.
+      const timeWithRpc = applyRpc(Math.max(0, activity.timeMinutes), setup.rpc);
+      const plannedMinutes = quantityBased ? expectedQuantity * timeWithRpc : eventCount * timeWithRpc;
       if (plannedMinutes <= 0) return;
 
       const contribution: PlannedActivityContribution = {
@@ -247,6 +252,8 @@ export function calculatePlannedUtilization(
       machineId: machine.id,
       machineLabel: machine.label,
       constructionLabel: construction.label,
+      availability: forecastScale,
+      oee: forecastScale,
       contributions: machineContributions,
     });
     const plannedMachine = machines[machines.length - 1];
@@ -281,9 +288,10 @@ export function calculatePlannedUtilization(
         const share = expectedSpools / totalExpectedSpools;
         const machineExpectedQuantity = quantityBased ? (expectedQuantity ?? 0) * share : undefined;
         const machineEventCount = eventCount * share;
+        const timeWithRpc = applyRpc(Math.max(0, activity.timeMinutes), setup.rpc);
         const plannedMinutes = quantityBased
-          ? (machineExpectedQuantity ?? 0) * Math.max(0, activity.timeMinutes)
-          : machineEventCount * Math.max(0, activity.timeMinutes);
+          ? (machineExpectedQuantity ?? 0) * timeWithRpc
+          : machineEventCount * timeWithRpc;
         if (plannedMinutes <= 0) return;
 
         const contribution: PlannedActivityContribution = {
@@ -309,7 +317,12 @@ export function calculatePlannedUtilization(
   const walkingSpeed = finitePositive(setup.movement.walkingSpeed);
   const pixelsPerMeter = finitePositive(setup.movement.pixelsPerMeter);
 
+  /** Per operator, the share of the shift its machines still run after waiting for it. */
+  const runningShareByOperator = new Map<string, number>();
   operators.forEach((operator) => {
+    /** Walking for a given share of the visits: the first pass is walked anyway; only the rounds
+     * after it shrink when machines make fewer spools (same as the Work Load Simulator forecast). */
+    let walkingAt: (visitShare: number) => number = () => 0;
     const visitsByMachine = operatorVisits.get(operator.operatorId);
     if (visitsByMachine && walkingSpeed > 0 && pixelsPerMeter > 0) {
       const routeMachines = [...visitsByMachine.entries()]
@@ -344,8 +357,8 @@ export function calculatePlannedUtilization(
           : 0;
         const totalVisits = routeMachines.reduce((total, entry) => total + entry.visits, 0);
         const averageRounds = totalVisits / routeMachines.length;
-        const estimatedDistance = firstPassDistance + Math.max(0, averageRounds - 1) * cycleDistance;
-        operator.forecastWalkingMinutes = estimatedDistance / walkingSpeed;
+        walkingAt = (visitShare) => (firstPassDistance + Math.max(0, averageRounds * visitShare - 1) * cycleDistance) / walkingSpeed;
+        operator.forecastWalkingMinutes = walkingAt(1);
       }
     }
     // Machines waiting for the operator make fewer spools, leaving the operator less to do, which
@@ -354,11 +367,11 @@ export function calculatePlannedUtilization(
     const machineCount = scales.length;
     const averageScale = machineCount > 0 ? scales.reduce((total, scale) => total + scale, 0) / machineCount : 0;
     const shift = Math.max(0, setup.shiftTime);
-    const fullBusy = operator.forecastServiceMinutes + operator.forecastWalkingMinutes;
+    const fullService = operator.forecastServiceMinutes;
     const waitingModel = setup.waitingModel ?? DEFAULT_WAITING_MODEL;
     const passAt = (waitingPerMachine: number) => {
       const runningShare = shift > 0 ? Math.max(0, shift - waitingPerMachine) / shift : 0;
-      const busy = fullBusy * runningShare;
+      const busy = fullService * runningShare + walkingAt(runningShare);
       const backlog = Math.max(0, busy - availableMinutes);
       const interference = machineInterference(waitingModel, machineCount, shift * averageScale * runningShare, busy);
       return { runningShare, busy, backlog, waiting: Math.min(shift * machineCount, Math.max(backlog, interference.minutes)) };
@@ -371,8 +384,9 @@ export function calculatePlannedUtilization(
       waitingPerMachine = (waitingPerMachine + produced) / 2;
       pass = passAt(waitingPerMachine);
     }
-    operator.forecastServiceMinutes *= pass.runningShare;
-    operator.forecastWalkingMinutes *= pass.runningShare;
+    operator.forecastServiceMinutes = fullService * pass.runningShare;
+    operator.forecastWalkingMinutes = walkingAt(pass.runningShare);
+    runningShareByOperator.set(operator.operatorId, pass.runningShare);
     operator.forecastWaitingMinutes = pass.backlog;
     operator.machineWaitingMinutes = waitingPerMachine * machineCount;
     operator.forecastUtilizationPercent = availableMinutes > 0
@@ -382,6 +396,23 @@ export function calculatePlannedUtilization(
 
   operators.forEach((operator) => {
     operator.utilizationPercent = availableMinutes > 0 ? (operator.plannedMinutes / availableMinutes) * 100 : 0;
+  });
+
+  // A machine runs less when its operators keep it waiting — the average over the operators working it.
+  const sharesByMachine = new Map<string, number[]>();
+  operatorMachineScales.forEach((scales, operatorId) => {
+    const share = runningShareByOperator.get(operatorId);
+    if (share === undefined) return;
+    scales.forEach((_, machineId) => {
+      const list = sharesByMachine.get(machineId) ?? [];
+      list.push(share);
+      sharesByMachine.set(machineId, list);
+    });
+  });
+  machines.forEach((machine) => {
+    const shares = sharesByMachine.get(machine.machineId);
+    const runningShare = shares && shares.length > 0 ? shares.reduce((total, share) => total + share, 0) / shares.length : 1;
+    machine.oee = machine.availability * runningShare;
   });
 
   return {

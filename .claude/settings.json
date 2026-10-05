@@ -165,7 +165,9 @@
       "Bash(awk '/private combineLoadingPartials/,/^  }$/' src/lib/simulationEngine.ts)",
       "Bash(node \"C:/Users/DENI~1.YUS/AppData/Local/Temp/claude/c--Users-deni-yusup-powerapps-code-WorkLoad/6aef9193-7703-4c6d-9d7f-50697731bc86/scratchpad/editReplay.cjs\")",
       "Bash(grep -n \"^import\\\\|const { config, setConfig }\\\\|useAppConfig\\(\\)\" src/App.tsx)",
-      "Bash(grep -o '\"mpp_[a-z0-9]*\"[^}]\\\\{0,200\\\\}' .power/schemas/dataverse/wl_outputmodels.Schema.json)"
+      "Bash(grep -o '\"mpp_[a-z0-9]*\"[^}]\\\\{0,200\\\\}' .power/schemas/dataverse/wl_outputmodels.Schema.json)",
+      "Bash(grep -n \"const plannedMinutes = quantityBased\\\\|plannedMinutes = quantityBased\\\\|Math.max\\(0, activity.timeMinutes\\)\\\\|machines.push\\({\\\\|export interface PlannedMachineUtilization\\\\|operator.machineWaitingMinutes = \\\\|operators.forEach\\(\\(operator\\) => {\\\\|return {\\\\n    availableMinutes\" src/lib/productionUtilization.ts)",
+      "Bash(node \"C:/Users/DENI~1.YUS/AppData/Local/Temp/claude/c--Users-deni-yusup-powerapps-code-WorkLoad/6aef9193-7703-4c6d-9d7f-50697731bc86/scratchpad/editProdForecastAlign.cjs\")"
     ]
   }
 }
