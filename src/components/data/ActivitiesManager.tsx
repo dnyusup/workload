@@ -7,6 +7,8 @@ import {
 } from '../../generated/models/Mpp_wl_activitiesModel';
 import { Mpp_wl_productsesService } from '../../generated/services/Mpp_wl_productsesService';
 import { fetchAllPages } from '../../lib/dataversePaging';
+import { usePagedRows } from '../../hooks/usePagedRows';
+import { TablePager } from '../ui/TablePager';
 import { parseFrequencyType } from '../../lib/frequencyTypes';
 import { FREQUENCY_TYPES, type FrequencyType } from '../../types';
 import { Card } from '../ui/Card';
@@ -136,7 +138,7 @@ export function ActivitiesManager({
 
   useEffect(() => {
     let cancelled = false;
-    fetchAllPages(Mpp_wl_productsesService.getAll)
+    fetchAllPages(Mpp_wl_productsesService.getAll, { select: ['mpp_wl_productsid', 'mpp_constructioncode', 'mpp_area'] })
       .then((data) => {
         if (cancelled) return;
         const map = new Map<string, string>();
@@ -230,6 +232,8 @@ export function ActivitiesManager({
     });
   }, [rows, constructionFilter, sortLevels]);
 
+  const paged = usePagedRows(visibleRows, JSON.stringify([constructionFilter, sortLevels]));
+
   const sortIndicator = (key: keyof ActivityFields) => {
     const level = sortLevels.findIndex((item) => item.key === key);
     if (level < 0) return '';
@@ -247,9 +251,10 @@ export function ActivitiesManager({
     return TASK_OPTIONS.filter((opt) => allowed.has(opt.value));
   };
 
+  // New rows go first, so they show on page 1 right away.
   const addRow = () => {
+    paged.setPage(1);
     setRows((prev) => [
-      ...prev,
       {
         id: `new-${Date.now()}`,
         isNew: true,
@@ -264,6 +269,7 @@ export function ActivitiesManager({
           ...fieldsFromConstruction(constructionFilter),
         },
       },
+      ...prev,
     ]);
   };
 
@@ -382,6 +388,14 @@ export function ActivitiesManager({
               searchPlaceholder="Search Construction…"
             />
           </div>
+          <TablePager
+            page={paged.page}
+            pageCount={paged.pageCount}
+            pageSize={paged.pageSize}
+            total={paged.total}
+            onPageChange={paged.setPage}
+            label="activities"
+          />
           <div className="data-table-wrap" ref={tableWrapRef}>
           <table className="table activities-table">
             <thead>
@@ -429,7 +443,7 @@ export function ActivitiesManager({
               </tr>
             </thead>
             <tbody>
-              {visibleRows.map((row) => (
+              {paged.pageRows.map((row) => (
                 <tr key={row.id}>
                   <td>
                     <input
@@ -578,6 +592,14 @@ export function ActivitiesManager({
             </tbody>
           </table>
           </div>
+          <TablePager
+            page={paged.page}
+            pageCount={paged.pageCount}
+            pageSize={paged.pageSize}
+            total={paged.total}
+            onPageChange={paged.setPage}
+            label="activities"
+          />
           <FloatingScrollbar targetRef={tableWrapRef} />
         </>
       )}

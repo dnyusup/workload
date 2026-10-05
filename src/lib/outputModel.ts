@@ -192,6 +192,9 @@ export function buildOutputModelPayload(
     mpp_meetingstarttime: config.operator.meetingStartAt,
     mpp_rpc: config.rpcPercent ?? 12,
     mpp_optimizemodel: formatWaitingModel(config.operator.waitingModel ?? DEFAULT_WAITING_MODEL),
+    // Same text as WL_DefaultValues: Yes/No, and the minutes as a number.
+    mpp_doffpriority: config.operator.doffPriority ? 'Yes' : 'No',
+    mpp_minremaintaskfordoffpriority: String(config.operator.minRemainForDoffPriority ?? 0),
     mpp_numberofmachinesassigned: state.metrics.assignedMachineCount,
     mpp_plannedmanoccupation: storedPercentage(forecast.forecastUtilizationPercent),
     mpp_actualmanoccupation: storedPercentage(actualManOccupation),
@@ -246,6 +249,13 @@ export async function prepareSimulationOutputModel(
   return buildOutputModelPayload(config, state, product, updatedBy, metadata);
 }
 
+/** One output model's saved start condition (the snapshot lists leave out); '' when it has none. */
+export async function loadOutputModelStartCondition(outputModelId: string): Promise<string> {
+  const result = await Mpp_wl_outputmodelsesService.get(outputModelId, { select: ['mpp_startmachcondition'] });
+  if (!result.success) throw new Error(result.error?.message ?? 'Failed to load the saved start condition.');
+  return result.data?.mpp_startmachcondition ?? '';
+}
+
 export async function findOutputModelsForConstruction(constructionDetail: string) {
   const escapedDetail = escapeODataString(constructionDetail);
   const filteredRows = await fetchAllPages(Mpp_wl_outputmodelsesService.getAll, {
@@ -254,11 +264,15 @@ export async function findOutputModelsForConstruction(constructionDetail: string
   });
   if (filteredRows.length > 0) return filteredRows;
 
+  // Stored with stray spaces around the code? Narrowed on the server with `contains` — reading the
+  // whole table here (snapshots included) took ages once it held thousands of rows.
   const normalizedDetail = constructionDetail.trim().toLowerCase();
-  const allRows = await fetchAllPages(Mpp_wl_outputmodelsesService.getAll, {
+  if (!normalizedDetail) return [];
+  const candidateRows = await fetchAllPages(Mpp_wl_outputmodelsesService.getAll, {
+    filter: `contains(mpp_constructiondetailcode, '${escapeODataString(constructionDetail.trim())}')`,
     orderBy: ['mpp_version asc', 'mpp_updatedon asc'],
   });
-  return allRows.filter(
+  return candidateRows.filter(
     (row) => row.mpp_constructiondetailcode?.trim().toLowerCase() === normalizedDetail,
   );
 }

@@ -2,8 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Mpp_wl_outputmodelsesService } from '../../generated/services/Mpp_wl_outputmodelsesService';
 import type { Mpp_wl_outputmodelses } from '../../generated/models/Mpp_wl_outputmodelsesModel';
 import { fetchAllPages } from '../../lib/dataversePaging';
-import { outputModelVersionNumber } from '../../lib/outputModel';
-import { OUTPUT_MODEL_COLUMNS, formatOutputModelValue, type OutputModelKey } from '../../lib/outputModelColumns';
+import { loadOutputModelStartCondition, outputModelVersionNumber } from '../../lib/outputModel';
+import { OUTPUT_MODEL_LIST_COLUMNS, OUTPUT_MODEL_LIST_SELECT, formatOutputModelValue, type OutputModelKey } from '../../lib/outputModelColumns';
+import { usePagedRows } from '../../hooks/usePagedRows';
+import { TablePager } from '../ui/TablePager';
 import { OutputModelDetailDialog } from './OutputModelDetailDialog';
 import { downloadOutputModelRows } from '../../lib/outputModelExport';
 import { Card } from '../ui/Card';
@@ -96,10 +98,12 @@ export function OutputModelsManager({
   const [constructionFilter, setConstructionFilter] = useState('');
   const [spoolTypeFilter, setSpoolTypeFilter] = useState('');
   const tableWrapRef = useRef<HTMLDivElement>(null);
+  const [loadingConditionId, setLoadingConditionId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    fetchAllPages(Mpp_wl_outputmodelsesService.getAll, { orderBy: ['mpp_updatedon desc'] })
+    // Without the start-condition snapshot: it's read per row when needed (see OUTPUT_MODEL_LIST_SELECT).
+    fetchAllPages(Mpp_wl_outputmodelsesService.getAll, { select: OUTPUT_MODEL_LIST_SELECT, orderBy: ['mpp_updatedon desc'] })
       .then((result) => {
         if (!cancelled) setRows(result);
       })
@@ -120,12 +124,19 @@ export function OutputModelsManager({
     setReloadToken((token) => token + 1);
   };
 
-  const loadStartCondition = (row: Mpp_wl_outputmodelses) => {
+  const loadStartCondition = async (row: Mpp_wl_outputmodelses) => {
+    if (loadingConditionId) return;
+    setLoadingConditionId(row.mpp_wl_outputmodelsid);
+    setLoadError(null);
     try {
-      const snapshot = parseMachineStartConditions(row.mpp_startmachcondition);
-      onUseStartCondition?.(row, snapshot);
+      const startCondition = row.mpp_startmachcondition ?? (await loadOutputModelStartCondition(row.mpp_wl_outputmodelsid));
+      if (!startCondition.trim()) throw new Error('This output model has no saved start condition.');
+      const snapshot = parseMachineStartConditions(startCondition);
+      onUseStartCondition?.({ ...row, mpp_startmachcondition: startCondition }, snapshot);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : 'The saved start condition is invalid.');
+    } finally {
+      setLoadingConditionId(null);
     }
   };
 
@@ -176,6 +187,25 @@ export function OutputModelsManager({
       return 0;
     });
   }, [rows, search, areaFilter, machineFilter, constructionFilter, spoolTypeFilter, sortLevels]);
+
+  /** Header click: sort by that column, again to flip the direction (same as WL_Products). */
+  const toggleSort = (key: OutputModelKey) => {
+    setSortLevels((prev) => {
+      const current = prev[0];
+      return current?.key === key ? [{ key, dir: current.dir === 'asc' ? 'desc' : 'asc' }] : [{ key, dir: 'asc' }];
+    });
+  };
+
+  const sortIndicator = (key: OutputModelKey) => {
+    const level = sortLevels.findIndex((item) => item.key === key);
+    if (level < 0) return '';
+    return ` ${level + 1}${sortLevels[level].dir === 'asc' ? '▲' : '▼'}`;
+  };
+
+  const paged = usePagedRows(
+    visibleRows,
+    JSON.stringify([search, areaFilter, machineFilter, constructionFilter, spoolTypeFilter, sortLevels]),
+  );
 
   const outputModelFilters = useMemo<OutputModelFilters>(
     () => ({
@@ -268,7 +298,7 @@ export function OutputModelsManager({
             📊 Export
           </Button>
           <CustomSortControl
-            columns={OUTPUT_MODEL_COLUMNS}
+            columns={OUTPUT_MODEL_LIST_COLUMNS}
             levels={sortLevels}
             onChange={setSortLevels}
           />
@@ -325,36 +355,47 @@ export function OutputModelsManager({
               <span aria-hidden="true">✕</span> Clear filters
             </Button>
           </div>
+          <TablePager
+            page={paged.page}
+            pageCount={paged.pageCount}
+            pageSize={paged.pageSize}
+            total={paged.total}
+            onPageChange={paged.setPage}
+            label="output models"
+          />
           <div className="data-table-wrap" ref={tableWrapRef}>
             <table className="table output-models-table">
               <thead>
                 <tr>
-                  {OUTPUT_MODEL_COLUMNS.map((column) => (
-                    <th key={column.key}>{column.label}</th>
+                  {OUTPUT_MODEL_LIST_COLUMNS.map((column) => (
+                    <th key={column.key} className="table-sortable-header" onClick={() => toggleSort(column.key)}>
+                      {column.label}
+                      <span className="table-sort-indicator">{sortIndicator(column.key)}</span>
+                    </th>
                   ))}
                   {onUseStartCondition && <th>Action</th>}
                 </tr>
               </thead>
               <tbody>
-                {visibleRows.map((row) => (
+                {paged.pageRows.map((row) => (
                   <tr
                     key={row.mpp_wl_outputmodelsid}
                     className="output-model-row"
                     onDoubleClick={() => setDetailRow(row)}
                     title="Double-click to view details"
                   >
-                    {OUTPUT_MODEL_COLUMNS.map((column) => (
+                    {OUTPUT_MODEL_LIST_COLUMNS.map((column) => (
                       <td key={column.key}>{formatOutputModelValue(row[column.key], column.key)}</td>
                     ))}
                     {onUseStartCondition && (
                       <td className="data-row-actions" onDoubleClick={(e) => e.stopPropagation()}>
                         <Button
                           variant="ghost"
-                          onClick={() => loadStartCondition(row)}
-                          disabled={!row.mpp_startmachcondition}
-                          title="Use the inherited machine condition for the next simulation"
+                          onClick={() => void loadStartCondition(row)}
+                          disabled={loadingConditionId !== null}
+                          title="Replay: run this simulation again from its saved start condition"
                         >
-                          Use Start Condition
+                          {loadingConditionId === row.mpp_wl_outputmodelsid ? 'Loading…' : 'Replay'}
                         </Button>
                         {outputModelVersionNumber(row.mpp_version) > 1 && (
                           <Button
@@ -373,7 +414,7 @@ export function OutputModelsManager({
                 ))}
                 {visibleRows.length === 0 && (
                   <tr>
-                    <td colSpan={OUTPUT_MODEL_COLUMNS.length + (onUseStartCondition ? 1 : 0)} className="data-manager-hint">
+                    <td colSpan={OUTPUT_MODEL_LIST_COLUMNS.length + (onUseStartCondition ? 1 : 0)} className="data-manager-hint">
                       {rows.length === 0 ? 'No saved output models yet.' : 'No output models match the search.'}
                     </td>
                   </tr>
@@ -381,10 +422,20 @@ export function OutputModelsManager({
               </tbody>
             </table>
           </div>
+          <TablePager
+            page={paged.page}
+            pageCount={paged.pageCount}
+            pageSize={paged.pageSize}
+            total={paged.total}
+            onPageChange={paged.setPage}
+            label="output models"
+          />
           <FloatingScrollbar targetRef={tableWrapRef} />
         </>
       )}
-      {detailRow && <OutputModelDetailDialog row={detailRow} onClose={() => setDetailRow(null)} />}
+      {detailRow && (
+        <OutputModelDetailDialog row={detailRow} outputModelId={detailRow.mpp_wl_outputmodelsid} onClose={() => setDetailRow(null)} />
+      )}
     </Card>
   );
 }

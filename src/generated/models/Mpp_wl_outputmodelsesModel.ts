@@ -28,6 +28,7 @@ export interface Mpp_wl_outputmodelsesBase {
   mpp_dieschangetime?: number;
   mpp_diesperton?: number;
   mpp_doffingtime?: number;
+  mpp_doffpriority?: string;
   mpp_fractureperton?: number;
   mpp_fracturerepairingtime?: number;
   mpp_idle?: number;
@@ -42,6 +43,7 @@ export interface Mpp_wl_outputmodelsesBase {
   mpp_manhoursperton?: number;
   mpp_meetingstarttime?: number;
   mpp_meetingtime?: number;
+  mpp_minremaintaskfordoffpriority?: string;
   mpp_nofwires?: number;
   mpp_numberofmachinesassigned?: number;
   mpp_optimizemodel?: string;

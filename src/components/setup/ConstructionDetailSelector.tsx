@@ -14,6 +14,7 @@ import type { AppConfig } from '../../types';
 import { Card } from '../ui/Card';
 import { SearchableSelect } from '../ui/SearchableSelect';
 import { OutputModelDetailDialog } from '../data/OutputModelDetailDialog';
+import { OUTPUT_MODEL_LIST_SELECT } from '../../lib/outputModelColumns';
 
 function escapeODataString(value: string): string {
   return value.replace(/'/g, "''");
@@ -63,7 +64,7 @@ export function ConstructionDetailSelector({
   // critical to the page working, so a failure here is swallowed rather than shown as an error.
   useEffect(() => {
     let cancelled = false;
-    fetchAllPages(Mpp_wl_outputmodelsesService.getAll, { orderBy: ['mpp_updatedon desc'] })
+    fetchAllPages(Mpp_wl_outputmodelsesService.getAll, { select: OUTPUT_MODEL_LIST_SELECT, orderBy: ['mpp_updatedon desc'] })
       .then((data) => {
         if (!cancelled) setOutputModelRows(data);
       })
@@ -233,7 +234,9 @@ export function ConstructionDetailSelector({
         {applying && <span className="construction-selector-status">Applying…</span>}
       </div>
       {error && <p className="construction-selector-error">{error}</p>}
-      {detailRow && <OutputModelDetailDialog row={detailRow} onClose={() => setDetailRow(null)} />}
+      {detailRow && (
+        <OutputModelDetailDialog row={detailRow} outputModelId={detailRow.mpp_wl_outputmodelsid} onClose={() => setDetailRow(null)} />
+      )}
     </Card>
   );
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Mpp_wl_productsesService } from '../../generated/services/Mpp_wl_productsesService';
 import { fetchAllPages } from '../../lib/dataversePaging';
 import type { Mpp_wl_productses, Mpp_wl_productsesBase } from '../../generated/models/Mpp_wl_productsesModel';
@@ -10,6 +10,8 @@ import { CustomSortControl, type CustomSortLevel } from './CustomSortControl';
 import { BatchSimulationDialog } from './BatchSimulationDialog';
 import { useAppConfig } from '../../context/appConfig';
 import { useAuth } from '../../context/auth';
+import { usePagedRows } from '../../hooks/usePagedRows';
+import { TablePager } from '../ui/TablePager';
 import type { AppConfig } from '../../types';
 
 interface ProductFields {
@@ -31,6 +33,11 @@ interface ProductFields {
   mpp_polength1: number;
   mpp_polength2: number;
   mpp_polength3: number;
+  /** Optional — blank follows Default Values / the Production Setup. */
+  mpp_taskpriority: string;
+  mpp_doffpriority: string;
+  /** Text while editing so it can stay blank; saved as a number or cleared. */
+  mpp_minremaintaskfordoffpriority: string;
 }
 
 interface ProductRow {
@@ -42,7 +49,9 @@ interface ProductRow {
   fields: ProductFields;
 }
 
-const COLUMNS: { key: keyof ProductFields; label: string; type: 'text' | 'number' | 'area'; readOnly?: boolean }[] = [
+type ColumnType = 'text' | 'number' | 'area' | 'select' | 'optionalNumber';
+
+const COLUMNS: { key: keyof ProductFields; label: string; type: ColumnType; readOnly?: boolean; options?: { value: string; label: string }[] }[] = [
   { key: 'mpp_constructiondetailcode', label: 'ConstructionDetail', type: 'text', readOnly: true },
   { key: 'mpp_constructioncode', label: 'Construction', type: 'text', readOnly: true },
   { key: 'mpp_productspecification', label: 'Product', type: 'text' },
@@ -61,7 +70,30 @@ const COLUMNS: { key: keyof ProductFields; label: string; type: 'text' | 'number
   { key: 'mpp_polength1', label: 'POlength1', type: 'number' },
   { key: 'mpp_polength2', label: 'POlength2', type: 'number' },
   { key: 'mpp_polength3', label: 'POlength3', type: 'number' },
+  {
+    key: 'mpp_taskpriority',
+    label: 'TaskPriority',
+    type: 'select',
+    options: [
+      { value: 'nearest', label: 'Nearest Task' },
+      { value: 'quickest', label: 'Quickest Task' },
+    ],
+  },
+  {
+    key: 'mpp_doffpriority',
+    label: 'DoffPriority',
+    type: 'select',
+    options: [
+      { value: 'Yes', label: 'Yes' },
+      { value: 'No', label: 'No' },
+    ],
+  },
+  { key: 'mpp_minremaintaskfordoffpriority', label: 'MinRemainTaskForDoffPriority', type: 'optionalNumber' },
 ];
+
+/** Shown in the optional columns' blank state. */
+const FOLLOW_DEFAULT_LABEL = '— Default —';
+const OPTIONAL_COLUMN_TITLE = 'Optional: blank follows Default Values (Work Load Simulator) or the Production Setup (Production Simulation)';
 
 /** ConstructionDetail/Construction are derived, not hand-entered — ConstructionDetail joins
  * Mach-Product-LayLength-TensileGroup-SpoolType-SpoolLength-Speed with "-"; Construction is the
@@ -93,6 +125,10 @@ function computeConstructionCodes(
  * already stored (usually blank). */
 const DIES_TON_EDITABLE_AREAS = ['WW', 'CA', 'BA'];
 
+/** Generated codes: shown as plain text sized to the value, and frozen with the checkbox column
+ * while the table scrolls sideways. */
+const CODE_COLUMN_KEYS: (keyof ProductFields)[] = ['mpp_constructiondetailcode', 'mpp_constructioncode'];
+
 function emptyFields(): ProductFields {
   return {
     mpp_constructiondetailcode: '',
@@ -113,6 +149,31 @@ function emptyFields(): ProductFields {
     mpp_polength1: 0,
     mpp_polength2: 0,
     mpp_polength3: 0,
+    mpp_taskpriority: '',
+    mpp_doffpriority: '',
+    mpp_minremaintaskfordoffpriority: '',
+  };
+}
+
+function normalizeTaskPriority(value: string | undefined): string {
+  const text = (value ?? '').trim().toLowerCase();
+  return text.startsWith('nearest') ? 'nearest' : text.startsWith('quickest') ? 'quickest' : '';
+}
+
+function normalizeDoffPriority(value: string | undefined): string {
+  const text = (value ?? '').trim().toLowerCase();
+  return text === 'yes' || text === 'true' ? 'Yes' : text === 'no' || text === 'false' ? 'No' : '';
+}
+
+/** What's sent to Dataverse: the optional columns go out as null when blank, so clearing one sticks. */
+function payloadFromFields(fields: ProductFields): Omit<Mpp_wl_productsesBase, 'mpp_wl_productsid'> {
+  const minRemain = parseFloat(fields.mpp_minremaintaskfordoffpriority);
+  return {
+    ...fields,
+    mpp_taskpriority: (fields.mpp_taskpriority || null) as unknown as string,
+    mpp_doffpriority: (fields.mpp_doffpriority || null) as unknown as string,
+    mpp_minremaintaskfordoffpriority: (Number.isFinite(minRemain) && minRemain >= 0 ? minRemain : null) as unknown as number,
+    statecode: 0,
   };
 }
 
@@ -134,6 +195,9 @@ function fieldsFromRecord(record: Mpp_wl_productses): ProductFields {
     mpp_polength1: record.mpp_polength1 ?? 0,
     mpp_polength2: record.mpp_polength2 ?? 0,
     mpp_polength3: record.mpp_polength3 ?? 0,
+    mpp_taskpriority: normalizeTaskPriority(record.mpp_taskpriority),
+    mpp_doffpriority: normalizeDoffPriority(record.mpp_doffpriority),
+    mpp_minremaintaskfordoffpriority: record.mpp_minremaintaskfordoffpriority != null ? String(record.mpp_minremaintaskfordoffpriority) : '',
   };
   const codes = computeConstructionCodes(base);
   return { ...base, mpp_constructioncode: codes.constructionCode, mpp_constructiondetailcode: codes.constructionDetailCode };
@@ -154,6 +218,7 @@ export function ProductsManager({
   const [machineFilter, setMachineFilter] = useState('');
   const [sortLevels, setSortLevels] = useState<CustomSortLevel[]>([]);
   const tableWrapRef = useRef<HTMLDivElement>(null);
+  const tableRef = useRef<HTMLTableElement>(null);
   /** The saved WL_Products records — Batch Simulation runs on these, not on unsaved edits. */
   const [records, setRecords] = useState<Map<string, Mpp_wl_productses>>(() => new Map());
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
@@ -207,18 +272,17 @@ export function ProductsManager({
     );
   }, []);
 
+  // New rows go first, so they show on page 1 right away.
   const addRow = () => {
-    setRows((prev) => [
-      ...prev,
-      { id: `new-${Date.now()}`, isNew: true, dirty: true, saving: false, error: null, fields: emptyFields() },
-    ]);
+    setRows((prev) => [{ id: `new-${Date.now()}`, isNew: true, dirty: true, saving: false, error: null, fields: emptyFields() }, ...prev]);
+    paged.setPage(1);
   };
 
   const saveRow = async (id: string) => {
     const row = rows.find((r) => r.id === id);
     if (!row) return;
     setRows((prev) => prev.map((r) => (r.id === id ? { ...r, saving: true, error: null } : r)));
-    const payload: Omit<Mpp_wl_productsesBase, 'mpp_wl_productsid'> = { ...row.fields, statecode: 0 };
+    const payload = payloadFromFields(row.fields);
     try {
       if (row.isNew) {
         const result = await Mpp_wl_productsesService.create(payload);
@@ -289,6 +353,8 @@ export function ProductsManager({
     });
   }, [rows, searchTerm, areaFilter, machineFilter, sortLevels]);
 
+  const paged = usePagedRows(visibleRows, JSON.stringify([searchTerm, areaFilter, machineFilter, sortLevels]));
+
   const sortIndicator = (key: keyof ProductFields) => {
     const level = sortLevels.findIndex((item) => item.key === key);
     if (level < 0) return '';
@@ -324,12 +390,30 @@ export function ProductsManager({
     const unsaved = chosen.filter((row) => row.dirty).length;
     const message = [
       `Run Batch Simulation for ${chosen.length} Construction Detail(s)?`,
-      'Each uses Default Values and its Area\'s Default Layout, and its result replaces version 0001 in WL_Outputmodels.',
+      'Each uses Default Values (its own TaskPriority / DoffPriority / MinRemain where filled in) and its Area\'s Default Layout, and its result replaces version 0001 in WL_Outputmodels.',
       ...(unsaved > 0 ? [`${unsaved} selected row(s) have unsaved changes — their saved values are used.`] : []),
     ].join('\n\n');
     if (!window.confirm(message)) return;
     setBatch({ products: chosen.map((row) => records.get(row.id)!), base: config });
   };
+
+  // The frozen columns sit at the summed widths of the ones before them; those widths follow the
+  // longest code shown, so they're measured rather than fixed.
+  useLayoutEffect(() => {
+    const table = tableRef.current;
+    if (!table) return;
+    const headers = Array.from(table.querySelectorAll<HTMLTableCellElement>('thead th')).slice(0, 2);
+    if (headers.length < 2) return;
+    const place = () => {
+      const [select, detail] = headers.map((th) => th.getBoundingClientRect().width);
+      table.style.setProperty('--products-frozen-2', `${select}px`);
+      table.style.setProperty('--products-frozen-3', `${select + detail}px`);
+    };
+    place();
+    const observer = new ResizeObserver(place);
+    headers.forEach((th) => observer.observe(th));
+    return () => observer.disconnect();
+  }, [loading]);
 
   const machineOptions = useMemo(
     () =>
@@ -399,8 +483,27 @@ export function ProductsManager({
               ))}
             </select>
           </div>
+          <div className="products-pager-row">
+            <TablePager
+            page={paged.page}
+            pageCount={paged.pageCount}
+            pageSize={paged.pageSize}
+            total={paged.total}
+            onPageChange={paged.setPage}
+            label="products"
+          />
+            {selectedIds.size > 0 && (
+              <span className="products-selection-hint">
+                {selectedIds.size.toLocaleString()} selected for Batch Simulation
+                {allVisibleSelected ? ' · every row matching the filters, on all pages' : ''}
+                <button type="button" className="products-selection-clear" onClick={() => setSelectedIds(new Set())}>
+                  Clear
+                </button>
+              </span>
+            )}
+          </div>
           <div className="data-table-wrap" ref={tableWrapRef}>
-            <table className="table products-table">
+            <table className="table products-table" ref={tableRef}>
               <thead>
                 <tr>
                   <th className="products-select-column">
@@ -410,14 +513,14 @@ export function ProductsManager({
                       checked={allVisibleSelected}
                       onChange={toggleAllVisible}
                       disabled={selectableVisibleIds.length === 0}
-                      aria-label="Select all shown Construction Details"
-                      title="Select all shown"
+                      aria-label="Select every Construction Detail matching the filters"
+                      title="Select every row matching the search and filters (all pages)"
                     />
                   </th>
                   {COLUMNS.map((col) => (
                     <th
                       key={col.key}
-                      className={`table-sortable-header ${col.key === 'mpp_area' ? 'products-area-column' : ''}`}
+                      className={`table-sortable-header ${col.key === 'mpp_area' ? 'products-area-column' : ''} ${CODE_COLUMN_KEYS.includes(col.key) ? 'products-frozen-column' : ''}`}
                       onClick={() => toggleSort(col.key)}
                     >
                       {col.label}
@@ -428,7 +531,7 @@ export function ProductsManager({
                 </tr>
               </thead>
               <tbody>
-                {visibleRows.map((row) => (
+                {paged.pageRows.map((row) => (
                   <tr key={row.id} className={selectedIds.has(row.id) ? 'products-row-selected' : undefined}>
                     <td className="products-select-column">
                       <input
@@ -448,7 +551,7 @@ export function ProductsManager({
                       return (
                       <td
                         key={col.key}
-                        className={col.key === 'mpp_area' ? 'products-area-column' : undefined}
+                        className={col.key === 'mpp_area' ? 'products-area-column' : CODE_COLUMN_KEYS.includes(col.key) ? 'products-frozen-column' : undefined}
                         onDoubleClick={
                           col.key === 'mpp_constructioncode' && row.fields.mpp_constructioncode
                             ? () => onOpenActivitiesForConstruction?.(row.fields.mpp_constructioncode)
@@ -456,7 +559,42 @@ export function ProductsManager({
                         }
                         title={col.key === 'mpp_constructioncode' ? 'Double-click to view this Construction in WL_Activities' : undefined}
                       >
-                        {col.type === 'area' ? (
+                        {CODE_COLUMN_KEYS.includes(col.key) ? (
+                          <span
+                            className="products-code-cell"
+                            title={
+                              col.key === 'mpp_constructiondetailcode'
+                                ? 'Auto-generated from Mach/Product/LayLength/TensileGroup/SpoolType/SpoolLength/Speed'
+                                : 'Auto-generated from Mach/Product/LayLength/TensileGroup/SpoolType — double-click to view this Construction in WL_Activities'
+                            }
+                          >
+                            {String(row.fields[col.key]) || '—'}
+                          </span>
+                        ) : col.type === 'select' ? (
+                          <select
+                            className="input"
+                            value={row.fields[col.key]}
+                            title={OPTIONAL_COLUMN_TITLE}
+                            onChange={(e) => updateField(row.id, col.key, e.target.value)}
+                          >
+                            <option value="">{FOLLOW_DEFAULT_LABEL}</option>
+                            {col.options?.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        ) : col.type === 'optionalNumber' ? (
+                          <input
+                            className="input"
+                            type="number"
+                            min={0}
+                            value={row.fields[col.key]}
+                            placeholder={FOLLOW_DEFAULT_LABEL}
+                            title={OPTIONAL_COLUMN_TITLE}
+                            onChange={(e) => updateField(row.id, col.key, e.target.value)}
+                          />
+                        ) : col.type === 'area' ? (
                           <select
                             className="input"
                             value={row.fields[col.key]}
@@ -515,6 +653,14 @@ export function ProductsManager({
               </tbody>
             </table>
           </div>
+          <TablePager
+            page={paged.page}
+            pageCount={paged.pageCount}
+            pageSize={paged.pageSize}
+            total={paged.total}
+            onPageChange={paged.setPage}
+            label="products"
+          />
           <FloatingScrollbar targetRef={tableWrapRef} />
         </>
       )}

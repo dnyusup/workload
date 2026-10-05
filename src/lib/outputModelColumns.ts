@@ -34,6 +34,8 @@ export type OutputModelKey =
   | 'mpp_meetingstarttime'
   | 'mpp_rpc'
   | 'mpp_optimizemodel'
+  | 'mpp_doffpriority'
+  | 'mpp_minremaintaskfordoffpriority'
   | 'mpp_numberofmachinesassigned'
   | 'mpp_plannedmanoccupation'
   | 'mpp_actualmanoccupation'
@@ -101,6 +103,8 @@ export const OUTPUT_MODEL_COLUMNS: OutputModelColumn[] = [
   { key: 'mpp_meetingstarttime', label: 'MeetingStartAt' },
   { key: 'mpp_rpc', label: 'RPC %' },
   { key: 'mpp_optimizemodel', label: 'OptimizeModel' },
+  { key: 'mpp_doffpriority', label: 'DoffPriority' },
+  { key: 'mpp_minremaintaskfordoffpriority', label: 'MinRemainTaskForDoffPriority' },
   { key: 'mpp_numberofmachinesassigned', label: '#MachinesAssigned' },
   { key: 'mpp_plannedmanoccupation', label: 'PlannedManOccupation' },
   { key: 'mpp_actualmanoccupation', label: 'ActualManOccupation' },
@@ -126,11 +130,21 @@ export const OUTPUT_MODEL_COLUMNS: OutputModelColumn[] = [
   { key: 'mpp_startmachcondition', label: 'StartMachCondition' },
 ];
 
+/** The saved start condition is a whole snapshot (layout, every machine's state) — tens of KB a row.
+ * Lists leave it out and read it per row when it's needed (Replay, the detail popup). */
+export const OUTPUT_MODEL_LIST_COLUMNS = OUTPUT_MODEL_COLUMNS.filter((column) => column.key !== 'mpp_startmachcondition');
+
+/** `select` for listing WL_Outputmodels: every column the lists show, without the snapshot. */
+export const OUTPUT_MODEL_LIST_SELECT: string[] = ['mpp_wl_outputmodelsid', ...OUTPUT_MODEL_LIST_COLUMNS.map((column) => column.key)];
+
 export function formatOutputModelValue(value: unknown, key: OutputModelKey) {
   if (value === null || value === undefined || value === '') return '—';
   if (key === 'mpp_startmachcondition') {
     try {
-      const conditions = JSON.parse(String(value)) as unknown[];
+      // Older rows hold the conditions array itself; newer ones a snapshot object with `conditions`.
+      const parsed = JSON.parse(String(value)) as unknown;
+      const conditions = Array.isArray(parsed) ? parsed : (parsed as { conditions?: unknown })?.conditions;
+      if (!Array.isArray(conditions)) return 'Invalid condition data';
       return `${conditions.length} machine condition${conditions.length === 1 ? '' : 's'} captured`;
     } catch {
       return 'Invalid condition data';

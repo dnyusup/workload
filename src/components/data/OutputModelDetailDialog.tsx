@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { percentageForDisplay } from '../../lib/outputModel';
+import { loadOutputModelStartCondition, percentageForDisplay } from '../../lib/outputModel';
 import {
   formatOutputModelValue,
   outputModelColumnLabel,
@@ -23,7 +23,7 @@ const DETAIL_SECTIONS: { title: string; keys: OutputModelKey[]; wide?: boolean }
   },
   {
     title: 'Operator Setup',
-    keys: ['mpp_taskpriority', 'mpp_shifttime', 'mpp_lunchtime', 'mpp_lunchstarttime', 'mpp_meetingtime', 'mpp_meetingstarttime', 'mpp_rpc', 'mpp_numberofmachinesassigned'],
+    keys: ['mpp_taskpriority', 'mpp_shifttime', 'mpp_lunchtime', 'mpp_lunchstarttime', 'mpp_meetingtime', 'mpp_meetingstarttime', 'mpp_rpc', 'mpp_optimizemodel', 'mpp_doffpriority', 'mpp_minremaintaskfordoffpriority', 'mpp_numberofmachinesassigned'],
   },
   {
     title: 'Actual Rates',
@@ -60,9 +60,12 @@ export function OutputModelDetailDialog({
   row,
   onClose,
   eyebrow,
+  outputModelId,
 }: {
   row: OutputModelRecord;
   onClose: () => void;
+  /** A saved row listed without its start-condition snapshot: read it from here when shown. */
+  outputModelId?: string;
   /** Small heading above the title; defaults to the saved version. */
   eyebrow?: string;
 }) {
@@ -83,6 +86,26 @@ export function OutputModelDetailDialog({
       document.body.style.overflow = previousOverflow;
     };
   }, []);
+
+  // Lists leave the snapshot out (it's large); read just that column for this row.
+  const [loadedCondition, setLoadedCondition] = useState<{ id: string; value: string } | null>(null);
+  const needsCondition = row.mpp_startmachcondition === undefined && !!outputModelId;
+  useEffect(() => {
+    if (!needsCondition || !outputModelId) return;
+    let cancelled = false;
+    loadOutputModelStartCondition(outputModelId)
+      .then((value) => {
+        if (!cancelled) setLoadedCondition({ id: outputModelId, value });
+      })
+      .catch(() => {
+        if (!cancelled) setLoadedCondition({ id: outputModelId, value: '' });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [needsCondition, outputModelId]);
+  const conditionLoading = needsCondition && loadedCondition?.id !== outputModelId;
+  const startCondition = needsCondition ? (loadedCondition?.id === outputModelId ? loadedCondition.value : undefined) : row.mpp_startmachcondition;
 
   const value = (key: OutputModelKey) => formatOutputModelValue(row[key], key);
   const occupation = OCCUPATION_PARTS.map((part) => ({
@@ -168,7 +191,7 @@ export function OutputModelDetailDialog({
             </dl>
             <div className="om-detail-condition">
               <span>{outputModelColumnLabel('mpp_startmachcondition')}</span>
-              <strong>{value('mpp_startmachcondition')}</strong>
+              <strong>{conditionLoading ? 'Loading…' : formatOutputModelValue(startCondition, 'mpp_startmachcondition')}</strong>
             </div>
           </section>
         </div>

@@ -32,6 +32,8 @@ export type OutputModelExportKey =
   | 'mpp_meetingstarttime'
   | 'mpp_rpc'
   | 'mpp_optimizemodel'
+  | 'mpp_doffpriority'
+  | 'mpp_minremaintaskfordoffpriority'
   | 'mpp_numberofmachinesassigned'
   | 'mpp_plannedmanoccupation'
   | 'mpp_actualmanoccupation'
@@ -95,6 +97,8 @@ export const OUTPUT_MODEL_EXPORT_COLUMNS: readonly OutputModelExportColumn[] = [
   { key: 'mpp_meetingstarttime', label: 'MeetingStartAt' },
   { key: 'mpp_rpc', label: 'RPC %' },
   { key: 'mpp_optimizemodel', label: 'OptimizeModel' },
+  { key: 'mpp_doffpriority', label: 'DoffPriority' },
+  { key: 'mpp_minremaintaskfordoffpriority', label: 'MinRemainTaskForDoffPriority' },
   { key: 'mpp_numberofmachinesassigned', label: '#MachinesAssigned' },
   { key: 'mpp_plannedmanoccupation', label: 'PlannedManOccupation' },
   { key: 'mpp_actualmanoccupation', label: 'ActualManOccupation' },
