@@ -36,6 +36,9 @@ export interface PlannedOperatorUtilization {
    * waiting model) and the backlog. Its machines then make fewer spools, so the forecast handling
    * and walking above are already reduced by it. */
   machineWaitingMinutes: number;
+  /** Share of the shift this operator's machines still run after waiting for it (1 = no waiting);
+   * the forecast handling and walking are already scaled by it, contributions (ideal) are not. */
+  runningShare: number;
   utilizationPercent: number;
   forecastUtilizationPercent: number;
   contributions: PlannedActivityContribution[];
@@ -118,6 +121,7 @@ export function calculatePlannedUtilization(
     forecastWalkingMinutes: 0,
     forecastWaitingMinutes: 0,
     machineWaitingMinutes: 0,
+    runningShare: 1,
     utilizationPercent: 0,
     forecastUtilizationPercent: 0,
     contributions: [] as PlannedActivityContribution[],
@@ -387,6 +391,7 @@ export function calculatePlannedUtilization(
     operator.forecastServiceMinutes = fullService * pass.runningShare;
     operator.forecastWalkingMinutes = walkingAt(pass.runningShare);
     runningShareByOperator.set(operator.operatorId, pass.runningShare);
+    operator.runningShare = pass.runningShare;
     operator.forecastWaitingMinutes = pass.backlog;
     operator.machineWaitingMinutes = waitingPerMachine * machineCount;
     operator.forecastUtilizationPercent = availableMinutes > 0

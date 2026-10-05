@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { machineLocalFrame } from '../../lib/layoutConstants';
 import type { ProductionMachineAssignment, ProductionSetup, ProductionSimulationState } from '../../types';
 import type { ResolvedConstruction } from '../../lib/productionConstructionResolver';
@@ -18,7 +18,7 @@ import {
 } from '../simulation/timelineDisplay';
 import { buildSetupConstructionColorMap } from '../../lib/constructionColors';
 import { isFinishProductSpoolType } from '../../lib/productType';
-import { estimateProductionEvents } from '../../lib/productionEstimate';
+import { summarizeProductionForecast } from '../../lib/productionForecastSummary';
 import { RPC_OCCUPATION_LABEL, summarizeOperatorTimelines } from '../../lib/operatorOccupation';
 import { machineOperatorIds, operatorAssignmentLines } from '../../lib/productionActivityRouting';
 import { buildCanvasLegendData, type LegendHover } from '../../lib/canvasLegend';
@@ -358,13 +358,14 @@ export function ProductionRunView({
   const { ref: dashboardOuterRef, minHeight: dashboardMinHeight } = useFillToWindowBottom<HTMLDivElement>();
   // Dashboard column width, draggable from its left edge. Plain component state, so it's back to
   // the default every time this page is opened.
-  const [dashboardWidth, setDashboardWidth] = useState(DEFAULT_DASHBOARD_WIDTH);
+  // null = the CSS default, which grows with the window like the Work Load Simulator's.
+  const [dashboardWidth, setDashboardWidth] = useState<number | null>(null);
   const dashboardResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const [resizingDashboard, setResizingDashboard] = useState(false);
   const startDashboardResize = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
-    dashboardResizeRef.current = { startX: e.clientX, startWidth: dashboardWidth };
+    dashboardResizeRef.current = { startX: e.clientX, startWidth: dashboardWidth ?? dashboardOuterRef.current?.getBoundingClientRect().width ?? 360 };
     setResizingDashboard(true);
   };
   const moveDashboardResize = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -410,7 +411,11 @@ export function ProductionRunView({
   const completedByLabel = groupByLabel(metrics.completedByActivity).sort((a, b) => b[1] - a[1]);
   // Theoretical full-shift estimate per activity (same formula as the Workload Simulator), grouped
   // by label like the completed counts so both line up row for row.
-  const expectedEvents = useMemo(() => estimateProductionEvents(setup, resolved), [setup, resolved]);
+  const forecast = useMemo(() => summarizeProductionForecast(setup, resolved), [setup, resolved]);
+  const expectedEvents = useMemo(
+    () => Object.fromEntries(Object.entries(forecast.eventsByActivity).map(([key, value]) => [key, Math.max(0, Math.round(value))])),
+    [forecast],
+  );
   const expectedByLabel = new Map(groupByLabel(expectedEvents));
   const completedRows: [string, number][] = [
     ...completedByLabel,
@@ -420,10 +425,13 @@ export function ProductionRunView({
       .map(([label]): [string, number] => [label, 0]),
   ];
 
-  const downtimeEntries = groupByLabel(metrics.downtimeByReason)
-    .map(([label, value], index) => ({ key: label, label, value, color: colorForDowntime(label, index) }))
-    .filter((d) => d.value > 0)
-    .sort((a, b) => b.value - a.value);
+  const forecastDowntimeByLabel = new Map(groupByLabel({ ...forecast.downtimeByActivity, waiting: forecast.waitingMinutes }));
+  const actualDowntimeByLabel = new Map(groupByLabel(metrics.downtimeByReason));
+  // Reasons forecast for the shift but not hit yet still get a row (0m / ~N).
+  const downtimeEntries = [...new Set([...actualDowntimeByLabel.keys(), ...forecastDowntimeByLabel.keys()])]
+    .map((label, index) => ({ key: label, label, value: actualDowntimeByLabel.get(label) ?? 0, color: colorForDowntime(label, index) }))
+    .filter((d) => d.value > 0 || (forecastDowntimeByLabel.get(d.label) ?? 0) > 0.05)
+    .sort((a, b) => b.value - a.value || (forecastDowntimeByLabel.get(b.label) ?? 0) - (forecastDowntimeByLabel.get(a.label) ?? 0));
   const maxDowntime = downtimeEntries[0]?.value ?? 0;
 
   // Machines nobody bothered to plan (no Construction assigned) never produce anything and would
@@ -501,6 +509,25 @@ export function ProductionRunView({
   const availability = plannedProductionMin > 0 ? ((plannedProductionMin - totalDowntimeMin) / plannedProductionMin) * 100 : 100;
   const oee = Math.max(0, Math.min(100, availability * quality));
 
+  // Forecast (full shift) counterparts of the figures above.
+  const fcGrossTonage = forecast.grossTonKg / 1000;
+  const fcTonage = fcGrossTonage * quality;
+  const fcRejectTonage = fcGrossTonage - fcTonage;
+  const fcTonageFp = (forecast.fpGrossTonKg / 1000) * quality;
+  const fcTonageSfp = Math.max(0, fcTonage - fcTonageFp);
+  const fcMachineHours = forecast.plannedMachineMinutes / 60;
+  const fcOee = forecast.plannedMachineMinutes > 0 ? (forecast.runningMinutes / forecast.plannedMachineMinutes) * 100 * quality : 0;
+  const fcPerTon = (numerator: number) => (fcTonage > 0 ? numerator / fcTonage : 0);
+  const fcPerTonFp = (numerator: number) => (fcTonageFp > 0 ? numerator / fcTonageFp : 0);
+  const fcTotalDowntime = Math.min(
+    forecast.plannedMachineMinutes,
+    Object.values(forecast.downtimeByActivity).reduce((total, minutes) => total + minutes, 0) + forecast.waitingMinutes,
+  );
+  const fcAvailability = forecast.plannedMachineMinutes > 0
+    ? Math.max(0, ((forecast.plannedMachineMinutes - fcTotalDowntime) / forecast.plannedMachineMinutes) * 100)
+    : 100;
+  const fcOeeWithQuality = Math.max(0, Math.min(100, fcAvailability * quality));
+
   const queue = machines.filter((m) => m.status === 'needs-service');
   const operatorsOnBreak = operators.filter((op) => op.phase === 'break');
 
@@ -509,6 +536,26 @@ export function ProductionRunView({
   const utilOperators = utilFilterOperatorId ? operators.filter((op) => op.id === utilFilterOperatorId) : displayedOperators;
   const utilFilterLabel = utilFilterOperatorId ? operators.find((op) => op.id === utilFilterOperatorId)?.label ?? null : null;
   const utilSummary = summarizeOperatorTimelines(utilOperators, timelineDuration, activityLabel);
+  // Forecast man occupation of the same operators, summed.
+  const utilForecast = utilOperators.reduce(
+    (total, op) => {
+      const fc = forecast.operators.get(op.id);
+      if (!fc) return total;
+      total.available += fc.availableMinutes;
+      total.walking += fc.walkingMinutes;
+      total.service += fc.serviceMinutes;
+      total.rpc += fc.rpcMinutes;
+      total.idle += fc.idleMinutes;
+      Object.entries(fc.serviceByActivity).forEach(([key, minutes]) => {
+        const label = activityLabel(key);
+        total.byLabel.set(label, (total.byLabel.get(label) ?? 0) + minutes);
+      });
+      return total;
+    },
+    { available: 0, walking: 0, service: 0, rpc: 0, idle: 0, byLabel: new Map<string, number>() },
+  );
+  const fcUtilPct = (minutes: number) => (utilForecast.available > 0 ? (minutes / utilForecast.available) * 100 : 0);
+  const fcUtilText = (minutes: number) => `${fmtTime(minutes)} (${fmt(fcUtilPct(minutes))}%)`;
   const operatorUtilRows = displayedOperators.map((op) => ({
     id: op.id,
     label: op.label,
@@ -634,7 +681,7 @@ export function ProductionRunView({
         </div>
       )}
 
-      <div className="simulation-body" style={{ '--dashboard-width': `${dashboardWidth}px` } as React.CSSProperties}>
+      <div className="simulation-body" style={dashboardWidth ? ({ '--dashboard-width': `${dashboardWidth}px` } as React.CSSProperties) : undefined}>
         <div className={`sim-canvas-wrap ${isFullscreen ? 'sim-canvas-fullscreen' : ''}`} ref={panelRef}>
           {isFullscreen && <div className="sim-canvas-fullscreen-controls">{renderProductionControls()}</div>}
           <div className="toolbar sim-canvas-toolbar">
@@ -934,63 +981,75 @@ export function ProductionRunView({
           <div className="dashboard">
             <Card
               title="Output (Running Time)"
-              subtitle="Estimated from total machine running time; spool quantity can be decimal"
+              subtitle={`Estimated from total machine running time; spool quantity can be decimal · ${FORECAST_NOTE}`}
             >
               <OutputMetricsTable
                 rows={[
-                  { label: '#Spool (running time)', value: fmt(runningOutput.spools) },
-                  { label: 'Total running time', value: `${fmt(runningOutput.runningMinutes)} min` },
-                  { label: rejectPercent > 0 ? 'Tonage (good)' : 'Tonage', value: `${fmt(runningTimeTonage)} ton` },
+                  { label: '#Spool (running time)', value: fmt(runningOutput.spools), estimate: fmt(forecast.spools) },
+                  { label: 'Total running time', value: `${fmt(runningOutput.runningMinutes)} min`, estimate: `${fmt(forecast.runningMinutes)} min` },
+                  { label: rejectPercent > 0 ? 'Tonage (good)' : 'Tonage', value: `${fmt(runningTimeTonage)} ton`, estimate: `${fmt(fcTonage)} ton` },
                   ...(rejectPercent > 0
-                    ? [{ label: 'Reject', value: `${fmt(runningTimeRejectTonage)} ton (${fmt(rejectPercent)}%)`, sub: true, title: 'Gross running-time tonnage × Reject %' }]
+                    ? [{ label: 'Reject', value: `${fmt(runningTimeRejectTonage)} ton (${fmt(rejectPercent)}%)`, estimate: `${fmt(fcRejectTonage)} ton`, sub: true, title: 'Gross running-time tonnage × Reject %' }]
                     : []),
-                  { label: 'Ton FP', value: `${fmt(runningTimeTonageFp)} ton`, sub: true, title: 'Finish Product — SpoolType starts with BS' },
-                  { label: 'Ton SFP', value: `${fmt(runningTimeTonageSfp)} ton`, sub: true, title: 'Semi Finish Product — every other SpoolType' },
-                  { label: 'OEE (running time)', value: `${fmt(runningTimeOee)}%` },
+                  { label: 'Ton FP', value: `${fmt(runningTimeTonageFp)} ton`, estimate: `${fmt(fcTonageFp)} ton`, sub: true, title: 'Finish Product — SpoolType starts with BS' },
+                  { label: 'Ton SFP', value: `${fmt(runningTimeTonageSfp)} ton`, estimate: `${fmt(fcTonageSfp)} ton`, sub: true, title: 'Semi Finish Product — every other SpoolType' },
+                  { label: 'OEE (running time)', value: `${fmt(runningTimeOee)}%`, estimate: `${fmt(fcOee)}%` },
                 ]}
                 perTonRows={[
-                  { label: 'Manhour/ton', value: fmt(runningTimeManHourPerTon), fpValue: fmt(runningPerTonFp(manHours)) },
-                  { label: 'Machhours/ton', value: fmt(runningTimeMachHoursPerTon), fpValue: fmt(runningPerTonFp(scheduledMachineHours)) },
+                  { label: 'Manhour/ton', value: fmt(runningTimeManHourPerTon), fpValue: fmt(runningPerTonFp(manHours)), estimate: fmt(fcPerTon(manHours)), fpEstimate: fmt(fcPerTonFp(manHours)) },
+                  {
+                    label: 'Machhours/ton',
+                    value: fmt(runningTimeMachHoursPerTon),
+                    fpValue: fmt(runningPerTonFp(scheduledMachineHours)),
+                    estimate: fmt(fcPerTon(fcMachineHours)),
+                    fpEstimate: fmt(fcPerTonFp(fcMachineHours)),
+                  },
                   {
                     label: 'Fracture/Ton',
                     value: fmt(runningTimeFracturePerTon),
                     fpValue: fmt(runningPerTonFp(totalFractureCount)),
+                    estimate: fmt(fcPerTon(forecast.fractureEvents)),
+                    fpEstimate: fmt(fcPerTonFp(forecast.fractureEvents)),
                     title: 'Total Fracture Repairing dibagi tonage dari running time',
                   },
                   {
                     label: 'Dies/Ton',
                     value: fmt(runningTimeDiesPerTon),
                     fpValue: fmt(runningPerTonFp(metrics.diesChanged)),
+                    estimate: fmt(fcPerTon(forecast.diesChanged)),
+                    fpEstimate: fmt(fcPerTonFp(forecast.diesChanged)),
                     title: 'Total Dies Change dibagi tonage dari running time',
                   },
                   {
                     label: 'Defect/Ton',
                     value: fmt(runningTimeDefectPerTon),
                     fpValue: fmt(runningPerTonFp(totalDefectRepairingCount)),
+                    estimate: fmt(fcPerTon(forecast.defectEvents)),
+                    fpEstimate: fmt(fcPerTonFp(forecast.defectEvents)),
                     title: 'Total Defect Repairing dibagi tonage dari running time',
                   },
                 ]}
               />
             </Card>
 
-            <Card title="Output" subtitle="Total finished spools across all machines this shift">
+            <Card title="Output" subtitle={`Total finished spools across all machines this shift · ${FORECAST_NOTE}`}>
               <OutputMetricsTable
                 rows={[
-                  { label: '#Spool', value: String(totalSpools) },
-                  { label: rejectPercent > 0 ? 'Tonage (good)' : 'Tonage', value: `${fmt(tonage)} ton` },
+                  { label: '#Spool', value: String(totalSpools), estimate: fmt(forecast.spools) },
+                  { label: rejectPercent > 0 ? 'Tonage (good)' : 'Tonage', value: `${fmt(tonage)} ton`, estimate: `${fmt(fcTonage)} ton` },
                   ...(rejectPercent > 0
-                    ? [{ label: 'Reject', value: `${fmt(rejectTonage)} ton (${fmt(rejectPercent)}%)`, sub: true, title: 'Gross tonnage × Reject %' }]
+                    ? [{ label: 'Reject', value: `${fmt(rejectTonage)} ton (${fmt(rejectPercent)}%)`, estimate: `${fmt(fcRejectTonage)} ton`, sub: true, title: 'Gross tonnage × Reject %' }]
                     : []),
-                  { label: 'Ton FP', value: `${fmt(tonageFp)} ton`, sub: true, title: 'Finish Product — SpoolType starts with BS' },
-                  { label: 'Ton SFP', value: `${fmt(tonageSfp)} ton`, sub: true, title: 'Semi Finish Product — every other SpoolType' },
-                  { label: 'OEE (finished spool)', value: `${fmt(outputOee)}%` },
+                  { label: 'Ton FP', value: `${fmt(tonageFp)} ton`, estimate: `${fmt(fcTonageFp)} ton`, sub: true, title: 'Finish Product — SpoolType starts with BS' },
+                  { label: 'Ton SFP', value: `${fmt(tonageSfp)} ton`, estimate: `${fmt(fcTonageSfp)} ton`, sub: true, title: 'Semi Finish Product — every other SpoolType' },
+                  { label: 'OEE (finished spool)', value: `${fmt(outputOee)}%`, estimate: `${fmt(fcOee)}%` },
                 ]}
                 perTonRows={[
-                  { label: 'Manhour/ton', value: fmt(manHourPerTon), fpValue: fmt(perTonFp(manHours)) },
-                  { label: 'Machhours/ton', value: fmt(machHoursPerTon), fpValue: fmt(perTonFp(scheduledMachineHours)) },
-                  { label: 'Fracture/Ton (actual)', value: fmt(actualFracturePerTon), fpValue: fmt(perTonFp(totalFractureCount)), title: 'Total Fracture Repairing ÷ Tonage' },
-                  { label: 'Dies/Ton (actual)', value: fmt(actualDiesPerTon), fpValue: fmt(perTonFp(metrics.diesChanged)), title: 'Total Dies Change events ÷ Tonage' },
-                  { label: 'Defect/Ton (actual)', value: fmt(actualDefectPerTon), fpValue: fmt(perTonFp(totalDefectRepairingCount)), title: 'Total Defect Repairing events ÷ Tonage' },
+                  { label: 'Manhour/ton', value: fmt(manHourPerTon), fpValue: fmt(perTonFp(manHours)), estimate: fmt(fcPerTon(manHours)), fpEstimate: fmt(fcPerTonFp(manHours)) },
+                  { label: 'Machhours/ton', value: fmt(machHoursPerTon), fpValue: fmt(perTonFp(scheduledMachineHours)), estimate: fmt(fcPerTon(fcMachineHours)), fpEstimate: fmt(fcPerTonFp(fcMachineHours)) },
+                  { label: 'Fracture/Ton (actual)', value: fmt(actualFracturePerTon), fpValue: fmt(perTonFp(totalFractureCount)), estimate: fmt(fcPerTon(forecast.fractureEvents)), fpEstimate: fmt(fcPerTonFp(forecast.fractureEvents)), title: 'Total Fracture Repairing ÷ Tonage' },
+                  { label: 'Dies/Ton (actual)', value: fmt(actualDiesPerTon), fpValue: fmt(perTonFp(metrics.diesChanged)), estimate: fmt(fcPerTon(forecast.diesChanged)), fpEstimate: fmt(fcPerTonFp(forecast.diesChanged)), title: 'Total Dies Change events ÷ Tonage' },
+                  { label: 'Defect/Ton (actual)', value: fmt(actualDefectPerTon), fpValue: fmt(perTonFp(totalDefectRepairingCount)), estimate: fmt(fcPerTon(forecast.defectEvents)), fpEstimate: fmt(fcPerTonFp(forecast.defectEvents)), title: 'Total Defect Repairing events ÷ Tonage' },
                 ]}
               />
             </Card>
@@ -999,8 +1058,8 @@ export function ProductionRunView({
               title="Man Occupation"
               subtitle={
                 utilFilterLabel
-                  ? `Filtered to ${utilFilterLabel} — click the operator name again in the timeline to return to the combined view`
-                  : 'Combined across all operators — click an operator name in the timeline to filter to just one'
+                  ? `Filtered to ${utilFilterLabel} — click the operator name again in the timeline to return to the combined view · ${FORECAST_NOTE}`
+                  : `Combined across all operators — click an operator name in the timeline to filter to just one · ${FORECAST_NOTE}`
               }
             >
               {displayedOperators.length === 0 ? (
@@ -1013,18 +1072,23 @@ export function ProductionRunView({
                   </div>
                   <div className="metric-row">
                     <span>Man Occupation</span>
-                    <strong>{fmt(utilSummary.utilization)}%</strong>
+                    <strong>
+                      {fmt(utilSummary.utilization)}%
+                      <Est>{fmt(fcUtilPct(utilForecast.walking + utilForecast.service))}%</Est>
+                    </strong>
                   </div>
                   <div className="metric-row small">
                     <span>Walking</span>
                     <span>
                       {fmtTime(utilSummary.walking)} ({fmt((utilSummary.walking / (utilSummary.elapsed || 1)) * 100)}%)
+                      <Est>{fcUtilText(utilForecast.walking)}</Est>
                     </span>
                   </div>
                   <div className="metric-row small">
                     <span>Total handle</span>
                     <span>
                       {fmtTime(utilSummary.totalService)} ({fmt((utilSummary.totalService / (utilSummary.elapsed || 1)) * 100)}%)
+                      <Est>{fcUtilText(utilForecast.service)}</Est>
                     </span>
                   </div>
                   {utilSummary.serviceBreakdown
@@ -1034,6 +1098,7 @@ export function ProductionRunView({
                         <span>Handle: {s.label}</span>
                         <span>
                           {fmtTime(s.minutes)} ({fmt((s.minutes / (utilSummary.elapsed || 1)) * 100)}%)
+                          <Est>{fcUtilText(utilForecast.byLabel.get(s.label) ?? 0)}</Est>
                         </span>
                       </div>
                     ))}
@@ -1045,6 +1110,7 @@ export function ProductionRunView({
                         <span>{s.label}</span>
                         <span>
                           {fmtTime(s.minutes)} ({fmt((s.minutes / (utilSummary.elapsed || 1)) * 100)}%)
+                          <Est>{fcUtilText(utilForecast.rpc)}</Est>
                         </span>
                       </div>
                     ))}
@@ -1052,6 +1118,7 @@ export function ProductionRunView({
                     <span>Idle</span>
                     <span>
                       {fmtTime(utilSummary.idle)} ({fmt((utilSummary.idle / (utilSummary.elapsed || 1)) * 100)}%)
+                      <Est>{fcUtilText(utilForecast.idle)}</Est>
                     </span>
                   </div>
                 </>
@@ -1156,17 +1223,20 @@ export function ProductionRunView({
             <Card
               title="OEE & Downtime"
               className="dashboard-oee-card"
-              subtitle="OEE = Availability × Quality (Quality = 100% − %Reject; Performance assumed at 100%)"
+              subtitle={`OEE = Availability × Quality (Quality = 100% − %Reject; Performance assumed at 100%) · ${FORECAST_NOTE}`}
             >
               <div className="oee-gauge-row">
                 <div className="oee-gauge">
                   <span className="oee-value">{fmt(oee)}%</span>
                   <span className="oee-caption">OEE</span>
+                  <span className="oee-forecast" title="Forecast for the full shift">~{fmt(fcOeeWithQuality)}% forecast</span>
                 </div>
                 <div className="metric-col">
                   <div className="metric-row small">
                     <span>Availability</span>
-                    <span>{fmt(Math.max(0, Math.min(100, availability)))}%</span>
+                    <span>
+                      {fmt(Math.max(0, Math.min(100, availability)))}%<Est>{fmt(fcAvailability)}%</Est>
+                    </span>
                   </div>
                   <div className="metric-row small">
                     <span>Quality</span>
@@ -1174,11 +1244,15 @@ export function ProductionRunView({
                   </div>
                   <div className="metric-row small">
                     <span>Planned production</span>
-                    <span>{fmt(plannedProductionMin)} machine-minutes</span>
+                    <span>
+                      {fmt(plannedProductionMin)} machine-minutes<Est>{fmt(forecast.plannedMachineMinutes)}</Est>
+                    </span>
                   </div>
                   <div className="metric-row small">
                     <span>Total downtime</span>
-                    <span>{fmt(totalDowntimeMin)} machine-minutes</span>
+                    <span>
+                      {fmt(totalDowntimeMin)} machine-minutes<Est>{fmt(fcTotalDowntime)}</Est>
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1194,6 +1268,15 @@ export function ProductionRunView({
                       </div>
                       <span className="downtime-value">
                         {fmt(d.value)}m ({fmt(pct)}%)
+                        <Est>
+                          {fmt(forecastDowntimeByLabel.get(d.label) ?? 0)}m (
+                          {fmt(
+                            forecast.plannedMachineMinutes > 0
+                              ? ((forecastDowntimeByLabel.get(d.label) ?? 0) / forecast.plannedMachineMinutes) * 100
+                              : 0,
+                          )}
+                          %)
+                        </Est>
                       </span>
                     </div>
                   );
@@ -1208,7 +1291,7 @@ export function ProductionRunView({
                   <span>{label}</span>
                   <strong>
                     {value}
-                    {expectedByLabel.has(label) && <span className="metric-est"> / ~{expectedByLabel.get(label)}</span>}
+                    {expectedByLabel.has(label) && <Est>{expectedByLabel.get(label)}</Est>}
                   </strong>
                 </div>
               ))}
@@ -1358,8 +1441,15 @@ const MachinesLayer = memo(function MachinesLayer({
   );
 });
 
-type OutputRow = { label: string; value: string | number; sub?: boolean; title?: string };
-type PerTonRow = { label: string; value: string | number; fpValue: string | number; title?: string };
+type OutputRow = { label: string; value: string | number; estimate?: string | number; sub?: boolean; title?: string };
+type PerTonRow = { label: string; value: string | number; fpValue: string | number; estimate?: string | number; fpEstimate?: string | number; title?: string };
+
+const FORECAST_NOTE = '/ ~ = forecast for the full shift';
+
+/** The setup's full-shift forecast, shown after an actual value for comparison. */
+function Est({ children }: { children: ReactNode }) {
+  return <span className="metric-est" title="Forecast for the full shift"> / ~{children}</span>;
+}
 
 /** Output card body: plain metrics first (Ton FP / Ton SFP indented under Tonage), then the
  * per-ton metrics in two columns — divided by total tonnage and by Finish Product tonnage. */
@@ -1369,7 +1459,10 @@ function OutputMetricsTable({ rows, perTonRows }: { rows: OutputRow[]; perTonRow
       {rows.map((row) => (
         <div key={row.label} className={`output-metrics-row${row.sub ? ' is-sub' : ''}`}>
           <span title={row.title}>{row.label}</span>
-          <strong className="output-metrics-span">{row.value}</strong>
+          <strong className="output-metrics-span">
+            {row.value}
+            {row.estimate !== undefined && <Est>{row.estimate}</Est>}
+          </strong>
         </div>
       ))}
       <div className="output-metrics-row output-metrics-head">
@@ -1380,15 +1473,20 @@ function OutputMetricsTable({ rows, perTonRows }: { rows: OutputRow[]; perTonRow
       {perTonRows.map((row) => (
         <div key={row.label} className="output-metrics-row">
           <span title={row.title}>{row.label}</span>
-          <strong>{row.value}</strong>
-          <strong className="output-metrics-fp">{row.fpValue}</strong>
+          <strong>
+            {row.value}
+            {row.estimate !== undefined && <Est>{row.estimate}</Est>}
+          </strong>
+          <strong className="output-metrics-fp">
+            {row.fpValue}
+            {row.fpEstimate !== undefined && <Est>{row.fpEstimate}</Est>}
+          </strong>
         </div>
       ))}
     </div>
   );
 }
 
-const DEFAULT_DASHBOARD_WIDTH = 340;
 const MIN_DASHBOARD_WIDTH = 280;
 const MAX_DASHBOARD_WIDTH_RATIO = 0.6;
 
