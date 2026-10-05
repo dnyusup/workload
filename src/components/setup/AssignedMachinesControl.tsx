@@ -91,7 +91,7 @@ export function AssignedMachinesControl({
         variant="ghost"
         className="optimize-utilization-button"
         onClick={onOptimize}
-        title="Recalculate assigned machines: the most machines the operator can keep up with (Forecast Man Occupation up to 100%, no backlog)"
+        title="Recalculate assigned machines: the most machines the operator can keep up with (Forecast Man Occupation up to 100%, no backlog), plus one more when that still leaves Man Occupation below Default Values' Optimize Step-Up Below"
         aria-label="Optimize man occupation"
       >
         <svg viewBox="0 0 24 24" aria-hidden="true">

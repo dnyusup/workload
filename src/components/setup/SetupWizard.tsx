@@ -47,6 +47,20 @@ export function SetupWizard({ onStart }: { onStart: () => void }) {
       cancelled = true;
     };
   }, [authLoading, isAdmin, setConfig]);
+  // Optimize's Step-Up threshold is only set in Default Values — follow it for a setup kept in the
+  // browser from before it changed.
+  useEffect(() => {
+    let cancelled = false;
+    void loadDefaultValuesOrBuiltIn().then(({ optimizeStepUpBelow }) => {
+      if (cancelled) return;
+      setConfig((prev) =>
+        prev.operator.optimizeStepUpBelow === optimizeStepUpBelow ? prev : { ...prev, operator: { ...prev.operator, optimizeStepUpBelow } },
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [setConfig]);
   const derived = deriveMachineSpec(config.spec);
   const forecast = calculateSingleOperatorForecast(config);
   const optimizedConfig = (config: AppConfig): AppConfig => {

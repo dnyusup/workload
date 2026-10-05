@@ -15,6 +15,9 @@ const MAX_RECOMMENDED_MACHINES = 300;
 const OPTIMIZE_BACKLOG_STREAK = 5;
 
 export const DEFAULT_WAITING_MODEL: WaitingModel = 'wright';
+/** Optimize adds one more machine when the best backlog-free count leaves Forecast Man Occupation
+ * below this (%); 0 turns it off. */
+export const DEFAULT_OPTIMIZE_STEP_UP_BELOW = 89;
 
 export interface ForecastActivityContribution {
   key: string;
@@ -605,9 +608,11 @@ function placeholderMachines(config: AppConfig, count: number): LayoutMachine[] 
 /** Finds the largest machine count the operator can still keep up with — Forecast Man Occupation
  * up to 100%, no backlog — not limited to the machines in the layout (the Machine Layout step
  * enforces that the layout matches the count). Machine interference doesn't limit it: it's still
- * forecast, lowering OEE and #Spool. */
+ * forecast, lowering OEE and #Spool. When that count still leaves the operator below the Step-Up
+ * threshold (Default Values), one more machine is taken even though it leaves a backlog. */
 export function recommendedMachineCountForForecast(config: AppConfig): number {
   let recommended = 0;
+  let recommendedOccupation = 0;
   let backlogStreak = 0;
   for (let machineCount = 1; machineCount <= MAX_RECOMMENDED_MACHINES; machineCount += 1) {
     const forecast = calculateSingleOperatorForecast({
@@ -618,11 +623,16 @@ export function recommendedMachineCountForForecast(config: AppConfig): number {
     if (machineCount === 1 && forecast.plannedMinutes <= 0) return 0;
     if (forecast.forecastWaitingMinutes <= 0.0001) {
       recommended = machineCount;
+      recommendedOccupation = forecast.forecastUtilizationPercent;
       backlogStreak = 0;
     } else if (++backlogStreak >= OPTIMIZE_BACKLOG_STREAK) {
       break;
     }
   }
 
+  const stepUpBelow = config.operator.optimizeStepUpBelow ?? DEFAULT_OPTIMIZE_STEP_UP_BELOW;
+  if (recommended > 0 && stepUpBelow > 0 && recommendedOccupation < stepUpBelow && recommended < MAX_RECOMMENDED_MACHINES) {
+    return recommended + 1;
+  }
   return recommended;
 }

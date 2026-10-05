@@ -2,7 +2,7 @@ import type { TaskPriorityMode, WaitingModel } from '../types';
 import { Mpp_wl_defaultvaluesService } from '../generated/services/Mpp_wl_defaultvaluesService';
 import type { Mpp_wl_defaultvalues } from '../generated/models/Mpp_wl_defaultvaluesModel';
 import { fetchAllPages } from './dataversePaging';
-import { DEFAULT_WAITING_MODEL } from './singleOperatorUtilization';
+import { DEFAULT_OPTIMIZE_STEP_UP_BELOW, DEFAULT_WAITING_MODEL } from './singleOperatorUtilization';
 import { formatWaitingModel, parseWaitingModel } from './waitingModel';
 
 /** Starting values for a new Production Setup and for the Work Load Simulator's setup whenever a
@@ -19,6 +19,8 @@ export interface DefaultValues {
   doffPriority: boolean;
   minRemainForDoffPriority: number;
   waitingModel: WaitingModel;
+  /** Optimize adds one machine when Forecast Man Occupation stays below this (%); 0 = off. */
+  optimizeStepUpBelow: number;
 }
 
 /** Used for any parameter WL_DefaultValues has no (valid) row for yet. */
@@ -34,6 +36,7 @@ export const BUILT_IN_DEFAULTS: DefaultValues = {
   doffPriority: false,
   minRemainForDoffPriority: 5,
   waitingModel: DEFAULT_WAITING_MODEL,
+  optimizeStepUpBelow: DEFAULT_OPTIMIZE_STEP_UP_BELOW,
 };
 
 /** WL_DefaultValues.mpp_parameters name for each setting (matched case-insensitively). */
@@ -49,6 +52,7 @@ const PARAMETER_NAMES: Record<keyof DefaultValues, string> = {
   doffPriority: 'DoffPriority',
   minRemainForDoffPriority: 'MinRemainTaskForDoffPriority',
   waitingModel: 'WaitingModel',
+  optimizeStepUpBelow: 'OptimizeStepUpBelow',
 };
 
 const KEYS = Object.keys(PARAMETER_NAMES) as (keyof DefaultValues)[];

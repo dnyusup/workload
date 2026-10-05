@@ -53,6 +53,9 @@ export interface OperatorConfig {
   /** How the forecast estimates machines waiting for the operator (see WaitingModel); undefined =
    * the built-in default. */
   waitingModel?: WaitingModel;
+  /** Optimize takes one more machine when its count leaves Forecast Man Occupation below this (%),
+   * 0 = off; from Default Values. undefined = the built-in default. */
+  optimizeStepUpBelow?: number;
 }
 
 /** Machine interference — machines waiting because they need the one operator at the same time:

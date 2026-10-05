@@ -20,7 +20,7 @@ const WAITING_MODEL_OPTIONS: { value: WaitingModel; label: string }[] = [
 ];
 
 const NUMBER_FIELDS: {
-  key: Exclude<keyof DefaultValues, 'taskPriority' | 'doffPriority' | 'minRemainForDoffPriority' | 'waitingModel'>;
+  key: Exclude<keyof DefaultValues, 'taskPriority' | 'doffPriority' | 'minRemainForDoffPriority' | 'waitingModel' | 'optimizeStepUpBelow'>;
   label: string;
   min: number;
 }[] = [
@@ -126,6 +126,16 @@ function DefaultValuesCard() {
               tooltip="How the Work Load Simulator forecast estimates machines waiting because they need the operator at the same time (machine interference)."
             >
               <SelectInput value={draft.waitingModel} options={WAITING_MODEL_OPTIONS} onChange={(v) => set('waitingModel', v)} />
+            </Field>
+            <Field
+              label="Optimize Step-Up Below (%)"
+              tooltip="Optimize Man Occupation finds the most machines the operator keeps up with (Forecast Man Occupation ≤ 100%). If that count still leaves Forecast Man Occupation below this value, it takes one more machine, even though that leaves a backlog. 0 turns it off."
+            >
+              <NumberInput
+                value={draft.optimizeStepUpBelow}
+                min={0}
+                onChange={(v) => set('optimizeStepUpBelow', Number.isFinite(v) ? Math.min(100, Math.max(0, v)) : 0)}
+              />
             </Field>
           </div>
           {message && <p className="data-manager-hint">{message}</p>}
