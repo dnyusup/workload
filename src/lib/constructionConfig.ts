@@ -64,6 +64,8 @@ export function buildConstructionConfig({
     selectedConstructionDetail: product.mpp_constructiondetailcode,
     loadingActivityRows: activityRows.filter(isLoadingTaskRow),
     initialMachineConditions: undefined,
+    // A replayed run's seed belongs to that run — a fresh setup draws a new one each time.
+    seed: undefined,
   };
   return { config, errors: built.errors };
 }

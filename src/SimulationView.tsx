@@ -278,9 +278,10 @@ export function SimulationView({
     setInheritedSelectionNotice(null);
     setPendingSave(null);
     setDialogError(null);
-    if (config.initialMachineConditions && config.initialMachineConditions.length > 0) {
+    if ((config.initialMachineConditions && config.initialMachineConditions.length > 0) || config.seed !== undefined) {
       // Also drop the inherited seed — otherwise the engine keeps replaying the exact same
-      // "random" sequence it was seeded with, instead of drawing a fresh one each reset.
+      // "random" sequence it was seeded with, instead of drawing a fresh one each reset. Checked on
+      // its own too: a seed left without conditions (e.g. kept in the browser) would do the same.
       setConfig((prev) => ({ ...prev, initialMachineConditions: undefined, seed: undefined }));
     } else {
       controls.reset();
