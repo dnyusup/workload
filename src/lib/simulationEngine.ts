@@ -685,17 +685,6 @@ export class SimulationEngine {
       this.addLog(atMin, `${machine.label} needs ${activity.label} (weight threshold reached)`);
   }
 
-  private accumulateDowntime(deltaMin: number) {
-    for (const machine of this.machines) {
-      if (machine.status === 'unassigned' || machine.status === 'running') continue;
-      const beingServicedNow = this.operator.phase === 'servicing' && this.operator.targetMachineId === machine.id;
-      if (beingServicedNow) continue; // exact amount attributed at finishService
-      machine.downtimeMin += deltaMin;
-      machine.downtimeByReason.waiting += deltaMin;
-      this.metrics.downtimeByReason.waiting += deltaMin;
-    }
-  }
-
   private pickNextTarget(): MachineRuntimeState | null {
     // Machines still 'running' can be candidates too — that's a Run-condition task pending,
     // which the operator services without stopping the machine's production.
@@ -938,6 +927,15 @@ export class SimulationEngine {
         : activeTask
           ? (isRpcZone ? `${activeTask.label} (RPC)` : activeTask.label)
           : (waitingActivity ? `Waiting ${waitingTask?.label}` : 'Waiting servis');
+    // Downtime is booked from this same record, so OEE & Downtime always equals the running time:
+    // every stopped minute goes to the activity being done (an RPC tail that keeps the machine
+    // stopped counts under its activity), or to waiting for the operator.
+    if (machine.status !== 'running') {
+      const reason: DowntimeReason = activeActivityKey ? activeActivityKey.replace(/^rpc:/, '') : 'waiting';
+      machine.downtimeMin += duration;
+      machine.downtimeByReason[reason] = (machine.downtimeByReason[reason] ?? 0) + duration;
+      this.metrics.downtimeByReason[reason] = (this.metrics.downtimeByReason[reason] ?? 0) + duration;
+    }
     const timeline = machine.timeline;
     const previous = timeline[timeline.length - 1];
     if (previous && previous.endMin >= startMin - 1e-9 && previous.kind === kind) {
@@ -1209,28 +1207,10 @@ export class SimulationEngine {
         machine.runtimePaused = false;
         machine.runtimeRemainingMin = null;
       }
-      this.operator.serviceTasks.forEach((t, index, tasks) => {
+      this.operator.serviceTasks.forEach((t) => {
         this.recordTriggerEvent(machine.id, t.activity);
         this.metrics.completedByActivity[t.activity] += 1;
         if (t.activity === 'diesChange') this.metrics.diesChanged += t.quantity ?? 0;
-        if (this.isEffectiveStopTask(index, tasks)) {
-          this.metrics.downtimeByReason[t.activity] += t.timeMinutes;
-          machine.downtimeByReason[t.activity] += t.timeMinutes;
-          machine.downtimeMin += t.timeMinutes;
-        }
-        // Same "stops early" check as the task's own RPC tail uses live (see
-        // syncMachineRunStateForCurrentTask) — if the RPC time right after this task actually kept
-        // the machine stopped (because the NEXT task is itself effectively a stop), that RPC time
-        // counts as downtime too, filed under this task's own activity rather than a separate RPC
-        // bucket.
-        if (index + 1 < tasks.length && this.isEffectiveStopTask(index + 1, tasks)) {
-          const rpcMinutes = applyRpc(t.timeMinutes, this.config.rpcPercent) - t.timeMinutes;
-          if (rpcMinutes > 1e-9) {
-            this.metrics.downtimeByReason[t.activity] += rpcMinutes;
-            machine.downtimeByReason[t.activity] += rpcMinutes;
-            machine.downtimeMin += rpcMinutes;
-          }
-        }
         if (t.activity === 'loading' || t.activity.startsWith('loading-')) {
           machine.spoolsSinceLoading = 0;
         }
@@ -1267,7 +1247,6 @@ export class SimulationEngine {
       this.machines.forEach((machine) => this.triggerMidRuntimeLoading(machine, startMin + step));
       GLOBAL_EVENT_ACTIVITIES.forEach((activityKey) => this.triggerMidRuntimeGlobalActivity(activityKey, startMin + step));
       this.advanceOperator(startMin, step);
-      this.accumulateDowntime(step);
       this.subStepIndex += 1;
       this.metrics.clockMin = this.subStepIndex * SUB_STEP_MIN;
       this.machines.forEach((machine) => this.recordMachineTime(machine, startMin, step));

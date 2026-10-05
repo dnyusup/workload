@@ -15,7 +15,7 @@ import type {
   ServiceSegment,
   SuspendedVisit,
 } from '../types';
-import { applyRpc, availableTimeMinutes, deriveMachineSpec, distanceMeters } from './calculations';
+import { availableTimeMinutes, deriveMachineSpec, distanceMeters } from './calculations';
 import { machineWidthPx, machineHeightPx } from './layoutConstants';
 import { buildServiceSegments } from './machineZones';
 import { computeWalkingWaypoints, createRoutingRowCache, type RoutingRowCache } from './operatorRouting';
@@ -703,16 +703,6 @@ export class ProductionSimulationEngine {
     else state.defectRepairingEventsTriggered = eventsTriggered;
   }
 
-  private accumulateDowntime(deltaMin: number) {
-    for (const machine of this.machines) {
-      if (machine.status === 'unassigned' || machine.status === 'running') continue;
-      if (this.servicingOperatorByMachineId.has(machine.id)) continue;
-      machine.downtimeMin += deltaMin;
-      machine.downtimeByReason.waiting += deltaMin;
-      this.metrics.downtimeByReason.waiting = (this.metrics.downtimeByReason.waiting ?? 0) + deltaMin;
-    }
-  }
-
   private walkingDistanceMeters(fromX: number, fromY: number, toX: number, toY: number): number {
     const route = computeWalkingWaypoints({ x: fromX, y: fromY }, { x: toX, y: toY }, this.machines, this.setup.movement.pixelsPerMeter, this.routeCache, this.wallGraph);
     let total = 0;
@@ -1072,7 +1062,7 @@ export class ProductionSimulationEngine {
         machine.queuedSince = null;
       }
       machine.totalServiced += 1;
-      operator.serviceTasks.forEach((t, index, tasks) => {
+      operator.serviceTasks.forEach((t) => {
         this.recordTriggerEvent(machine.id, t.activity);
         this.metrics.completedByActivity[t.activity] = (this.metrics.completedByActivity[t.activity] ?? 0) + 1;
         if (t.activity === 'diesChange') this.metrics.diesChanged += t.quantity ?? 0;
@@ -1083,24 +1073,6 @@ export class ProductionSimulationEngine {
               (this.metrics.tonageKgByConstruction[machine.constructionId] ?? 0) + machine.spoolWeight;
           }
           this.metrics.producedMachineMin += machine.runtimePerSpool;
-        }
-        if (this.isEffectiveStopTask(machine, index, tasks)) {
-          this.metrics.downtimeByReason[t.activity] = (this.metrics.downtimeByReason[t.activity] ?? 0) + t.timeMinutes;
-          machine.downtimeByReason[t.activity] = (machine.downtimeByReason[t.activity] ?? 0) + t.timeMinutes;
-          machine.downtimeMin += t.timeMinutes;
-        }
-        // Same "stops early" check as the task's own RPC tail uses live (see
-        // syncMachineRunStateForCurrentTask) — if the RPC time right after this task actually kept
-        // the machine stopped (because the NEXT task is itself effectively a stop), that RPC time
-        // counts as downtime too, filed under this task's own activity rather than a separate RPC
-        // bucket.
-        if (this.nextIsEffectiveStop(machine, index, tasks)) {
-          const rpcMinutes = applyRpc(t.timeMinutes, this.setup.rpc) - t.timeMinutes;
-          if (rpcMinutes > 1e-9) {
-            this.metrics.downtimeByReason[t.activity] = (this.metrics.downtimeByReason[t.activity] ?? 0) + rpcMinutes;
-            machine.downtimeByReason[t.activity] = (machine.downtimeByReason[t.activity] ?? 0) + rpcMinutes;
-            machine.downtimeMin += rpcMinutes;
-          }
         }
         if (t.activity === 'loading' || t.activity.startsWith('loading-')) machine.spoolsSinceLoading = 0;
       });
@@ -1158,6 +1130,15 @@ export class ProductionSimulationEngine {
         : activeTask
           ? (isRpcZone ? `${activeTask.label} (RPC)` : activeTask.label)
           : (waitingActivity ? `Waiting ${waitingTask?.label}` : 'Waiting');
+    // Downtime is booked from this same record, so OEE & Downtime always equals the running time:
+    // every stopped minute goes to the activity being done (an RPC tail that keeps the machine
+    // stopped counts under its activity), or to waiting for an operator.
+    if (machine.status !== 'running') {
+      const reason = activeActivityKey ? activeActivityKey.replace(/^rpc:/, '') : 'waiting';
+      machine.downtimeMin += duration;
+      machine.downtimeByReason[reason] = (machine.downtimeByReason[reason] ?? 0) + duration;
+      this.metrics.downtimeByReason[reason] = (this.metrics.downtimeByReason[reason] ?? 0) + duration;
+    }
     const timeline = machine.timeline;
     const previous = timeline[timeline.length - 1];
     if (previous && previous.endMin >= startMin - 1e-9 && previous.kind === kind) {
@@ -1308,7 +1289,6 @@ export class ProductionSimulationEngine {
       this.operators.forEach((op) => {
         if (op.phase === 'servicing' && op.targetMachineId) this.servicingOperatorByMachineId.set(op.targetMachineId, op);
       });
-      this.accumulateDowntime(step);
       this.metrics.clockMin += step;
       this.machines.forEach((machine) => this.recordMachineTime(machine, startMin, step));
       remaining -= step;
