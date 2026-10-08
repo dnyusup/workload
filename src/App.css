@@ -5753,3 +5753,72 @@
   cursor: pointer;
   font-size: 0.82rem;
 }
+
+/* Production Setup: Theoretical Operator Required, pinned top-right on the layout canvas. */
+.layout-canvas-overlay-end {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.layout-canvas-overlay-end > * {
+  pointer-events: auto;
+}
+
+.theoretical-operators-badge {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid #1e293b;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.92);
+  color: #e2e8f0;
+  font: inherit;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+.theoretical-operators-badge:hover {
+  border-color: #38bdf8;
+}
+
+.theoretical-operators-badge.has-error {
+  border-color: #b91c1c;
+}
+
+.theoretical-operators-label {
+  color: #94a3b8;
+  font-size: 0.78rem;
+}
+
+.theoretical-operators-badge strong {
+  color: #38bdf8;
+  font-size: 1.1rem;
+}
+
+.theoretical-operators-meta {
+  color: #64748b;
+  font-size: 0.75rem;
+}
+
+.theoretical-operators-dialog {
+  width: min(820px, 100%);
+}
+
+.theoretical-operators-table-wrap {
+  max-height: min(60vh, 560px);
+  overflow: auto;
+}
+
+.theoretical-operators-table-wrap tfoot th {
+  color: #e2e8f0;
+  border-top: 1px solid #334155;
+}
+
+.theoretical-operators-flag {
+  color: #f59e0b;
+  font-size: 0.75rem;
+}

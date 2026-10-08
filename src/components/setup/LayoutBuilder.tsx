@@ -353,6 +353,7 @@ export function LayoutBuilder({
   sidePanel,
   selectionPanel,
   canvasOverlay,
+  canvasOverlayEnd,
   highlightedMachineIds,
   toolbarStart,
   onChange,
@@ -403,6 +404,8 @@ export function LayoutBuilder({
   selectionPanel?: ReactNode;
   /** Extra content pinned to the canvas's top-left corner (e.g. a legend toggle/panel). */
   canvasOverlay?: ReactNode;
+  /** Extra content pinned to the canvas's top-right corner (e.g. a summary badge). */
+  canvasOverlayEnd?: ReactNode;
   /** When set, these machines are highlighted and every other machine is dimmed (e.g. hovering
    * a legend entry). */
   highlightedMachineIds?: ReadonlySet<string> | null;
@@ -2039,6 +2042,11 @@ export function LayoutBuilder({
         {canvasOverlay && (
           <div className="layout-canvas-overlay" data-canvas-overlay onPointerDown={(e) => e.stopPropagation()}>
             {canvasOverlay}
+          </div>
+        )}
+        {canvasOverlayEnd && (
+          <div className="layout-canvas-overlay-end" data-canvas-overlay onPointerDown={(e) => e.stopPropagation()}>
+            {canvasOverlayEnd}
           </div>
         )}
         {/* Workload Machine Layout: Assign / Unassign right next to the pointer, like the

@@ -55,6 +55,10 @@ import {
   type TaskOperatorField,
 } from '../../lib/productionActivityRouting';
 import { loadDefaultValuesOrBuiltIn } from '../../lib/defaultValuesStore';
+import { useAppConfig } from '../../context/appConfig';
+import { useOptimizedMachineCounts, type OptimizedCount } from '../../hooks/useOptimizedMachineCounts';
+import { theoreticalOperators } from '../../lib/theoreticalOperators';
+import { TheoreticalOperatorsBadge } from './TheoreticalOperatorsBadge';
 
 const TASK_PRIORITY_OPTIONS: { value: TaskPriorityMode; label: string }[] = [
   { value: 'nearest', label: 'Nearest Task' },
@@ -324,8 +328,12 @@ export function ProductionSimulationPage() {
     setLoadingSetup(true);
     setSetupError(null);
     loadProductionSetup(selectedId, constructionLabelById)
-      // Only an Admin picks the waiting model; everyone else's forecast follows Default Values.
-      .then(async (setup) => (isAdmin ? setup : { ...setup, waitingModel: (await loadDefaultValuesOrBuiltIn()).waitingModel }))
+      // Only an Admin picks the waiting model; everyone else's forecast follows Default Values. Default
+      // Values can also switch the waiting model off altogether (forecast as None, field hidden).
+      .then(async (setup) => {
+        const defaults = await loadDefaultValuesOrBuiltIn();
+        return { ...setup, useWaitingModel: defaults.useWaitingModel, ...(isAdmin ? {} : { waitingModel: defaults.waitingModel }) };
+      })
       .then((setup) => {
         if (!cancelled) setSelectedSetup(setup);
       })
@@ -424,6 +432,15 @@ export function ProductionSimulationPage() {
       setSummaries((prev) => prev.map((summary) => (summary.id === selectedId ? { ...summary, updatedAt } : summary)));
     }
   };
+
+  // Theoretical Operator Required: Optimize's # Assigned Machines per Construction Detail in use,
+  // worked out in the background and kept while the page is open (switching setups reuses them).
+  const { config: simulatorConfig } = useAppConfig();
+  const plannedProductIds = useMemo(
+    () => (selectedSetup?.assignments ?? []).map((a) => a.constructionDetailId).filter((id): id is string => !!id),
+    [selectedSetup],
+  );
+  const optimizedCounts = useOptimizedMachineCounts(plannedProductIds, products, simulatorConfig);
 
   const [runState, setRunState] = useState<{ setup: ProductionSetup; resolved: Map<string, ResolvedConstruction>; errors: string[] } | null>(null);
   const [resolving, setResolving] = useState(false);
@@ -644,6 +661,7 @@ export function ProductionSimulationPage() {
             plannedUtilizationErrors={plannedResolution.errors}
             plannedUtilizationLoading={plannedResolution.loading}
             resolvedConstructions={plannedResolution.resolved}
+            optimizedCounts={optimizedCounts}
           />
         ) : (
           <Card title="No Setup Selected">
@@ -667,6 +685,7 @@ function ProductionSetupEditor({
   plannedUtilizationErrors,
   plannedUtilizationLoading,
   resolvedConstructions,
+  optimizedCounts,
 }: {
   setup: ProductionSetup;
   products: Mpp_wl_productses[];
@@ -679,6 +698,7 @@ function ProductionSetupEditor({
   plannedUtilizationErrors: string[];
   plannedUtilizationLoading: boolean;
   resolvedConstructions: Map<string, ResolvedConstruction> | null;
+  optimizedCounts: { counts: ReadonlyMap<string, OptimizedCount>; error: string | null; loading: boolean };
 }) {
   /** Only an Admin picks the waiting model; for everyone else it follows Default Values. */
   const canChangeWaitingModel = useAuth().user.role === 'admin';
@@ -910,6 +930,22 @@ function ProductionSetupEditor({
         operator:
           'Operator View: machines with Split Task operators split the body Doffing | Loading | Fracture Repairing | Defect Repairing (CB/BU/SP/CH/CR) or Dies Change (WW/BA/CA), each colored by its first operator; Multi Task-only machines split it by their operators; gray = not assigned yet; border = Construction. Hover an entry to highlight its machines.',
       }}
+    />
+  );
+
+  const operatorRequirement = useMemo(
+    () => theoreticalOperators(setup.assignments, products, optimizedCounts.counts),
+    [setup.assignments, products, optimizedCounts.counts],
+  );
+  const theoreticalOperatorsBadge = (
+    <TheoreticalOperatorsBadge
+      total={operatorRequirement.total}
+      rows={operatorRequirement.rows}
+      pending={operatorRequirement.pending}
+      unresolved={operatorRequirement.unresolved}
+      operatorsInSetup={setup.operators.length}
+      loading={optimizedCounts.loading}
+      error={optimizedCounts.error}
     />
   );
 
@@ -1312,11 +1348,40 @@ function ProductionSetupEditor({
     const occupation = occupationFor(machineIds);
     if (!occupation) return plannedUtilizationLoading ? ['Man occupation: loading…'] : [];
     if (occupation.plannedMachineCount === 0) return ['No Construction assigned yet'];
+    // Theoretical Operator Required of just these machines (see the badge on the canvas).
+    const selected = new Set(machineIds);
+    const required = theoreticalOperators(
+      setup.assignments.filter((a) => selected.has(a.machineId)),
+      products,
+      optimizedCounts.counts,
+    );
+    const requiredReady = !optimizedCounts.error && required.pending === 0 && !optimizedCounts.loading;
+    const requiredText = optimizedCounts.error
+      ? ''
+      : requiredReady
+        ? ` - ${required.total.toFixed(2)} Opr Required`
+        : ' - Opr Required: calculating…';
+    // Per activity: each Construction Detail's operators (machines ÷ # Assigned Machines) split by
+    // its activities' share of the ideal handling time on those machines — so they add up to All Task.
+    const requiredByActivity = new Map<string, number>();
+    if (requiredReady && resolvedConstructions) {
+      required.rows.forEach((row) => {
+        if (row.operators <= 0) return;
+        const machinesOfConstruction = machineIds.filter((id) => assignmentByMachine.get(id)?.constructionDetailId === row.productId);
+        const rows = calculateSelectionOccupation(setup, resolvedConstructions, machinesOfConstruction).activities.filter((a) => a.plannedMinutes > 0);
+        const planned = rows.reduce((sum, a) => sum + a.plannedMinutes, 0);
+        if (planned <= 0) return;
+        rows.forEach((a) => requiredByActivity.set(a.key, (requiredByActivity.get(a.key) ?? 0) + (row.operators * a.plannedMinutes) / planned));
+      });
+    }
     return [
-      `All Task: ${formatOccupation(occupation.allTask)}`,
+      `All Task: ${formatOccupation(occupation.allTask)}${requiredText}`,
       ...occupation.activities
         .filter((row) => row.plannedMinutes > 0)
-        .map((row) => `· ${row.label}: ${formatOccupation(row)}`),
+        .map((row) => {
+          const activityRequired = requiredByActivity.get(row.key);
+          return `· ${row.label}: ${formatOccupation(row)}${activityRequired !== undefined ? ` - ${activityRequired.toFixed(2)} Opr Required` : ''}`;
+        }),
     ];
   };
   const occupationStatus = (percent: number) =>
@@ -1635,6 +1700,7 @@ function ProductionSetupEditor({
               onChange={(v) => onHeaderChange({ minRemainForDoffPriority: Number.isFinite(v) ? v : 0 })}
             />
           </Field>
+          {setup.useWaitingModel !== false && (
           <Field
             label="Waiting Model"
             tooltip="How the man occupation forecast (operators and machine selections) estimates machines waiting for an operator."
@@ -1662,6 +1728,7 @@ function ProductionSetupEditor({
               </Button>
             </div>
           </Field>
+          )}
           <Field label="Walking Speed (m/min)">
             <NumberInput value={setup.movement.walkingSpeed} min={0} onChange={(v) => onHeaderChange({ movement: { ...setup.movement, walkingSpeed: v } })} />
           </Field>
@@ -1768,6 +1835,7 @@ function ProductionSetupEditor({
         toolbarStart={canvasViewSelect}
         selectionPanel={assignSelectionCard}
         canvasOverlay={canvasLegend}
+        canvasOverlayEnd={theoreticalOperatorsBadge}
         highlightedMachineIds={highlightedMachineIds}
         onChange={() => {}}
         operatorStart={setup.operatorStart ?? null}
