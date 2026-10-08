@@ -3,7 +3,7 @@ import { applyRpc, availableTimeMinutes, distanceMeters } from './calculations';
 import { activityFamily, eligibleOperatorIds, operatorSharesForActivity, TASK_OPERATOR_FIELDS, type TaskOperatorField } from './productionActivityRouting';
 import type { ResolvedConstruction } from './productionConstructionResolver';
 import { forecastCycleLength } from './frequencyTypes';
-import { DEFAULT_WAITING_MODEL, machineInterference } from './singleOperatorUtilization';
+import { effectiveWaitingModel, machineInterference } from './singleOperatorUtilization';
 
 const AVERAGE_DIES_PER_CHANGE_EVENT = (7 + 26) / 2;
 const GLOBAL_EVENT_ACTIVITIES = new Set(['fractureRepairing', 'diesChange', 'defectRepairing']);
@@ -372,7 +372,7 @@ export function calculatePlannedUtilization(
     const averageScale = machineCount > 0 ? scales.reduce((total, scale) => total + scale, 0) / machineCount : 0;
     const shift = Math.max(0, setup.shiftTime);
     const fullService = operator.forecastServiceMinutes;
-    const waitingModel = setup.waitingModel ?? DEFAULT_WAITING_MODEL;
+    const waitingModel = effectiveWaitingModel(setup);
     const passAt = (waitingPerMachine: number) => {
       const runningShare = shift > 0 ? Math.max(0, shift - waitingPerMachine) / shift : 0;
       const busy = fullService * runningShare + walkingAt(runningShare);

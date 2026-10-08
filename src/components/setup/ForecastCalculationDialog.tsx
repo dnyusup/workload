@@ -43,6 +43,8 @@ export function ForecastCalculationDialog({
 
   const b = forecast.breakdown;
   const interference = forecast.interference;
+  // Waiting model switched off in Default Values: no models to show or compare, only the backlog.
+  const waitingModelOn = config.operator.useWaitingModel !== false;
   const downtime = calculateForecastDowntime(config, forecast);
   const busy = forecast.forecastServiceMinutes + forecast.forecastWalkingMinutes;
   const idle = Math.max(0, forecast.availableMinutes - busy);
@@ -94,7 +96,7 @@ export function ForecastCalculationDialog({
             <strong>{min(forecast.availableMinutes)}</strong>
           </div>
           <div className="om-detail-kpi">
-            <span>Interference (machines wait)</span>
+            <span>{waitingModelOn ? 'Interference (machines wait)' : 'Machines wait'}</span>
             <strong>{pct(forecast.interferencePercent)}</strong>
           </div>
           <div className="om-detail-kpi">
@@ -262,8 +264,8 @@ export function ForecastCalculationDialog({
         </div>
 
         <section className="om-detail-section">
-          <h4>6 · Waiting for operator (machine interference)</h4>
-          {wright.x <= 0 ? (
+          <h4>{waitingModelOn ? '6 · Waiting for operator (machine interference)' : '6 · Waiting for operator (backlog)'}</h4>
+          {!waitingModelOn ? null : wright.x <= 0 ? (
             <p className="fx-note">No interference: no machine or no operator work yet.</p>
           ) : (
             <>
@@ -360,7 +362,9 @@ export function ForecastCalculationDialog({
               label="Waiting for Operator"
               value={min(forecast.machineWaitingMinutes)}
               formula={
-                interference.model === 'none'
+                !waitingModelOn
+                  ? `Backlog ${n(forecast.forecastWaitingMinutes, 1)}: work the operator can't get to`
+                  : interference.model === 'none'
                   ? `Backlog ${n(forecast.forecastWaitingMinutes, 1)} (waiting model None)`
                   : `Larger of ${interference.model === 'wright' ? 'Wright' : 'finite source'} ${n(interference.minutes, 1)} and backlog ${n(
                       forecast.forecastWaitingMinutes,
@@ -369,7 +373,7 @@ export function ForecastCalculationDialog({
               }
             />
             <Step
-              label="Interference %"
+              label={waitingModelOn ? 'Interference %' : 'Waiting %'}
               value={pct(forecast.interferencePercent)}
               formula={`${n(forecast.machineWaitingMinutes, 1)} ÷ planned production ${n(downtime.plannedMachineMinutes, 1)}`}
               strong

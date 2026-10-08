@@ -47,14 +47,16 @@ export function SetupWizard({ onStart }: { onStart: () => void }) {
       cancelled = true;
     };
   }, [authLoading, isAdmin, setConfig]);
-  // Optimize's Step-Up threshold is only set in Default Values — follow it for a setup kept in the
-  // browser from before it changed.
+  // Optimize's Step-Up threshold and Use Waiting Model are only set in Default Values — follow them
+  // for a setup kept in the browser from before they changed.
   useEffect(() => {
     let cancelled = false;
-    void loadDefaultValuesOrBuiltIn().then(({ optimizeStepUpBelow }) => {
+    void loadDefaultValuesOrBuiltIn().then(({ optimizeStepUpBelow, useWaitingModel }) => {
       if (cancelled) return;
       setConfig((prev) =>
-        prev.operator.optimizeStepUpBelow === optimizeStepUpBelow ? prev : { ...prev, operator: { ...prev.operator, optimizeStepUpBelow } },
+        prev.operator.optimizeStepUpBelow === optimizeStepUpBelow && (prev.operator.useWaitingModel ?? true) === useWaitingModel
+          ? prev
+          : { ...prev, operator: { ...prev.operator, optimizeStepUpBelow, useWaitingModel } },
       );
     });
     return () => {

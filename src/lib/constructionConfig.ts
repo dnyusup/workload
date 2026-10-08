@@ -57,6 +57,7 @@ export function buildConstructionConfig({
       doffPriority: productSettings.doffPriority ?? defaults.doffPriority,
       minRemainForDoffPriority: productSettings.minRemainForDoffPriority ?? defaults.minRemainForDoffPriority,
       waitingModel: defaults.waitingModel,
+      useWaitingModel: defaults.useWaitingModel,
       optimizeStepUpBelow: defaults.optimizeStepUpBelow,
     },
     movement: { walkingSpeed: defaults.walkingSpeed, pixelsPerMeter: DEFAULT_PIXELS_PER_METER },

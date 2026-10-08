@@ -43,6 +43,7 @@ function defaultConfig(): AppConfig {
       doffPriority: BUILT_IN_DEFAULTS.doffPriority,
       minRemainForDoffPriority: BUILT_IN_DEFAULTS.minRemainForDoffPriority,
       waitingModel: BUILT_IN_DEFAULTS.waitingModel,
+      useWaitingModel: BUILT_IN_DEFAULTS.useWaitingModel,
       optimizeStepUpBelow: BUILT_IN_DEFAULTS.optimizeStepUpBelow,
     },
     activities: defaultActivities(derived.spoolWeight, defaultSpec.fracturePerTon),

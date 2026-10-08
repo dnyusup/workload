@@ -53,6 +53,9 @@ export interface OperatorConfig {
   /** How the forecast estimates machines waiting for the operator (see WaitingModel); undefined =
    * the built-in default. */
   waitingModel?: WaitingModel;
+  /** Setting → Default Values "Use Waiting Model": false = no waiting model at all — the forecast
+   * works as None and the model isn't shown. undefined = on. */
+  useWaitingModel?: boolean;
   /** Optimize takes one more machine when its count leaves Forecast Man Occupation below this (%),
    * 0 = off; from Default Values. undefined = the built-in default. */
   optimizeStepUpBelow?: number;
@@ -487,6 +490,9 @@ export interface ProductionSetup {
   minRemainForDoffPriority: number;
   /** How the man occupation forecast estimates machines waiting for an operator (mpp_optimizemodel). */
   waitingModel: WaitingModel;
+  /** Not stored with the setup: Setting → Default Values "Use Waiting Model" when it was loaded.
+   * false = forecast as None and hide the model. undefined = on. */
+  useWaitingModel?: boolean;
   updatedAt: number;
 }
 

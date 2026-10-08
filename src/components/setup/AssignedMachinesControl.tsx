@@ -25,6 +25,8 @@ export function AssignedMachinesControl({
   onOptimize: () => void;
 }) {
   const waitingModel = config.operator.waitingModel ?? DEFAULT_WAITING_MODEL;
+  // Default Values can switch the waiting model off: then there's nothing to pick (forecast = None).
+  const showWaitingModel = config.operator.useWaitingModel !== false;
   const canChangeWaitingModel = useAuth().user.role === 'admin';
   const [showCalculation, setShowCalculation] = useState(false);
   const [showModelInfo, setShowModelInfo] = useState(false);
@@ -61,6 +63,7 @@ export function AssignedMachinesControl({
       >
         <i>f</i>x
       </Button>
+      {showWaitingModel && (
       <select
         className="input waiting-model-select"
         value={waitingModel}
@@ -73,6 +76,8 @@ export function AssignedMachinesControl({
         <option value="wright">Wright</option>
         <option value="finiteSource">Finite source</option>
       </select>
+      )}
+      {showWaitingModel && (
       <Button
         type="button"
         variant="ghost"
@@ -86,6 +91,7 @@ export function AssignedMachinesControl({
           <path d="M12 11v6M12 7.5v.01" />
         </svg>
       </Button>
+      )}
       <Button
         type="button"
         variant="ghost"
@@ -101,7 +107,7 @@ export function AssignedMachinesControl({
         Optimize Man Occupation
       </Button>
       {showCalculation && <ForecastCalculationDialog config={config} forecast={forecast} onClose={() => setShowCalculation(false)} />}
-      {showModelInfo && <WaitingModelInfoDialog selected={waitingModel} onClose={() => setShowModelInfo(false)} />}
+      {showWaitingModel && showModelInfo && <WaitingModelInfoDialog selected={waitingModel} onClose={() => setShowModelInfo(false)} />}
     </div>
   );
 }

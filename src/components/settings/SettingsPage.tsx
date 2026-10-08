@@ -132,10 +132,22 @@ function DefaultValuesCard() {
           </SettingGroup>
           <SettingGroup title="Forecast & Optimize">
             <SettingRow
+              label="Use Waiting Model"
+              tooltip="Yes: forecasts estimate machines waiting because they need the operator at the same time, with the Waiting Model below (Admins can change it per setup). No: no waiting model anywhere — forecasts and Optimize work as None (machines only wait for the backlog), and the Waiting Model field and its calculation are hidden in the Work Load Simulator and Production Setup."
+            >
+              <Toggle checked={draft.useWaitingModel} onChange={(v) => set('useWaitingModel', v)} ariaLabel="Use Waiting Model" />
+            </SettingRow>
+            <SettingRow
               label="Waiting Model"
               tooltip="How the Work Load Simulator forecast estimates machines waiting because they need the operator at the same time (machine interference)."
             >
-              <SelectInput value={draft.waitingModel} options={WAITING_MODEL_OPTIONS} onChange={(v) => set('waitingModel', v)} />
+              <SelectInput
+                value={draft.waitingModel}
+                options={WAITING_MODEL_OPTIONS}
+                onChange={(v) => set('waitingModel', v)}
+                disabled={!draft.useWaitingModel}
+                title={draft.useWaitingModel ? undefined : 'Not used while Use Waiting Model is No'}
+              />
             </SettingRow>
             <SettingRow
               label="Optimize Step-Up Below (%)"

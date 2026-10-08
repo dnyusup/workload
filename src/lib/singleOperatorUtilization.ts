@@ -15,6 +15,12 @@ const MAX_RECOMMENDED_MACHINES = 300;
 const OPTIMIZE_BACKLOG_STREAK = 5;
 
 export const DEFAULT_WAITING_MODEL: WaitingModel = 'wright';
+
+/** The waiting model a forecast actually uses: None whenever Default Values turn the waiting model
+ * off, else the chosen one. */
+export function effectiveWaitingModel(source: { waitingModel?: WaitingModel; useWaitingModel?: boolean }): WaitingModel {
+  return source.useWaitingModel === false ? 'none' : source.waitingModel ?? DEFAULT_WAITING_MODEL;
+}
 /** Optimize adds one more machine when the best backlog-free count leaves Forecast Man Occupation
  * below this (%); 0 turns it off. */
 export const DEFAULT_OPTIMIZE_STEP_UP_BELOW = 89;
@@ -462,7 +468,7 @@ function forecastWithWaiting(
   const forecastBusyMinutes = forecastServiceMinutes + forecastWalkingMinutes;
   const backlogMinutes = Math.max(0, forecastBusyMinutes - availableMinutes);
   const interference = machineInterference(
-    config.operator.waitingModel ?? DEFAULT_WAITING_MODEL,
+    effectiveWaitingModel(config.operator),
     availableMachines,
     Math.max(0, config.operator.shiftTime) * scale,
     forecastBusyMinutes,

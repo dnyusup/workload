@@ -255,6 +255,7 @@ export async function createProductionSetup(
     doffPriority: defaults.doffPriority,
     minRemainForDoffPriority: defaults.minRemainForDoffPriority,
     waitingModel: defaults.waitingModel,
+    useWaitingModel: defaults.useWaitingModel,
     updatedAt: Date.now(),
   };
 }

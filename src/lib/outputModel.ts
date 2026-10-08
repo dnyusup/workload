@@ -2,7 +2,7 @@ import type { Mpp_wl_outputmodelses } from '../generated/models/Mpp_wl_outputmod
 import type { Mpp_wl_productses } from '../generated/models/Mpp_wl_productsesModel';
 import { Mpp_wl_outputmodelsesService } from '../generated/services/Mpp_wl_outputmodelsesService';
 import { Mpp_wl_productsesService } from '../generated/services/Mpp_wl_productsesService';
-import { calculateForecastDowntime, calculateSingleOperatorForecast, DEFAULT_WAITING_MODEL } from './singleOperatorUtilization';
+import { calculateForecastDowntime, calculateSingleOperatorForecast, effectiveWaitingModel } from './singleOperatorUtilization';
 import { formatWaitingModel } from './waitingModel';
 import { deriveMachineSpec } from './calculations';
 import type { AppConfig, InheritedSimulationSnapshot, SimulationState } from '../types';
@@ -191,7 +191,7 @@ export function buildOutputModelPayload(
     mpp_meetingtime: config.operator.meetingTime,
     mpp_meetingstarttime: config.operator.meetingStartAt,
     mpp_rpc: config.rpcPercent ?? 12,
-    mpp_optimizemodel: formatWaitingModel(config.operator.waitingModel ?? DEFAULT_WAITING_MODEL),
+    mpp_optimizemodel: formatWaitingModel(effectiveWaitingModel(config.operator)),
     // Same text as WL_DefaultValues: Yes/No, and the minutes as a number.
     mpp_doffpriority: config.operator.doffPriority ? 'Yes' : 'No',
     mpp_minremaintaskfordoffpriority: String(config.operator.minRemainForDoffPriority ?? 0),
