@@ -178,7 +178,9 @@
       "Bash(grep -n \"useRef<HTMLDivElement>\\\\|<table className=\\\\\"table products-table\\\\\">\\\\|className={col.key === 'mpp_area' ? 'products-area-column' : undefined}\\\\|className={\\\\`table-sortable-header\\\\|\\) : col.type === 'area' ? \\(\" src/components/data/ProductsManager.tsx)",
       "Bash(sed -i \"1s/.*/import { useEffect, useState } from 'react';/\" src/components/data/OutputModelDetailDialog.tsx)",
       "Bash(sed -i \"3s#.*#import { loadOutputModelStartCondition, percentageForDisplay } from '../../lib/outputModel';#\" src/components/data/OutputModelDetailDialog.tsx)",
-      "Bash(sed -i \"16s#\\\\$#\\\\nimport { OUTPUT_MODEL_LIST_SELECT } from '../../lib/outputModelColumns';#\" src/components/setup/ConstructionDetailSelector.tsx)"
+      "Bash(sed -i \"16s#\\\\$#\\\\nimport { OUTPUT_MODEL_LIST_SELECT } from '../../lib/outputModelColumns';#\" src/components/setup/ConstructionDetailSelector.tsx)",
+      "Bash(grep -o '.\\\\{0,60\\\\}\\(no interference: machines only wait for the backlog\\).\\\\{0,40\\\\}' guide.en.html)",
+      "Bash(grep -o '.\\\\{0,40\\\\}<em>None</em> \\(tanpa.\\\\{0,120\\\\}' guide.id.html)"
     ]
   }
 }
