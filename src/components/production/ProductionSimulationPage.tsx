@@ -57,7 +57,7 @@ import {
 import { loadDefaultValuesOrBuiltIn } from '../../lib/defaultValuesStore';
 import { useAppConfig } from '../../context/appConfig';
 import { useOptimizedMachineCounts, type OptimizedCount } from '../../hooks/useOptimizedMachineCounts';
-import { theoreticalOperators } from '../../lib/theoreticalOperators';
+import { setupOperatorSettings, theoreticalOperators } from '../../lib/theoreticalOperators';
 import { TheoreticalOperatorsBadge } from './TheoreticalOperatorsBadge';
 
 const TASK_PRIORITY_OPTIONS: { value: TaskPriorityMode; label: string }[] = [
@@ -440,7 +440,8 @@ export function ProductionSimulationPage() {
     () => (selectedSetup?.assignments ?? []).map((a) => a.constructionDetailId).filter((id): id is string => !!id),
     [selectedSetup],
   );
-  const optimizedCounts = useOptimizedMachineCounts(plannedProductIds, products, simulatorConfig);
+  const operatorSettings = useMemo(() => (selectedSetup ? setupOperatorSettings(selectedSetup) : null), [selectedSetup]);
+  const optimizedCounts = useOptimizedMachineCounts(plannedProductIds, products, simulatorConfig, operatorSettings);
 
   const [runState, setRunState] = useState<{ setup: ProductionSetup; resolved: Map<string, ResolvedConstruction>; errors: string[] } | null>(null);
   const [resolving, setResolving] = useState(false);

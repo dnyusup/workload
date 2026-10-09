@@ -1,11 +1,12 @@
 import { Mpp_wl_activitiesService } from '../generated/services/Mpp_wl_activitiesService';
 import type { Mpp_wl_activities } from '../generated/models/Mpp_wl_activitiesModel';
 import type { Mpp_wl_productses } from '../generated/models/Mpp_wl_productsesModel';
-import type { AppConfig, ProductionMachineAssignment } from '../types';
+import type { AppConfig, ProductionMachineAssignment, ProductionSetup } from '../types';
 import { buildConstructionConfig } from './constructionConfig';
 import { fetchAllPages } from './dataversePaging';
 import { loadDefaultLayouts, loadDefaultValues, type DefaultValues } from './defaultValuesStore';
 import { loadSavedLayouts, type SavedLayout } from './savedLayoutsStore';
+import { productOperatorSettings } from './productCatalog';
 import { recommendedMachineCountForForecast } from './singleOperatorUtilization';
 
 /** What the Work Load Simulator's setup for a Construction Detail is built from. */
@@ -45,19 +46,77 @@ export async function loadOptimizeInputs(): Promise<OptimizeInputs> {
   return { defaults, layoutByArea, activitiesByConstruction };
 }
 
+/** The Production Setup's operator settings Optimize runs with (Shift & Movement Settings). */
+export interface SetupOperatorSettings {
+  taskPriority: ProductionSetup['taskPriority'];
+  shiftTime: number;
+  lunchTime: number;
+  lunchStartAt: number;
+  meetingTime: number;
+  meetingStartAt: number;
+  rpc: number;
+  walkingSpeed: number;
+  doffPriority: boolean;
+  minRemainForDoffPriority: number;
+  waitingModel: ProductionSetup['waitingModel'];
+  useWaitingModel?: boolean;
+}
+
+export function setupOperatorSettings(setup: ProductionSetup): SetupOperatorSettings {
+  return {
+    taskPriority: setup.taskPriority,
+    shiftTime: setup.shiftTime,
+    lunchTime: setup.lunchTime,
+    lunchStartAt: setup.lunchStartAt,
+    meetingTime: setup.meetingTime,
+    meetingStartAt: setup.meetingStartAt,
+    rpc: setup.rpc,
+    walkingSpeed: setup.movement.walkingSpeed,
+    doffPriority: setup.doffPriority,
+    minRemainForDoffPriority: setup.minRemainForDoffPriority,
+    waitingModel: setup.waitingModel,
+    useWaitingModel: setup.useWaitingModel,
+  };
+}
+
 /**
- * The Work Load Simulator's setup for this Construction Detail — exactly what picking it there
- * builds (Default Values, the product's own Task/Doff Priority, its Area's Default Layout), ready
- * for Optimize. Without a Default Layout the count still works: Optimize places the machines on
- * its stand-in grid for walking.
+ * The Work Load Simulator's setup for this Construction Detail, ready for Optimize: its spec and
+ * Activity Table, its Area's Default Layout and Optimize Step-Up from Default Values — and every
+ * operator setting from the Production Setup (the product's own Task/Doff Priority still wins, as
+ * in the Production simulation). Without a Default Layout the count still works: Optimize places
+ * the machines on its stand-in grid for walking.
  */
-export function optimizeConfigFor(base: AppConfig, product: Mpp_wl_productses, inputs: OptimizeInputs): { config: AppConfig; hasDefaultLayout: boolean } {
+export function optimizeConfigFor(
+  base: AppConfig,
+  product: Mpp_wl_productses,
+  inputs: OptimizeInputs,
+  settings: SetupOperatorSettings,
+): { config: AppConfig; hasDefaultLayout: boolean } {
   const area = (product.mpp_area ?? '').trim().toUpperCase();
   const layout = inputs.layoutByArea.get(area) ?? null;
   const activityRows = inputs.activitiesByConstruction.get(constructionKey(product.mpp_constructioncode)) ?? [];
   // No Default Layout: start from an empty one rather than whatever the simulator last had open.
   const neutralBase: AppConfig = layout ? base : { ...base, layout: [], walls: [], remarks: [], operatorStart: undefined, assignedMachineIds: [] };
-  const { config } = buildConstructionConfig({ base: neutralBase, product, activityRows, defaults: inputs.defaults, layout });
+  const { config: built } = buildConstructionConfig({ base: neutralBase, product, activityRows, defaults: inputs.defaults, layout });
+  const own = productOperatorSettings(product);
+  const config: AppConfig = {
+    ...built,
+    operator: {
+      ...built.operator,
+      shiftTime: settings.shiftTime,
+      lunchTime: settings.lunchTime,
+      lunchStartAt: settings.lunchStartAt,
+      meetingTime: settings.meetingTime,
+      meetingStartAt: settings.meetingStartAt,
+      taskPriority: own.taskPriority ?? settings.taskPriority,
+      doffPriority: own.doffPriority ?? settings.doffPriority,
+      minRemainForDoffPriority: own.minRemainForDoffPriority ?? settings.minRemainForDoffPriority,
+      waitingModel: settings.waitingModel,
+      useWaitingModel: settings.useWaitingModel,
+    },
+    movement: { ...built.movement, walkingSpeed: settings.walkingSpeed },
+    rpcPercent: settings.rpc,
+  };
   return { config, hasDefaultLayout: layout !== null };
 }
 

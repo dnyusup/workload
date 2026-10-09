@@ -38,7 +38,7 @@ export function TheoreticalOperatorsBadge({
         onClick={() => setOpen(true)}
         title={
           error ??
-          'Each planned machine needs 1 ÷ (# Assigned Machines) of an operator, where # Assigned Machines is what Optimize Man Occupation finds for its Construction Detail in the Work Load Simulator (Default Values, the Area\'s Default Layout, Optimize Step-Up). Click for the breakdown.'
+          'Each planned machine needs 1 ÷ (# Assigned Machines) of an operator, where # Assigned Machines is what Optimize Man Occupation finds for its Construction Detail with this setup\'s Shift & Movement Settings, the Area\'s Default Layout and Optimize Step-Up (Default Values). Click for the breakdown.'
         }
       >
         <span className="theoretical-operators-label">Theoretical Operator Required</span>
@@ -98,8 +98,8 @@ function TheoreticalOperatorsDialog({
             <span className="om-detail-eyebrow">Production Setup</span>
             <h3>Theoretical Operator Required: {fmt(total)}</h3>
             <p>
-              Σ machines ÷ # Assigned Machines per Construction Detail — # Assigned Machines is Optimize Man Occupation in the Work Load
-              Simulator (Default Values, the Area's Default Layout, Optimize Step-Up). {operatorsInSetup} operator(s) in this setup.
+              Σ machines ÷ # Assigned Machines per Construction Detail — # Assigned Machines is Optimize Man Occupation with this setup's
+              Shift & Movement Settings, the Area's Default Layout and Optimize Step-Up (Default Values). {operatorsInSetup} operator(s) in this setup.
             </p>
           </div>
           <button type="button" className="om-detail-close" onClick={onClose} aria-label="Close" title="Close (Esc)">
