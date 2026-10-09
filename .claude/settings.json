@@ -180,7 +180,9 @@
       "Bash(sed -i \"3s#.*#import { loadOutputModelStartCondition, percentageForDisplay } from '../../lib/outputModel';#\" src/components/data/OutputModelDetailDialog.tsx)",
       "Bash(sed -i \"16s#\\\\$#\\\\nimport { OUTPUT_MODEL_LIST_SELECT } from '../../lib/outputModelColumns';#\" src/components/setup/ConstructionDetailSelector.tsx)",
       "Bash(grep -o '.\\\\{0,60\\\\}\\(no interference: machines only wait for the backlog\\).\\\\{0,40\\\\}' guide.en.html)",
-      "Bash(grep -o '.\\\\{0,40\\\\}<em>None</em> \\(tanpa.\\\\{0,120\\\\}' guide.id.html)"
+      "Bash(grep -o '.\\\\{0,40\\\\}<em>None</em> \\(tanpa.\\\\{0,120\\\\}' guide.id.html)",
+      "Bash(sed -i \"s/where # Assigned Machines is what Optimize Man Occupation finds for its Construction Detail in the Work Load Simulator — Default Values, the product's own Task\\\\/Doff Priority, the Area's Default Layout \\(a stand-in grid when there is none\\) and Optimize Step-Up./where # Assigned Machines is what Optimize Man Occupation finds for its Construction Detail with this setup's Shift \\\\&amp; Movement Settings \\(shift, breaks, RPC, walking speed, Task\\\\/Doff Priority, waiting model; the product's own Task\\\\/Doff Priority still wins\\), the Area's Default Layout \\(a stand-in grid when there is none\\) and Optimize Step-Up from Default Values. Changing a setting works it out again./\" src/components/guidance/guide.en.html)",
+      "Bash(sed -i \"s/dengan # Assigned Machines = hasil Optimize Man Occupation untuk Construction Detail-nya di Work Load Simulator — Default Values, Task\\\\/Doff Priority produk, Default Layout Area \\(grid pengganti kalau belum ada\\) dan Optimize Step-Up./dengan # Assigned Machines = hasil Optimize Man Occupation untuk Construction Detail-nya memakai Shift \\\\&amp; Movement Settings setup ini \\(shift, istirahat, RPC, walking speed, Task\\\\/Doff Priority, waiting model; Task\\\\/Doff Priority produk tetap didahulukan\\), Default Layout Area \\(grid pengganti kalau belum ada\\) dan Optimize Step-Up dari Default Values. Mengubah setingan langsung menghitung ulang./\" src/components/guidance/guide.id.html)"
     ]
   }
 }
