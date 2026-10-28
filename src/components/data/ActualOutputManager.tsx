@@ -30,10 +30,15 @@ type SortKey =
   | 'aQualityKG'
   | 'doffedSpoolCount'
   | 'effectiveHours'
+  | 'effectiveHoursInHours'
   | 'scheduledHrs'
+  | 'oee'
   | 'totalFracture'
+  | 'fracturePerTon'
   | 'totalDefect'
-  | 'diesCount';
+  | 'defectPerTon'
+  | 'diesCount'
+  | 'diesPerTon';
 
 function getTodayIso(): string {
   const now = new Date();
@@ -253,7 +258,13 @@ export function ActualOutputManager() {
         utilizationPct: 0,
         totalFracture: 0,
         totalDefect: 0,
+        fracturePerTon: 0,
+        defectPerTon: 0,
         diesCount: 0,
+        diesPerTon: 0,
+        oeePct: 0,
+        effectiveHoursMinutes: 0,
+        effectiveHoursInHours: 0,
       };
     }
 
@@ -268,6 +279,7 @@ export function ActualOutputManager() {
     let totalFracture = 0;
     let totalDefect = 0;
     let diesCount = 0;
+    let headDiesCount = 0;
 
     for (const r of filteredRows) {
       totalProducedKG += r.totalProducedKG ?? 0;
@@ -281,10 +293,20 @@ export function ActualOutputManager() {
       totalFracture += r.totalFracture ?? 0;
       totalDefect += r.totalDefect ?? 0;
       diesCount += r.diesCount ?? 0;
+      headDiesCount += r.headDiesCount ?? 0;
     }
 
+    // Eff hrs saat ini nilainya menit, jadi dibagi 60 agar menjadi jam:
+    const effectiveHoursMinutes = effectiveHours;
+    const effectiveHoursInHours = effectiveHoursMinutes / 60;
+
     const rejectRatePct = totalProducedKG > 0 ? (totalRejectedKG / totalProducedKG) * 100 : 0;
-    const utilizationPct = scheduledHours > 0 ? (effectiveHours / scheduledHours) * 100 : 0;
+    const oeePct = scheduledHours > 0 ? (effectiveHoursInHours / scheduledHours) * 100 : 0;
+    const fracturePerTon = tonProduced > 0 ? totalFracture / tonProduced : 0;
+    const defectPerTon = tonProduced > 0 ? totalDefect / tonProduced : 0;
+    // Rumus Dies/T = (DiesCount + HeadDiesCount) / TonProduced
+    const totalDiesCombined = diesCount + headDiesCount;
+    const diesPerTon = tonProduced > 0 ? totalDiesCombined / tonProduced : 0;
 
     return {
       total: filteredRows.length,
@@ -295,12 +317,18 @@ export function ActualOutputManager() {
       rejectRatePct,
       doffedSpools,
       doffedRejectSpools,
-      effectiveHours,
+      effectiveHours: effectiveHoursMinutes,
+      effectiveHoursMinutes,
+      effectiveHoursInHours,
       scheduledHours,
-      utilizationPct,
+      oeePct,
       totalFracture,
+      fracturePerTon,
       totalDefect,
+      defectPerTon,
       diesCount,
+      headDiesCount,
+      diesPerTon,
     };
   }, [filteredRows]);
 
@@ -327,11 +355,17 @@ export function ActualOutputManager() {
       'TotalRejectedKG',
       'DoffedSpoolCount',
       'DoffedRejectSpoolCount',
+      'EffectiveMinutes',
       'EffectiveHours',
       'ScheduledHours',
+      'OEE_Pct',
       'TotalFracture',
+      'Fr_Per_Ton',
       'TotalDefect',
+      'Def_Per_Ton',
       'DiesCount',
+      'HeadDiesCount',
+      'Dies_Per_Ton',
     ];
 
     const csvLines = sortedRows.map((r) => [
@@ -357,10 +391,16 @@ export function ActualOutputManager() {
       r.doffedSpoolCount ?? '',
       r.doffedRejectSpoolCount ?? '',
       r.effectiveHours ?? '',
+      r.effectiveHoursInHours ?? '',
       r.scheduledHrs ?? '',
+      r.oee !== null ? `${r.oee}%` : '',
       r.totalFracture ?? '',
+      r.fracturePerTon ?? '',
       r.totalDefect ?? '',
+      r.defectPerTon ?? '',
       r.diesCount ?? '',
+      r.headDiesCount ?? '',
+      r.diesPerTon ?? '',
     ]);
 
     const csvContent = [headers.join(','), ...csvLines.map((l) => l.join(','))].join('\r\n');
@@ -521,12 +561,42 @@ export function ActualOutputManager() {
           </div>
 
           <div className="frequency-kpi-card">
-            <span className="frequency-kpi-label">Machine Utilization</span>
+            <span className="frequency-kpi-label">OEE</span>
             <span className="frequency-kpi-value text-accent-amber">
-              {summaryMetrics.utilizationPct > 0 ? `${summaryMetrics.utilizationPct.toFixed(1)}%` : '—'}
+              {summaryMetrics.oeePct > 0 ? `${summaryMetrics.oeePct.toFixed(1)}%` : '—'}
             </span>
-            <span className="frequency-kpi-sub" title="Effective Hours / Scheduled Hours">
-              {summaryMetrics.effectiveHours.toFixed(1)}h / {summaryMetrics.scheduledHours.toFixed(1)}h
+            <span className="frequency-kpi-sub" title="Effective Hours (minutes / 60) / Scheduled Hours">
+              {summaryMetrics.effectiveHoursInHours.toFixed(1)}h / {summaryMetrics.scheduledHours.toFixed(1)}h
+            </span>
+          </div>
+
+          <div className="frequency-kpi-card">
+            <span className="frequency-kpi-label">FR / T</span>
+            <span className="frequency-kpi-value" style={{ color: '#fb7185' }}>
+              {summaryMetrics.tonProduced > 0 ? summaryMetrics.fracturePerTon.toFixed(2) : '—'}
+            </span>
+            <span className="frequency-kpi-sub" title="Total Fractures / Ton Produced">
+              {summaryMetrics.totalFracture.toLocaleString()} fractures ({summaryMetrics.tonProduced > 0 ? `${summaryMetrics.fracturePerTon.toFixed(2)}/T` : '—'})
+            </span>
+          </div>
+
+          <div className="frequency-kpi-card">
+            <span className="frequency-kpi-label">DEF / T</span>
+            <span className="frequency-kpi-value" style={{ color: '#fb923c' }}>
+              {summaryMetrics.tonProduced > 0 ? summaryMetrics.defectPerTon.toFixed(2) : '—'}
+            </span>
+            <span className="frequency-kpi-sub" title="Total Defects / Ton Produced">
+              {summaryMetrics.totalDefect.toLocaleString()} defects ({summaryMetrics.tonProduced > 0 ? `${summaryMetrics.defectPerTon.toFixed(2)}/T` : '—'})
+            </span>
+          </div>
+
+          <div className="frequency-kpi-card">
+            <span className="frequency-kpi-label">DIES / T</span>
+            <span className="frequency-kpi-value" style={{ color: '#60a5fa' }}>
+              {summaryMetrics.tonProduced > 0 ? summaryMetrics.diesPerTon.toFixed(2) : '—'}
+            </span>
+            <span className="frequency-kpi-sub" title="(DiesCount + HeadDiesCount) / Ton Produced">
+              {(summaryMetrics.diesCount + summaryMetrics.headDiesCount).toLocaleString()} dies ({summaryMetrics.diesCount.toLocaleString()} + {summaryMetrics.headDiesCount.toLocaleString()} head)
             </span>
           </div>
         </div>
@@ -666,20 +736,32 @@ export function ActualOutputManager() {
                     <th className="table-sortable-header numeric-col" onClick={() => toggleSort('doffedSpoolCount')}>
                       Doff Spools {sortIndicator('doffedSpoolCount')}
                     </th>
-                    <th className="table-sortable-header numeric-col" onClick={() => toggleSort('effectiveHours')}>
-                      Eff Hrs {sortIndicator('effectiveHours')}
+                    <th className="table-sortable-header numeric-col" onClick={() => toggleSort('effectiveHoursInHours')}>
+                      Eff Hrs (H) {sortIndicator('effectiveHoursInHours')}
                     </th>
                     <th className="table-sortable-header numeric-col" onClick={() => toggleSort('scheduledHrs')}>
                       Sched Hrs {sortIndicator('scheduledHrs')}
                     </th>
+                    <th className="table-sortable-header numeric-col" onClick={() => toggleSort('oee')}>
+                      OEE {sortIndicator('oee')}
+                    </th>
                     <th className="table-sortable-header numeric-col" onClick={() => toggleSort('totalFracture')}>
                       Fractures {sortIndicator('totalFracture')}
+                    </th>
+                    <th className="table-sortable-header numeric-col" onClick={() => toggleSort('fracturePerTon')}>
+                      Fr / T {sortIndicator('fracturePerTon')}
                     </th>
                     <th className="table-sortable-header numeric-col" onClick={() => toggleSort('totalDefect')}>
                       Defects {sortIndicator('totalDefect')}
                     </th>
+                    <th className="table-sortable-header numeric-col" onClick={() => toggleSort('defectPerTon')}>
+                      Def / T {sortIndicator('defectPerTon')}
+                    </th>
                     <th className="table-sortable-header numeric-col" onClick={() => toggleSort('diesCount')}>
                       Dies {sortIndicator('diesCount')}
+                    </th>
+                    <th className="table-sortable-header numeric-col" onClick={() => toggleSort('diesPerTon')}>
+                      Dies / T {sortIndicator('diesPerTon')}
                     </th>
                   </tr>
                 </thead>
@@ -723,26 +805,51 @@ export function ActualOutputManager() {
                       <td className="numeric-col">
                         {row.doffedSpoolCount !== null ? row.doffedSpoolCount.toLocaleString() : '-'}
                       </td>
-                      <td className="numeric-col">
-                        {row.effectiveHours !== null ? row.effectiveHours.toFixed(1) : '-'}
+                      <td className="numeric-col" title={`Eff Time: ${row.effectiveHours ?? 0} minutes / 60`}>
+                        {row.effectiveHoursInHours !== null ? `${row.effectiveHoursInHours.toFixed(1)}h` : '-'}
                       </td>
                       <td className="numeric-col">
-                        {row.scheduledHrs !== null ? row.scheduledHrs.toFixed(1) : '-'}
+                        {row.scheduledHrs !== null ? `${row.scheduledHrs.toFixed(1)}h` : '-'}
+                      </td>
+                      <td className="numeric-col">
+                        <strong
+                          style={{
+                            color:
+                              row.oee !== null
+                                ? row.oee >= 85
+                                  ? '#34d399'
+                                  : row.oee >= 70
+                                  ? '#fbbf24'
+                                  : '#f87171'
+                                : '#94a3b8',
+                          }}
+                        >
+                          {row.oee !== null ? `${row.oee.toFixed(1)}%` : '-'}
+                        </strong>
                       </td>
                       <td className="numeric-col">
                         <span className="frequency-num-fr">
                           {row.totalFracture !== null ? row.totalFracture.toLocaleString() : '-'}
                         </span>
                       </td>
+                      <td className="numeric-col" style={{ color: '#fb7185', fontWeight: 600 }}>
+                        {row.fracturePerTon !== null ? row.fracturePerTon.toFixed(2) : '-'}
+                      </td>
                       <td className="numeric-col">
                         <span className="frequency-num-def">
                           {row.totalDefect !== null ? row.totalDefect.toLocaleString() : '-'}
                         </span>
                       </td>
+                      <td className="numeric-col" style={{ color: '#fb923c', fontWeight: 600 }}>
+                        {row.defectPerTon !== null ? row.defectPerTon.toFixed(2) : '-'}
+                      </td>
                       <td className="numeric-col">
                         <span className="frequency-num-dies">
                           {row.diesCount !== null ? row.diesCount.toLocaleString() : '-'}
                         </span>
+                      </td>
+                      <td className="numeric-col" style={{ color: '#60a5fa', fontWeight: 600 }}>
+                        {row.diesPerTon !== null ? row.diesPerTon.toFixed(2) : '-'}
                       </td>
                     </tr>
                   ))}

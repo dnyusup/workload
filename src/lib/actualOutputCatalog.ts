@@ -30,16 +30,21 @@ export interface ActualOutputRecord {
   shortLengthAQualityKG: number | null;
   totalRejectedKG: number | null;
   totalProducedKG: number | null;
-  effectiveHours: number | null;
+  effectiveHours: number | null; // raw minutes from MES DB
+  effectiveHoursInHours: number | null; // converted to hours (effectiveHours / 60)
   totalFracture: number | null;
   diesCount: number | null;
   headDiesCount: number | null;
 
-  // Measures
+  // Measures & KPI Rates
   totalDefect: number | null;
   effectiveHrs: number | null;
   scheduledHrs: number | null;
   tonProduced: number | null;
+  oee: number | null; // (effectiveHours / 60) / scheduledHrs * 100
+  fracturePerTon: number | null; // totalFracture / tonProduced
+  defectPerTon: number | null; // totalDefect / tonProduced
+  diesPerTon: number | null; // diesCount / tonProduced
 
   raw: Record<string, any>;
 }
@@ -187,7 +192,11 @@ export function parseActualOutputRows(rawItems: any[]): ActualOutputRecord[] {
     const shortLengthAQualityKG = parseNumber(getField(raw, 'ShortLengthAQualityKG', '[ShortLengthAQualityKG]'));
     const totalRejectedKG = parseNumber(getField(raw, 'TotalRejectedKG', '[TotalRejectedKG]'));
     const totalProducedKG = parseNumber(getField(raw, 'TotalProducedKG', '[TotalProducedKG]'));
-    const effectiveHours = parseNumber(getField(raw, 'EffectiveHours', '[EffectiveHours]'));
+    const effectiveHoursRaw = parseNumber(getField(raw, 'EffectiveHours', '[EffectiveHours]', 'Effective Time (Hrs)', 'EffectiveHrs'));
+    const effectiveHours = effectiveHoursRaw;
+    // Nilai EffectiveHours saat ini dari DB MES berupa menit, bagi 60 agar menjadi jam:
+    const effectiveHoursInHours = effectiveHoursRaw !== null ? Number((effectiveHoursRaw / 60).toFixed(2)) : null;
+
     const totalFracture = parseNumber(getField(raw, 'TotalFracture', '[TotalFracture]'));
     const diesCount = parseNumber(getField(raw, 'DiesCount', '[DiesCount]'));
     const headDiesCount = parseNumber(getField(raw, 'HeadDiesCount', '[HeadDiesCount]'));
@@ -195,7 +204,35 @@ export function parseActualOutputRows(rawItems: any[]): ActualOutputRecord[] {
     const totalDefect = parseNumber(getField(raw, 'TotalDefect', '[TotalDefect]'));
     const effectiveHrs = parseNumber(getField(raw, 'EffectiveHrs', '[EffectiveHrs]', 'Effective Time (Hrs)'));
     const scheduledHrs = parseNumber(getField(raw, 'ScheduledHrs', '[ScheduledHrs]', 'Scheduled Time (Hrs)'));
-    const tonProduced = parseNumber(getField(raw, 'TonProduced', '[TonProduced]'));
+
+    let tonProduced = parseNumber(getField(raw, 'TonProduced', '[TonProduced]'));
+    if (tonProduced === null && totalProducedKG !== null && totalProducedKG > 0) {
+      tonProduced = Number((totalProducedKG / 1000).toFixed(3));
+    }
+
+    // OEE = (Eff Hrs in hours / Sched Hrs) * 100
+    const oee =
+      scheduledHrs && scheduledHrs > 0 && effectiveHoursInHours !== null
+        ? Number(((effectiveHoursInHours / scheduledHrs) * 100).toFixed(1))
+        : null;
+
+    // Rates per Ton Produced
+    const fracturePerTon =
+      tonProduced && tonProduced > 0 && totalFracture !== null
+        ? Number((totalFracture / tonProduced).toFixed(3))
+        : null;
+
+    const defectPerTon =
+      tonProduced && tonProduced > 0 && totalDefect !== null
+        ? Number((totalDefect / tonProduced).toFixed(3))
+        : null;
+
+    // Rumus Dies/T = (DiesCount + HeadDiesCount) / Ton
+    const totalDiesCombined = (diesCount ?? 0) + (headDiesCount ?? 0);
+    const diesPerTon =
+      tonProduced && tonProduced > 0 && (diesCount !== null || headDiesCount !== null)
+        ? Number((totalDiesCombined / tonProduced).toFixed(3))
+        : null;
 
     return {
       id: `act-out-${index}-${machineName}-${constructionDetail || Math.random()}`,
@@ -226,6 +263,7 @@ export function parseActualOutputRows(rawItems: any[]): ActualOutputRecord[] {
       totalRejectedKG,
       totalProducedKG,
       effectiveHours,
+      effectiveHoursInHours,
       totalFracture,
       diesCount,
       headDiesCount,
@@ -233,6 +271,10 @@ export function parseActualOutputRows(rawItems: any[]): ActualOutputRecord[] {
       effectiveHrs,
       scheduledHrs,
       tonProduced,
+      oee,
+      fracturePerTon,
+      defectPerTon,
+      diesPerTon,
       raw,
     };
   });
