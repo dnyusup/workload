@@ -5822,3 +5822,757 @@
   color: #f59e0b;
   font-size: 0.75rem;
 }
+
+/* WL_Frequency Manager */
+.frequency-manager {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.frequency-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.frequency-kpi-card {
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 8px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.frequency-kpi-card:hover {
+  border-color: #38bdf8;
+  transform: translateY(-2px);
+}
+
+.frequency-kpi-label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.frequency-kpi-value {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #f8fafc;
+  line-height: 1.2;
+}
+
+.frequency-kpi-sub {
+  font-size: 0.74rem;
+  color: #64748b;
+}
+
+.text-accent-cyan {
+  color: #38bdf8 !important;
+}
+
+.text-accent-amber {
+  color: #fbbf24 !important;
+}
+
+.text-accent-purple {
+  color: #c084fc !important;
+}
+
+.text-accent-green {
+  color: #34d399 !important;
+}
+
+.frequency-alert-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: rgba(185, 28, 28, 0.15);
+  border: 1px solid #b91c1c;
+  border-radius: 8px;
+  padding: 12px 16px;
+  color: #fca5a5;
+  margin-bottom: 16px;
+}
+
+.frequency-alert-icon {
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.frequency-alert-body {
+  flex: 1;
+  font-size: 0.88rem;
+}
+
+.frequency-alert-actions {
+  margin-top: 8px;
+}
+
+.frequency-filters-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.frequency-search-input {
+  flex: 1 1 240px;
+  min-width: 200px;
+}
+
+.frequency-filter-select {
+  flex: 0 1 180px;
+  min-width: 140px;
+}
+
+.frequency-loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 16px;
+  text-align: center;
+  gap: 10px;
+}
+
+.frequency-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid #1e293b;
+  border-top-color: #38bdf8;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.frequency-loading-sub {
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.frequency-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 16px;
+  text-align: center;
+  gap: 8px;
+  color: #94a3b8;
+}
+
+.frequency-empty-icon {
+  font-size: 2.2rem;
+  line-height: 1;
+}
+
+.frequency-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.frequency-table th,
+.frequency-table td {
+  padding: 9px 12px;
+  text-align: left;
+  font-size: 0.85rem;
+}
+
+.frequency-table tbody tr:hover {
+  background: rgba(56, 189, 248, 0.04);
+}
+
+.frequency-table .numeric-col {
+  text-align: right;
+}
+
+.frequency-area-badge {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: #1e293b;
+  color: #38bdf8;
+  border: 1px solid #334155;
+  letter-spacing: 0.05em;
+}
+
+.frequency-type-badge {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: rgba(148, 163, 184, 0.1);
+  color: #94a3b8;
+  border: 1px solid #334155;
+}
+
+.frequency-code-tag {
+  display: inline-block;
+  background: #090d16;
+  border: 1px solid #1e293b;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.78rem;
+  color: #cbd5e1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.frequency-num-fr {
+  font-weight: 600;
+  color: #38bdf8;
+  font-variant-numeric: tabular-nums;
+}
+
+.frequency-num-def {
+  font-weight: 600;
+  color: #fbbf24;
+  font-variant-numeric: tabular-nums;
+}
+
+.frequency-num-dies {
+  font-weight: 600;
+  color: #c084fc;
+  font-variant-numeric: tabular-nums;
+}
+
+.frequency-num-ton {
+  font-weight: 600;
+  color: #34d399;
+  font-variant-numeric: tabular-nums;
+}
+
+/* DAX Query Dialog */
+.frequency-dax-dialog {
+  width: min(840px, 94vw);
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.frequency-dax-dialog-body {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 16px 20px;
+}
+
+.frequency-dialog-section h4 {
+  font-size: 0.95rem;
+  color: #e2e8f0;
+  margin-bottom: 8px;
+  border-bottom: 1px solid #1e293b;
+  padding-bottom: 4px;
+}
+
+.frequency-arch-diagram {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: #090d16;
+  border: 1px solid #1e293b;
+  border-radius: 8px;
+  padding: 14px;
+  flex-wrap: wrap;
+}
+
+.frequency-arch-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 200px;
+}
+
+.frequency-arch-step strong {
+  display: block;
+  font-size: 0.85rem;
+  color: #f1f5f9;
+}
+
+.frequency-arch-step p {
+  font-size: 0.74rem;
+  color: #64748b;
+  margin: 0;
+}
+
+.frequency-arch-arrow {
+  font-size: 1.2rem;
+  color: #38bdf8;
+}
+
+.frequency-arch-icon {
+  font-size: 1.6rem;
+}
+
+.frequency-dax-code {
+  background: #090d16;
+  border: 1px solid #1e293b;
+  border-radius: 6px;
+  padding: 12px 14px;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: #38bdf8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.frequency-mapping-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.83rem;
+  color: #94a3b8;
+}
+
+.frequency-mapping-list code {
+  color: #38bdf8;
+  background: #090d16;
+  padding: 2px 5px;
+  border-radius: 4px;
+  border: 1px solid #1e293b;
+}
+
+/* Historical Frequency styles in ProductsManager & ConstructionDetailSelector & Batch */
+.products-hist-cell {
+  text-align: center;
+  min-width: 86px;
+  padding: 4px 6px;
+}
+
+.products-hist-badge {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  font-variant-numeric: tabular-nums;
+  cursor: help;
+  transition: all 0.15s ease;
+}
+
+.products-hist-badge:hover {
+  background: rgba(56, 189, 248, 0.24);
+  border-color: rgba(56, 189, 248, 0.5);
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.25);
+}
+
+.products-hist-empty {
+  color: #475569;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+/* ConstructionDetailSelector Frequency Bar */
+.construction-selector-freq-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(30, 41, 59, 0.8);
+}
+
+.construction-selector-freq-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.segmented-control {
+  display: inline-flex;
+  background: #090e17;
+  border: 1px solid #1e293b;
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.segmented-button {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  padding: 5px 12px;
+  border-radius: 4px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.segmented-button:hover:not(:disabled) {
+  color: #f1f5f9;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.segmented-button.active {
+  background: #2563eb;
+  color: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.segmented-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.badge-hist-success {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.badge-hist-fallback {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.badge-neutral {
+  background: rgba(148, 163, 184, 0.12);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+/* Batch Confirmation Dialog styling */
+.batch-confirm-container {
+  padding: 20px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.batch-confirm-card {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid #1e293b;
+  border-radius: 8px;
+  padding: 16px 18px;
+}
+
+.batch-confirm-title {
+  margin: 0 0 6px;
+  font-size: 1rem;
+  color: #f1f5f9;
+}
+
+.batch-confirm-desc {
+  margin: 0 0 16px;
+  font-size: 0.85rem;
+  color: #94a3b8;
+  line-height: 1.4;
+}
+
+.batch-freq-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.batch-freq-card {
+  display: flex;
+  flex-direction: column;
+  padding: 14px 16px;
+  border-radius: 8px;
+  background: #090e17;
+  border: 1px solid #1e293b;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.batch-freq-card:hover {
+  border-color: #38bdf8;
+  background: rgba(56, 189, 248, 0.03);
+}
+
+.batch-freq-card.selected {
+  border-color: #2563eb;
+  background: rgba(37, 99, 235, 0.08);
+  box-shadow: 0 0 12px rgba(37, 99, 235, 0.15);
+}
+
+.batch-freq-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.batch-freq-card-header input[type='radio'] {
+  accent-color: #2563eb;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.batch-freq-card-title {
+  font-size: 0.92rem;
+  color: #f8fafc;
+}
+
+.batch-freq-card-body {
+  margin: 0;
+  padding-left: 26px;
+  font-size: 0.8rem;
+  color: #94a3b8;
+  line-height: 1.5;
+}
+
+.batch-fallback-note {
+  display: block;
+  margin-top: 6px;
+  color: #38bdf8;
+  font-size: 0.77rem;
+}
+
+.batch-confirm-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #1e293b;
+}
+
+/* Frequency Settings DAX Preview & Date Pill */
+.frequency-settings-dax-box {
+  margin-top: 24px;
+  background: #090e17;
+  border: 1px solid #1e293b;
+  border-radius: 8px;
+  padding: 16px;
+  max-width: 720px;
+}
+
+.frequency-settings-dax-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #1e293b;
+}
+
+.frequency-settings-dax-title {
+  display: block;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #38bdf8;
+}
+
+.frequency-settings-dax-sub {
+  display: block;
+  font-size: 0.76rem;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+.frequency-settings-dax-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.frequency-settings-dax-code {
+  margin: 0;
+  padding: 12px 14px;
+  background: #020617;
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  border-radius: 6px;
+  color: #38bdf8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.frequency-active-date-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: rgba(56, 189, 248, 0.08);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: 6px;
+}
+
+.frequency-date-tag {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #f8fafc;
+}
+
+.frequency-date-separator {
+  color: #64748b;
+  font-size: 0.78rem;
+}
+
+.frequency-date-badge-type {
+  background: #0369a1;
+  color: #f0f9ff;
+  font-size: 0.72rem;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+/* Power Automate Flow Guide Dialog */
+.flow-guide-dialog {
+  max-width: 840px;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.flow-guide-body {
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.flow-step-box {
+  background: #090e17;
+  border: 1px solid #1e293b;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.flow-step-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.flow-step-num {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #2563eb;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.flow-step-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #f8fafc;
+}
+
+.flow-step-desc {
+  font-size: 0.82rem;
+  color: #94a3b8;
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+.flow-code-card {
+  background: #020617;
+  border: 1px solid #1e293b;
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.8rem;
+  color: #e2e8f0;
+  overflow-x: auto;
+  line-height: 1.5;
+}
+
+.flow-highlight-expr {
+  color: #38bdf8;
+  font-weight: 600;
+}
+
+.flow-option-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.flow-option-rec {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.flow-option-alt {
+  background: rgba(148, 163, 184, 0.15);
+  color: #cbd5e1;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.frequency-active-filter-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 8px 14px;
+  background: rgba(56, 189, 248, 0.05);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  border-radius: 6px;
+  margin-bottom: 16px;
+  font-size: 0.82rem;
+  color: #cbd5e1;
+}
+
+.frequency-filter-banner-item strong {
+  color: #38bdf8;
+}
+
+.frequency-filter-banner-type {
+  background: #0284c7;
+  color: #f0f9ff;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.frequency-filter-banner-hint {
+  margin-left: auto;
+  color: #64748b;
+  font-size: 0.75rem;
+  font-style: italic;
+}
+
+

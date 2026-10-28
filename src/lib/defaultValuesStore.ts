@@ -1,9 +1,11 @@
-import type { TaskPriorityMode, WaitingModel } from '../types';
+import type { TaskPriorityMode, WaitingModel, FrequencyMode } from '../types';
 import { Mpp_wl_defaultvaluesService } from '../generated/services/Mpp_wl_defaultvaluesService';
 import type { Mpp_wl_defaultvalues } from '../generated/models/Mpp_wl_defaultvaluesModel';
 import { fetchAllPages } from './dataversePaging';
 import { DEFAULT_OPTIMIZE_STEP_UP_BELOW, DEFAULT_WAITING_MODEL } from './singleOperatorUtilization';
 import { formatWaitingModel, parseWaitingModel } from './waitingModel';
+
+export type FrequencyDateRangeType = 'last7Days' | 'last14Days' | 'last30Days' | 'custom';
 
 /** Starting values for a new Production Setup and for the Work Load Simulator's setup whenever a
  * Construction Detail is picked — maintained by admins in Setting → Default Values. */
@@ -23,6 +25,23 @@ export interface DefaultValues {
   useWaitingModel: boolean;
   /** Optimize adds one machine when Forecast Man Occupation stays below this (%); 0 = off. */
   optimizeStepUpBelow: number;
+
+  /** Frequency mode default: 'manual' (from WL_Products) or 'historical' (from WL_Frequency) */
+  frequencyMode: FrequencyMode;
+  /** Plant Name for Power BI Semantic Model filter, e.g. 'PTBI' */
+  frequencyPlant: string;
+  /** Date range filter preset for Power BI DimDate[Date] */
+  frequencyDateRangeType: FrequencyDateRangeType;
+  /** Start date (YYYY-MM-DD) when custom date range is selected */
+  frequencyStartDate: string;
+  /** End date (YYYY-MM-DD) when custom date range is selected */
+  frequencyEndDate: string;
+  /** Default fallback rate for Fracture/Ton if not found in product or WL_Frequency */
+  defaultFracturePerTon: number;
+  /** Default fallback rate for Defect/Ton if not found in product or WL_Frequency */
+  defaultDefectPerTon: number;
+  /** Default fallback rate for Dies/Ton if not found in product or WL_Frequency */
+  defaultDiesPerTon: number;
 }
 
 /** Used for any parameter WL_DefaultValues has no (valid) row for yet. */
@@ -40,6 +59,15 @@ export const BUILT_IN_DEFAULTS: DefaultValues = {
   waitingModel: DEFAULT_WAITING_MODEL,
   useWaitingModel: true,
   optimizeStepUpBelow: DEFAULT_OPTIMIZE_STEP_UP_BELOW,
+
+  frequencyMode: 'manual',
+  frequencyPlant: 'PTBI',
+  frequencyDateRangeType: 'last7Days',
+  frequencyStartDate: '2026-10-20',
+  frequencyEndDate: '2026-10-27',
+  defaultFracturePerTon: 0,
+  defaultDefectPerTon: 0,
+  defaultDiesPerTon: 0,
 };
 
 /** WL_DefaultValues.mpp_parameters name for each setting (matched case-insensitively). */
@@ -57,6 +85,15 @@ const PARAMETER_NAMES: Record<keyof DefaultValues, string> = {
   waitingModel: 'WaitingModel',
   useWaitingModel: 'UseWaitingModel',
   optimizeStepUpBelow: 'OptimizeStepUpBelow',
+
+  frequencyMode: 'FrequencyMode',
+  frequencyPlant: 'FrequencyPlant',
+  frequencyDateRangeType: 'FrequencyDateRangeType',
+  frequencyStartDate: 'FrequencyStartDate',
+  frequencyEndDate: 'FrequencyEndDate',
+  defaultFracturePerTon: 'DefaultFracturePerTon',
+  defaultDefectPerTon: 'DefaultDefectPerTon',
+  defaultDiesPerTon: 'DefaultDiesPerTon',
 };
 
 const KEYS = Object.keys(PARAMETER_NAMES) as (keyof DefaultValues)[];
@@ -81,6 +118,20 @@ function parseValue<K extends keyof DefaultValues>(key: K, raw: string | undefin
   if (key === 'taskPriority') {
     const mode = text.toLowerCase();
     return (mode === 'nearest' || mode === 'quickest' ? mode : undefined) as DefaultValues[K] | undefined;
+  }
+  if (key === 'frequencyMode') {
+    const mode = text.toLowerCase();
+    return (mode === 'historical' || mode === 'manual' ? mode : undefined) as DefaultValues[K] | undefined;
+  }
+  if (key === 'frequencyDateRangeType') {
+    const valid: FrequencyDateRangeType[] = ['last7Days', 'last14Days', 'last30Days', 'custom'];
+    return (valid.includes(text as FrequencyDateRangeType) ? (text as FrequencyDateRangeType) : undefined) as DefaultValues[K] | undefined;
+  }
+  if (key === 'frequencyPlant') {
+    return (text !== '' ? text : undefined) as DefaultValues[K] | undefined;
+  }
+  if (key === 'frequencyStartDate' || key === 'frequencyEndDate') {
+    return (text !== '' ? text : undefined) as DefaultValues[K] | undefined;
   }
   const value = Number(text);
   return (text !== '' && Number.isFinite(value) ? value : undefined) as DefaultValues[K] | undefined;

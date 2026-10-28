@@ -1,0 +1,674 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  loadFrequencyCatalog,
+  getActiveFrequencyFilterParams,
+  type FrequencyRecord,
+  type ActiveFrequencyFilterParams,
+} from '../../lib/frequencyCatalog';
+import { usePagedRows } from '../../hooks/usePagedRows';
+import { TablePager } from '../ui/TablePager';
+import { Card } from '../ui/Card';
+import { Button } from '../ui/Button';
+import { FloatingScrollbar } from '../ui/FloatingScrollbar';
+import { SearchableSelect, type SearchableSelectOption } from '../ui/SearchableSelect';
+
+
+type SortKey =
+  | 'area'
+  | 'zoneName'
+  | 'sapMachineTypeGroup'
+  | 'group'
+  | 'construction'
+  | 'layLength'
+  | 'tensileStrength'
+  | 'tonProduced'
+  | 'fracturePerTon'
+  | 'defectPerTon'
+  | 'diesPerTon'
+  | 'groupProductInfo';
+
+const DAX_QUERY_CODE = `EVALUATE
+ADDCOLUMNS(
+    SUMMARIZECOLUMNS(
+        DimZone[ZoneName],
+        DimWIPOrder[SAPMachineTypeGroup],
+        McGroup[Group],
+        DimProduct[Construction],
+        DimProduct[LayLength],
+        DimProduct[TensileStrength],
+
+        -- Filter Plant
+        TREATAS({"PTBI"}, DimPlantRegion[PlantName]),
+		
+        -- 2. FILTER DATE BETWEEN (ANTARA TANGGAL AWAL & TANGGAL AKHIR)
+        FILTER(
+            ALL(DimDate[Date]), 
+            DimDate[Date] >= DATE(2026, 10, 20) && DimDate[Date] <= DATE(2026, 10, 27)
+        ),
+
+        -- Nilai Agregasi (Jika berupa Measure, cukup tulis di dalam tanda kurung siku [ ])
+        "Fr/T", [Fracture/Ton (#)],
+        "Def/T", [Def/Ton (#)],
+        "Dies/T", [Die/Ton (#)],
+        "TonProduced", [TonProduced]
+    ),
+    -- PENGGABUNGAN 4 KOLOM DENGAN PEMISAH "-" :
+    "Group_Product_Info", 
+        McGroup[Group] & "-" & 
+        DimProduct[Construction] & "-" & 
+        DimProduct[LayLength] & "-" & 
+        DimProduct[TensileStrength],
+    "Area", Left(DimZone[ZoneName], 2)
+)`;
+
+export function FrequencyManager() {
+  const [rows, setRows] = useState<FrequencyRecord[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+  const [activeParams, setActiveParams] = useState<ActiveFrequencyFilterParams | null>(getActiveFrequencyFilterParams());
+  const [copiedDax, setCopiedDax] = useState(false);
+  const [showDaxModal, setShowDaxModal] = useState(false);
+
+  // Filters & Search
+  const [search, setSearch] = useState('');
+  const [areaFilter, setAreaFilter] = useState('');
+  const [machineTypeGroupFilter, setMachineTypeGroupFilter] = useState('');
+  const [groupFilter, setGroupFilter] = useState('');
+  const [constructionFilter, setConstructionFilter] = useState('');
+
+  // Sorting
+  const [sortKey, setSortKey] = useState<SortKey>('groupProductInfo');
+  const [sortAsc, setSortAsc] = useState(true);
+
+  const tableWrapRef = useRef<HTMLDivElement>(null);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { records } = await loadFrequencyCatalog(true);
+      setRows(records);
+      setActiveParams(getActiveFrequencyFilterParams());
+      setLastRefreshed(new Date());
+    } catch (err) {
+      console.error('Failed to run WL_Frequency flow:', err);
+      const msg = err instanceof Error ? err.message : 'Gagal memanggil Power Automate flow WL_Frequency.';
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchData();
+  }, [fetchData]);
+
+  // Unique options for filters
+  const areaOptions: SearchableSelectOption[] = useMemo(() => {
+    const areas = [...new Set(rows.map((r) => r.area).filter(Boolean))].sort();
+    return areas.map((a) => ({ value: a, label: `Area: ${a}` }));
+  }, [rows]);
+
+  const machineTypeGroupOptions: SearchableSelectOption[] = useMemo(() => {
+    const types = [...new Set(rows.map((r) => r.sapMachineTypeGroup).filter(Boolean))].sort();
+    return types.map((t) => ({ value: t, label: `Machine Type: ${t}` }));
+  }, [rows]);
+
+  const groupOptions: SearchableSelectOption[] = useMemo(() => {
+    const groups = [...new Set(rows.map((r) => r.group).filter(Boolean))].sort();
+    return groups.map((g) => ({ value: g, label: `Group: ${g}` }));
+  }, [rows]);
+
+  const constructionOptions: SearchableSelectOption[] = useMemo(() => {
+    const constructions = [...new Set(rows.map((r) => r.construction).filter(Boolean))].sort();
+    return constructions.map((c) => ({ value: c, label: `Construction: ${c}` }));
+  }, [rows]);
+
+  // Filtered & Sorted
+  const filteredRows = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return rows.filter((r) => {
+      if (areaFilter && r.area !== areaFilter) return false;
+      if (machineTypeGroupFilter && r.sapMachineTypeGroup !== machineTypeGroupFilter) return false;
+      if (groupFilter && r.group !== groupFilter) return false;
+      if (constructionFilter && r.construction !== constructionFilter) return false;
+      if (query) {
+        const text = `${r.area} ${r.zoneName} ${r.sapMachineTypeGroup} ${r.group} ${r.construction} ${r.groupProductInfo} ${r.tensileStrength}`.toLowerCase();
+        if (!text.includes(query)) return false;
+      }
+      return true;
+    });
+  }, [rows, areaFilter, machineTypeGroupFilter, groupFilter, constructionFilter, search]);
+
+  const sortedRows = useMemo(() => {
+    const list = [...filteredRows];
+    list.sort((a, b) => {
+      const valA = a[sortKey];
+      const valB = b[sortKey];
+
+      if (valA === valB) return 0;
+      if (valA === null || valA === undefined) return 1;
+      if (valB === null || valB === undefined) return -1;
+
+      let cmp = 0;
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        cmp = valA - valB;
+      } else {
+        cmp = String(valA).localeCompare(String(valB), undefined, { numeric: true, sensitivity: 'base' });
+      }
+      return sortAsc ? cmp : -cmp;
+    });
+    return list;
+  }, [filteredRows, sortKey, sortAsc]);
+
+  const paged = usePagedRows(
+    sortedRows,
+    `${search}|${areaFilter}|${machineTypeGroupFilter}|${groupFilter}|${constructionFilter}|${sortKey}|${sortAsc}`,
+    50,
+  );
+
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortAsc(!sortAsc);
+    } else {
+      setSortKey(key);
+      setSortAsc(true);
+    }
+  };
+
+  const sortIndicator = (key: SortKey) => {
+    if (sortKey !== key) return ' ↕';
+    return sortAsc ? ' ↑' : ' ↓';
+  };
+
+  // Metrics summary (SumProduct / Weighted Average based on TonProduced)
+  const summaryMetrics = useMemo(() => {
+    if (filteredRows.length === 0) {
+      return {
+        total: 0,
+        totalTon: 0,
+        sumProductFr: 0,
+        sumProductDef: 0,
+        sumProductDies: 0,
+        weightedFr: 0,
+        weightedDef: 0,
+        weightedDies: 0,
+      };
+    }
+    let totalTon = 0;
+    let sumProductFr = 0;
+    let sumProductDef = 0;
+    let sumProductDies = 0;
+
+    for (const r of filteredRows) {
+      const ton = r.tonProduced ?? 0;
+      totalTon += ton;
+      if (r.fracturePerTon !== null) {
+        sumProductFr += r.fracturePerTon * ton;
+      }
+      if (r.defectPerTon !== null) {
+        sumProductDef += r.defectPerTon * ton;
+      }
+      if (r.diesPerTon !== null) {
+        sumProductDies += r.diesPerTon * ton;
+      }
+    }
+
+    return {
+      total: filteredRows.length,
+      totalTon,
+      sumProductFr,
+      sumProductDef,
+      sumProductDies,
+      weightedFr: totalTon > 0 ? sumProductFr / totalTon : 0,
+      weightedDef: totalTon > 0 ? sumProductDef / totalTon : 0,
+      weightedDies: totalTon > 0 ? sumProductDies / totalTon : 0,
+    };
+  }, [filteredRows]);
+
+  const handleExportCsv = () => {
+    const headers = [
+      'Area',
+      'ZoneName',
+      'SAPMachineTypeGroup',
+      'McGroup',
+      'Construction',
+      'LayLength',
+      'TensileStrength',
+      'TonProduced',
+      'Fr/T',
+      'Def/T',
+      'Dies/T',
+      'Group_Product_Info',
+    ];
+    const csvLines = sortedRows.map((r) => [
+      `"${r.area}"`,
+      `"${r.zoneName.replace(/"/g, '""')}"`,
+      `"${r.sapMachineTypeGroup.replace(/"/g, '""')}"`,
+      `"${r.group.replace(/"/g, '""')}"`,
+      `"${r.construction.replace(/"/g, '""')}"`,
+      r.layLength,
+      `"${r.tensileStrength.replace(/"/g, '""')}"`,
+      r.tonProduced ?? '',
+      r.fracturePerTon ?? '',
+      r.defectPerTon ?? '',
+      r.diesPerTon ?? '',
+      `"${r.groupProductInfo.replace(/"/g, '""')}"`,
+    ]);
+
+    const csvContent = [headers.join(','), ...csvLines.map((l) => l.join(','))].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `WL_Frequency_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const clearFilters = () => {
+    setSearch('');
+    setAreaFilter('');
+    setMachineTypeGroupFilter('');
+    setGroupFilter('');
+    setConstructionFilter('');
+  };
+
+  const hasActiveFilters = Boolean(
+    search || areaFilter || machineTypeGroupFilter || groupFilter || constructionFilter,
+  );
+
+  return (
+    <div className="frequency-manager">
+      <Card
+        title="WL_Frequency"
+        subtitle="Power BI Semantic Model data via Power Automate Flow (WL_Frequency)"
+        actions={
+          <div className="data-manager-actions">
+            <Button variant="ghost" onClick={fetchData} disabled={loading} title="Run flow again to fetch latest data">
+              {loading ? 'Refreshing…' : '🔄 Refresh Data'}
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => setShowDaxModal(true)}
+              title="View DAX Query and Power Automate flow architecture"
+            >
+              ℹ️ DAX & Flow Info
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={handleExportCsv}
+              disabled={loading || sortedRows.length === 0}
+              title="Export visible records to CSV"
+            >
+              📊 Export CSV
+            </Button>
+          </div>
+        }
+      >
+        {/* Active Filter Info Banner */}
+        <div className="frequency-active-filter-banner">
+          <span className="frequency-filter-banner-item">
+            🏭 Plant: <strong>{activeParams?.plant ?? 'PTBI'}</strong>
+          </span>
+          <span className="frequency-filter-banner-item">
+            📅 Periode: <strong>{activeParams?.startDate ?? '2026-10-20'}</strong> s/d <strong>{activeParams?.endDate ?? '2026-10-27'}</strong>
+          </span>
+          <span className="frequency-filter-banner-type">
+            {activeParams?.dateRangeType === 'last14Days'
+              ? '14 Hari Terakhir'
+              : activeParams?.dateRangeType === 'last30Days'
+              ? '30 Hari Terakhir'
+              : activeParams?.dateRangeType === 'custom'
+              ? 'Rentang Kustom'
+              : '7 Hari Terakhir'}
+          </span>
+          <span className="frequency-filter-banner-hint">
+            (Filter dapat diatur di Setting → Default Values)
+          </span>
+        </div>
+
+        {/* KPI Summary Cards */}
+        <div className="frequency-kpi-grid">
+          <div className="frequency-kpi-card">
+            <span className="frequency-kpi-label">Total Records</span>
+            <span className="frequency-kpi-value">{summaryMetrics.total.toLocaleString()}</span>
+            <span className="frequency-kpi-sub">
+              {lastRefreshed ? `Updated ${lastRefreshed.toLocaleTimeString()}` : 'Not loaded yet'}
+            </span>
+          </div>
+          <div className="frequency-kpi-card">
+            <span className="frequency-kpi-label">Ton Produced</span>
+            <span className="frequency-kpi-value text-accent-green">
+              {summaryMetrics.totalTon > 0
+                ? summaryMetrics.totalTon.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+                : '0.0'}
+            </span>
+            <span className="frequency-kpi-sub">Total Volume (Ton)</span>
+          </div>
+          <div className="frequency-kpi-card">
+            <span className="frequency-kpi-label">Fr / T (Weighted)</span>
+            <span className="frequency-kpi-value text-accent-cyan">
+              {summaryMetrics.weightedFr > 0 ? summaryMetrics.weightedFr.toFixed(3) : '0.000'}
+            </span>
+            <span className="frequency-kpi-sub" title="SumProduct = Σ (Fr/T × TonProduced)">
+              Σ {Math.round(summaryMetrics.sumProductFr).toLocaleString()} fracture events
+            </span>
+          </div>
+          <div className="frequency-kpi-card">
+            <span className="frequency-kpi-label">Def / T (Weighted)</span>
+            <span className="frequency-kpi-value text-accent-amber">
+              {summaryMetrics.weightedDef > 0 ? summaryMetrics.weightedDef.toFixed(3) : '0.000'}
+            </span>
+            <span className="frequency-kpi-sub" title="SumProduct = Σ (Def/T × TonProduced)">
+              Σ {Math.round(summaryMetrics.sumProductDef).toLocaleString()} defect events
+            </span>
+          </div>
+          <div className="frequency-kpi-card">
+            <span className="frequency-kpi-label">Dies / T (Weighted)</span>
+            <span className="frequency-kpi-value text-accent-purple">
+              {summaryMetrics.weightedDies > 0 ? summaryMetrics.weightedDies.toFixed(3) : '0.000'}
+            </span>
+            <span className="frequency-kpi-sub" title="SumProduct = Σ (Dies/T × TonProduced)">
+              Σ {Math.round(summaryMetrics.sumProductDies).toLocaleString()} die change events
+            </span>
+          </div>
+        </div>
+
+        {error && (
+          <div className="frequency-alert-error">
+            <span className="frequency-alert-icon">⚠️</span>
+            <div className="frequency-alert-body">
+              <strong>Error Loading Data:</strong> {error}
+              <div className="frequency-alert-actions">
+                <Button variant="ghost" onClick={fetchData} disabled={loading}>
+                  Try Again
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Filters and search */}
+        <div className="frequency-filters-bar">
+          <input
+            className="input frequency-search-input"
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search Group_Product_Info, Construction, McGroup…"
+            aria-label="Search frequency records"
+          />
+          <SearchableSelect
+            value={areaFilter}
+            onChange={setAreaFilter}
+            options={areaOptions}
+            placeholder="All Areas"
+            searchPlaceholder="Search Area…"
+            className="frequency-filter-select"
+          />
+          <SearchableSelect
+            value={machineTypeGroupFilter}
+            onChange={setMachineTypeGroupFilter}
+            options={machineTypeGroupOptions}
+            placeholder="All Machine Types"
+            searchPlaceholder="Search Machine Type…"
+            className="frequency-filter-select"
+          />
+          <SearchableSelect
+            value={groupFilter}
+            onChange={setGroupFilter}
+            options={groupOptions}
+            placeholder="All Groups"
+            searchPlaceholder="Search McGroup…"
+            className="frequency-filter-select"
+          />
+          <SearchableSelect
+            value={constructionFilter}
+            onChange={setConstructionFilter}
+            options={constructionOptions}
+            placeholder="All Constructions"
+            searchPlaceholder="Search Construction…"
+            className="frequency-filter-select"
+          />
+          {hasActiveFilters && (
+            <Button variant="ghost" onClick={clearFilters} title="Reset all search filters">
+              ✕ Clear
+            </Button>
+          )}
+        </div>
+
+        {loading ? (
+          <div className="frequency-loading-state">
+            <div className="frequency-spinner" />
+            <p>Menjalankan query Power BI via Power Automate flow…</p>
+            <span className="frequency-loading-sub">Mengambil hasil query DAX dari Semantic Model</span>
+          </div>
+        ) : sortedRows.length === 0 ? (
+          <div className="frequency-empty-state">
+            <span className="frequency-empty-icon">📂</span>
+            <h4>Tidak ada data ditemukan</h4>
+            <p>
+              {hasActiveFilters
+                ? 'Tidak ada baris yang sesuai dengan kriteria filter saat ini.'
+                : 'Klik "Refresh Data" untuk mengambil data dari Power Automate Flow.'}
+            </p>
+            {hasActiveFilters && (
+              <Button variant="secondary" onClick={clearFilters}>
+                Reset Filter
+              </Button>
+            )}
+          </div>
+        ) : (
+          <>
+            <TablePager
+              page={paged.page}
+              pageCount={paged.pageCount}
+              pageSize={paged.pageSize}
+              total={paged.total}
+              onPageChange={paged.setPage}
+              label="baris data frekuensi"
+            />
+            <div className="data-table-wrap" ref={tableWrapRef}>
+              <table className="table frequency-table">
+                <thead>
+                  <tr>
+                    <th className="table-sortable-header" onClick={() => toggleSort('area')}>
+                      Area {sortIndicator('area')}
+                    </th>
+                    <th className="table-sortable-header" onClick={() => toggleSort('zoneName')}>
+                      Zone Name {sortIndicator('zoneName')}
+                    </th>
+                    <th className="table-sortable-header" onClick={() => toggleSort('sapMachineTypeGroup')}>
+                      Machine Type {sortIndicator('sapMachineTypeGroup')}
+                    </th>
+                    <th className="table-sortable-header" onClick={() => toggleSort('group')}>
+                      McGroup {sortIndicator('group')}
+                    </th>
+                    <th className="table-sortable-header" onClick={() => toggleSort('construction')}>
+                      Construction {sortIndicator('construction')}
+                    </th>
+                    <th className="table-sortable-header" onClick={() => toggleSort('layLength')}>
+                      Lay Length {sortIndicator('layLength')}
+                    </th>
+                    <th className="table-sortable-header" onClick={() => toggleSort('tensileStrength')}>
+                      Tensile {sortIndicator('tensileStrength')}
+                    </th>
+                    <th className="table-sortable-header numeric-col" onClick={() => toggleSort('tonProduced')}>
+                      Ton Produced {sortIndicator('tonProduced')}
+                    </th>
+                    <th className="table-sortable-header numeric-col" onClick={() => toggleSort('fracturePerTon')}>
+                      Fr/T {sortIndicator('fracturePerTon')}
+                    </th>
+                    <th className="table-sortable-header numeric-col" onClick={() => toggleSort('defectPerTon')}>
+                      Def/T {sortIndicator('defectPerTon')}
+                    </th>
+                    <th className="table-sortable-header numeric-col" onClick={() => toggleSort('diesPerTon')}>
+                      Dies/T {sortIndicator('diesPerTon')}
+                    </th>
+                    <th className="table-sortable-header" onClick={() => toggleSort('groupProductInfo')}>
+                      Group_Product_Info {sortIndicator('groupProductInfo')}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paged.pageRows.map((row) => (
+                    <tr key={row.id}>
+                      <td>
+                        <span className="frequency-area-badge">{row.area || '-'}</span>
+                      </td>
+                      <td>{row.zoneName || '-'}</td>
+                      <td>
+                        <span className="frequency-type-badge">{row.sapMachineTypeGroup || '-'}</span>
+                      </td>
+                      <td>
+                        <strong>{row.group || '-'}</strong>
+                      </td>
+                      <td>{row.construction || '-'}</td>
+                      <td>{row.layLength !== '' ? row.layLength : '-'}</td>
+                      <td>{row.tensileStrength || '-'}</td>
+                      <td className="numeric-col">
+                        <span className="frequency-num-ton">
+                          {row.tonProduced !== null
+                            ? row.tonProduced.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })
+                            : '-'}
+                        </span>
+                      </td>
+                      <td className="numeric-col">
+                        <span className="frequency-num-fr">
+                          {row.fracturePerTon !== null ? row.fracturePerTon.toFixed(3) : '-'}
+                        </span>
+                      </td>
+                      <td className="numeric-col">
+                        <span className="frequency-num-def">
+                          {row.defectPerTon !== null ? row.defectPerTon.toFixed(3) : '-'}
+                        </span>
+                      </td>
+                      <td className="numeric-col">
+                        <span className="frequency-num-dies">
+                          {row.diesPerTon !== null ? row.diesPerTon.toFixed(3) : '-'}
+                        </span>
+                      </td>
+                      <td>
+                        <code className="frequency-code-tag">{row.groupProductInfo || '-'}</code>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <TablePager
+              page={paged.page}
+              pageCount={paged.pageCount}
+              pageSize={paged.pageSize}
+              total={paged.total}
+              onPageChange={paged.setPage}
+              label="baris data frekuensi"
+            />
+            <FloatingScrollbar targetRef={tableWrapRef} />
+          </>
+        )}
+      </Card>
+
+      {/* DAX Query & Flow Architecture Dialog */}
+      {showDaxModal && (
+        <div className="modal-backdrop" onClick={() => setShowDaxModal(false)}>
+          <div className="modal-card frequency-dax-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h3>Power BI DAX & Flow Integration</h3>
+                <p className="modal-subtitle">Detail arsitektur koneksi Semantic Model ke WorkLoad</p>
+              </div>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => setShowDaxModal(false)}
+                title="Tutup dialog"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="modal-body frequency-dax-dialog-body">
+              <div className="frequency-dialog-section">
+                <h4>1. Arsitektur Koneksi</h4>
+                <div className="frequency-arch-diagram">
+                  <div className="frequency-arch-step">
+                    <span className="frequency-arch-icon">📊</span>
+                    <div>
+                      <strong>Power BI Semantic Model</strong>
+                      <p>Dataset terpusat (PTBI Plant, DimDate, DimProduct, DimZone, McGroup)</p>
+                    </div>
+                  </div>
+                  <div className="frequency-arch-arrow">➔</div>
+                  <div className="frequency-arch-step">
+                    <span className="frequency-arch-icon">⚡</span>
+                    <div>
+                      <strong>Power Automate Cloud Flow</strong>
+                      <p>Flow: <code>WL_Frequency</code> (Run query against dataset ➔ firstTableRows)</p>
+                    </div>
+                  </div>
+                  <div className="frequency-arch-arrow">➔</div>
+                  <div className="frequency-arch-step">
+                    <span className="frequency-arch-icon">💻</span>
+                    <div>
+                      <strong>WorkLoad Code App</strong>
+                      <p><code>WL_FrequencyService.Run()</code> ➔ Data Table & KPIs</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="frequency-dialog-section">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <h4 style={{ margin: 0 }}>2. Evaluasi DAX Query (Aktif Sesuai Setting)</h4>
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      const queryToCopy = activeParams?.daxQuery || DAX_QUERY_CODE;
+                      void navigator.clipboard.writeText(queryToCopy);
+                      setCopiedDax(true);
+                      setTimeout(() => setCopiedDax(false), 2000);
+                    }}
+                  >
+                    {copiedDax ? '✓ DAX Tersalin!' : '📋 Salin DAX'}
+                  </Button>
+                </div>
+                <pre className="frequency-dax-code">{activeParams?.daxQuery || DAX_QUERY_CODE}</pre>
+              </div>
+
+              <div className="frequency-dialog-section">
+                <h4>3. Pemetaan Kolom ke WorkLoad</h4>
+                <ul className="frequency-mapping-list">
+                  <li>
+                    <code>DimWIPOrder[SAPMachineTypeGroup]</code> ➔ <strong>Machine Type Group</strong> (Pengelompokan jenis mesin SAP).
+                  </li>
+                  <li>
+                    <code>TonProduced</code> ➔ <strong>Ton Produced</strong> (Volume produksi aktual dalam ton).
+                  </li>
+                  <li>
+                    <code>Fr/T</code> ➔ <strong>Fracture/Ton</strong>. Nilai KPI dihitung menggunakan <strong>SumProduct</strong>: <code>Σ (Fr/T × TonProduced) ÷ Total TonProduced</code>.
+                  </li>
+                  <li>
+                    <code>Def/T</code> ➔ <strong>Defect/Ton</strong>. Nilai KPI dihitung menggunakan <strong>SumProduct</strong>: <code>Σ (Def/T × TonProduced) ÷ Total TonProduced</code>.
+                  </li>
+                  <li>
+                    <code>Dies/T</code> ➔ <strong>Dies/Ton</strong>. Nilai KPI dihitung menggunakan <strong>SumProduct</strong>: <code>Σ (Dies/T × TonProduced) ÷ Total TonProduced</code>.
+                  </li>
+                  <li>
+                    <code>Group_Product_Info</code> ➔ Kunci identifikasi unik kombinasi McGroup, Construction, LayLength, dan Tensile.
+                  </li>
+                </ul>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <Button variant="secondary" onClick={() => setShowDaxModal(false)}>
+                Tutup
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

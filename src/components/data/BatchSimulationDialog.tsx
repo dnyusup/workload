@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Mpp_wl_productses } from '../../generated/models/Mpp_wl_productsesModel';
-import type { AppConfig } from '../../types';
+import type { AppConfig, FrequencyMode } from '../../types';
 import { runBatchSimulation, type BatchLogEntry } from '../../lib/batchSimulation';
+import { loadDefaultValuesOrBuiltIn } from '../../lib/defaultValuesStore';
 import { Button } from '../ui/Button';
 
 type StatusFilter = 'all' | BatchLogEntry['status'];
@@ -33,8 +34,8 @@ function downloadCsv(filename: string, rows: (string | number)[][]) {
   URL.revokeObjectURL(url);
 }
 
-/** Runs Batch Simulation for the given Construction Details: a progress bar while it runs, then
- * the log of every item — success, or why it failed — with Export CSV. */
+/** Runs Batch Simulation for the given Construction Details: a confirmation modal to pick frequency source,
+ * a progress bar while it runs, then the log of every item — success, or why it failed — with Export CSV. */
 export function BatchSimulationDialog({
   products,
   base,
@@ -47,22 +48,30 @@ export function BatchSimulationDialog({
   onClose: () => void;
 }) {
   const [entries, setEntries] = useState<(BatchLogEntry | undefined)[]>(() => new Array(products.length).fill(undefined));
-  const [phase, setPhase] = useState<'running' | 'done' | 'error'>('running');
+  const [phase, setPhase] = useState<'confirm' | 'running' | 'done' | 'error'>('confirm');
+  const [frequencyMode, setFrequencyMode] = useState<FrequencyMode>('manual');
   const [fatalError, setFatalError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [filter, setFilter] = useState<StatusFilter>('all');
   const cancelledRef = useRef(false);
-  const [startedAt] = useState(() => performance.now());
+  const [startedAt, setStartedAt] = useState(() => performance.now());
   const [now, setNow] = useState(() => performance.now());
 
-  // Start once: products/base are a snapshot taken when the button was clicked.
   useEffect(() => {
-    // Per run, so a second mount (React StrictMode) never shares or cancels the first one's state.
+    void loadDefaultValuesOrBuiltIn().then((defaults) => {
+      if (defaults.frequencyMode) setFrequencyMode(defaults.frequencyMode);
+    });
+  }, []);
+
+  const startBatch = () => {
+    setPhase('running');
+    setStartedAt(performance.now());
     const run = { alive: true };
     runBatchSimulation({
       products,
       base,
       updatedBy,
+      frequencyMode,
       isCancelled: () => !run.alive || cancelledRef.current,
       onItemDone: (entry, index) => {
         if (!run.alive) return;
@@ -79,11 +88,7 @@ export function BatchSimulationDialog({
         setFatalError(err instanceof Error ? err.message : 'Batch Simulation could not start.');
         setPhase('error');
       });
-    return () => {
-      run.alive = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  };
 
   useEffect(() => {
     if (phase !== 'running') return;
@@ -116,11 +121,28 @@ export function BatchSimulationDialog({
   };
 
   const exportLog = () => {
-    const header = ['Construction Detail', 'Area', 'Status', 'Result', 'Machines', 'Forecast Man Occupation %', 'Actual Man Occupation %', 'Ton/Shift', 'Forecast OEE %', 'Actual OEE %', 'Forecast MHPT', 'Actual MHPT', 'Message', 'Seconds'];
+    const header = [
+      'Construction Detail',
+      'Area',
+      'Status',
+      'Frequency Source',
+      'Result',
+      'Machines',
+      'Forecast Man Occupation %',
+      'Actual Man Occupation %',
+      'Ton/Shift',
+      'Forecast OEE %',
+      'Actual OEE %',
+      'Forecast MHPT',
+      'Actual MHPT',
+      'Message',
+      'Seconds',
+    ];
     const rows = done.map((entry) => [
       entry.constructionDetail,
       entry.area,
       STATUS_LABEL[entry.status],
+      entry.frequencySource ?? 'manual',
       entry.action ?? '',
       entry.machines ?? '',
       entry.forecastManOccupation !== undefined ? entry.forecastManOccupation.toFixed(1) : '',
@@ -154,7 +176,66 @@ export function BatchSimulationDialog({
           </button>
         </header>
 
-        {fatalError ? (
+        {phase === 'confirm' ? (
+          <div className="batch-confirm-container">
+            <div className="batch-confirm-card">
+              <h4 className="batch-confirm-title">Pilih Sumber Nilai Frekuensi (Frequency Source)</h4>
+              <p className="batch-confirm-desc">
+                Sebelum memulai batch simulation untuk <strong>{total} Construction Detail(s)</strong> yang dipilih,
+                tentukan sumber nilai Fracture/Ton, Dies/Ton, dan Defect/Ton:
+              </p>
+
+              <div className="batch-freq-options">
+                <label className={`batch-freq-card ${frequencyMode === 'manual' ? 'selected' : ''}`}>
+                  <div className="batch-freq-card-header">
+                    <input
+                      type="radio"
+                      name="batch-freq"
+                      value="manual"
+                      checked={frequencyMode === 'manual'}
+                      onChange={() => setFrequencyMode('manual')}
+                    />
+                    <strong className="batch-freq-card-title">Manual (WL_Products)</strong>
+                  </div>
+                  <p className="batch-freq-card-body">
+                    Menggunakan nilai spesifikasi Fracture/Ton, Dies/Ton, dan Defect/Ton yang tercatat langsung pada master data WL_Products.
+                  </p>
+                </label>
+
+                <label className={`batch-freq-card ${frequencyMode === 'historical' ? 'selected' : ''}`}>
+                  <div className="batch-freq-card-header">
+                    <input
+                      type="radio"
+                      name="batch-freq"
+                      value="historical"
+                      checked={frequencyMode === 'historical'}
+                      onChange={() => setFrequencyMode('historical')}
+                    />
+                    <strong className="batch-freq-card-title">Historical (WL_Frequency)</strong>
+                  </div>
+                  <p className="batch-freq-card-body">
+                    Mengambil data aktual historis dari Semantic Model Power BI melalui flow WL_Frequency berdasarkan relasi:
+                    <br />
+                    <code>Mach = McGroup</code>, <code>Product = Construction</code>, <code>LayLength = LayLength</code>, <code>TensileGroup = TensileStrength</code>.
+                    <br />
+                    <span className="batch-fallback-note">
+                      ⚡ <strong>Otomatis Fallback:</strong> Jika data historis produk tidak ditemukan di WL_Frequency, simulasi akan otomatis menggunakan nilai manual dari WL_Products.
+                    </span>
+                  </p>
+                </label>
+              </div>
+            </div>
+
+            <div className="batch-confirm-footer">
+              <Button variant="ghost" onClick={close}>
+                Batal
+              </Button>
+              <Button variant="primary" onClick={startBatch}>
+                ▶ Mulai Batch Simulation ({total} Produk)
+              </Button>
+            </div>
+          </div>
+        ) : fatalError ? (
           <p className="construction-selector-error">{fatalError}</p>
         ) : (
           <>

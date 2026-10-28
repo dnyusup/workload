@@ -9,8 +9,9 @@ import { useAppConfig } from '../../context/appConfig';
 import { fetchAllPages } from '../../lib/dataversePaging';
 import { loadDefaultLayoutsOrNone, loadDefaultValuesOrBuiltIn } from '../../lib/defaultValuesStore';
 import { loadSavedLayouts } from '../../lib/savedLayoutsStore';
-import { buildConstructionConfig, withOptimizedAssignment } from '../../lib/constructionConfig';
-import type { AppConfig } from '../../types';
+import { applyFrequencyModeToConfig, buildConstructionConfig, withOptimizedAssignment } from '../../lib/constructionConfig';
+import { loadFrequencyCatalog, lookupHistoricalFrequency, type HistoricalFrequencyMap } from '../../lib/frequencyCatalog';
+import type { AppConfig, FrequencyMode } from '../../types';
 import { Card } from '../ui/Card';
 import { SearchableSelect } from '../ui/SearchableSelect';
 import { OutputModelDetailDialog } from '../data/OutputModelDetailDialog';
@@ -42,6 +43,34 @@ export function ConstructionDetailSelector({
   const [error, setError] = useState<string | null>(null);
   const [outputModelRows, setOutputModelRows] = useState<Mpp_wl_outputmodelses[]>([]);
   const [detailRow, setDetailRow] = useState<Mpp_wl_outputmodelses | null>(null);
+  const [freqCatalog, setFreqCatalog] = useState<HistoricalFrequencyMap | null>(null);
+  const [loadingCatalog, setLoadingCatalog] = useState(false);
+
+  const frequencyMode: FrequencyMode = config.frequencyMode ?? 'manual';
+
+  useEffect(() => {
+    let cancelled = false;
+    loadFrequencyCatalog()
+      .then(({ catalog }) => {
+        if (!cancelled) setFreqCatalog(catalog);
+      })
+      .catch((err) => {
+        console.warn('Background load of WL_Frequency catalog:', err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (config.frequencyMode === undefined) {
+      void loadDefaultValuesOrBuiltIn().then((defaults) => {
+        if (defaults.frequencyMode) {
+          setConfig((prev) => (prev.frequencyMode !== undefined ? prev : { ...prev, frequencyMode: defaults.frequencyMode }));
+        }
+      });
+    }
+  }, [config.frequencyMode, setConfig]);
 
   useEffect(() => {
     let cancelled = false;
@@ -99,6 +128,48 @@ export function ConstructionDetailSelector({
     () => products.find((p) => p.mpp_wl_productsid === config.selectedProductId) ?? null,
     [products, config.selectedProductId],
   );
+
+  const matchedHistorical = useMemo(() => {
+    if (!selectedProduct) return null;
+    return lookupHistoricalFrequency(
+      freqCatalog,
+      selectedProduct.mpp_machinecode,
+      selectedProduct.mpp_productspecification,
+      selectedProduct.mpp_laylength,
+      selectedProduct.mpp_tensilegroup,
+    );
+  }, [selectedProduct, freqCatalog]);
+
+  const handleFrequencyModeChange = async (newMode: FrequencyMode) => {
+    if (newMode === frequencyMode) return;
+    let catalog = freqCatalog;
+    if (newMode === 'historical' && !catalog) {
+      setLoadingCatalog(true);
+      try {
+        const res = await loadFrequencyCatalog();
+        catalog = res.catalog;
+        setFreqCatalog(catalog);
+      } catch (err) {
+        console.warn('Failed to load frequency catalog:', err);
+      } finally {
+        setLoadingCatalog(false);
+      }
+    }
+
+    if (selectedProduct) {
+      const updated = applyFrequencyModeToConfig({
+        config,
+        product: selectedProduct,
+        mode: newMode,
+        catalog,
+      });
+      const optimized = withOptimizedAssignment(updated);
+      setConfig(() => optimized);
+      onApplied?.(optimized);
+    } else {
+      setConfig((prev) => ({ ...prev, frequencyMode: newMode }));
+    }
+  };
 
   const [filters, setFilters] = useState<Record<FilterKey, string>>({ area: '', mach: '', product: '' });
 
@@ -158,12 +229,25 @@ export function ConstructionDetailSelector({
         }
       }
 
+      let catalog = freqCatalog;
+      if (frequencyMode === 'historical' && !catalog) {
+        try {
+          const res = await loadFrequencyCatalog();
+          catalog = res.catalog;
+          setFreqCatalog(catalog);
+        } catch {
+          // fallback to null
+        }
+      }
+
       const built = buildConstructionConfig({
         base: config,
         product,
         activityRows,
         defaults: await defaultsPromise,
         layout: await defaultLayoutPromise,
+        frequencyMode,
+        frequencyCatalog: catalog,
       });
       if (built.errors.length > 0) {
         setError(built.errors.join(' '));
@@ -233,6 +317,56 @@ export function ConstructionDetailSelector({
         )}
         {applying && <span className="construction-selector-status">Applying…</span>}
       </div>
+
+      <div className="construction-selector-freq-bar">
+        <div className="construction-selector-freq-control">
+          <span className="field-label">Frequency Source:</span>
+          <div className="segmented-control">
+            <button
+              type="button"
+              className={`segmented-button ${frequencyMode === 'manual' ? 'active' : ''}`}
+              onClick={() => void handleFrequencyModeChange('manual')}
+              disabled={loadingProducts || applying || loadingCatalog}
+            >
+              Manual (WL_Products)
+            </button>
+            <button
+              type="button"
+              className={`segmented-button ${frequencyMode === 'historical' ? 'active' : ''}`}
+              onClick={() => void handleFrequencyModeChange('historical')}
+              disabled={loadingProducts || applying || loadingCatalog}
+            >
+              Historical (WL_Frequency)
+            </button>
+          </div>
+          {loadingCatalog && <span className="construction-selector-status">Loading WL_Frequency…</span>}
+        </div>
+
+        {selectedProduct && (
+          <div className="construction-selector-freq-info">
+            {frequencyMode === 'manual' ? (
+              <span className="badge badge-neutral" title="Menggunakan nilai frekuensi manual dari WL_Products">
+                Manual: Fr={config.spec.fracturePerTon} · Dies={config.spec.diesPerTon} · Def={config.spec.defectsPerTon}
+              </span>
+            ) : matchedHistorical ? (
+              <span
+                className="badge badge-success"
+                title={`Data ditemukan di WL_Frequency (TonProduced: ${matchedHistorical.tonProduced?.toLocaleString() ?? 0})`}
+              >
+                Historical (WL_Frequency): Fr={config.spec.fracturePerTon} · Dies={config.spec.diesPerTon} · Def={config.spec.defectsPerTon}
+              </span>
+            ) : (
+              <span
+                className="badge badge-warning"
+                title="Produk tidak ditemukan di WL_Frequency, otomatis fallback menggunakan nilai manual dari WL_Products"
+              >
+                ⚠️ Historical tidak ditemukan → Fallback Manual: Fr={config.spec.fracturePerTon} · Dies={config.spec.diesPerTon} · Def={config.spec.defectsPerTon}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+
       {error && <p className="construction-selector-error">{error}</p>}
       {detailRow && (
         <OutputModelDetailDialog row={detailRow} outputModelId={detailRow.mpp_wl_outputmodelsid} onClose={() => setDetailRow(null)} />

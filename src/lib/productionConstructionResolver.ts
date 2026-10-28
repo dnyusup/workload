@@ -1,10 +1,11 @@
 import { Mpp_wl_activitiesService } from '../generated/services/Mpp_wl_activitiesService';
 import type { Mpp_wl_activities } from '../generated/models/Mpp_wl_activitiesModel';
 import type { Mpp_wl_productses } from '../generated/models/Mpp_wl_productsesModel';
-import type { ActivityConfig, ActivityKey, MachineSpecInput } from '../types';
+import type { ActivityConfig, ActivityKey, FrequencyMode, MachineSpecInput } from '../types';
 import { buildActivitiesFromRows, mapProductToSpec, productOperatorSettings, type ProductOperatorSettings } from './productCatalog';
 import { activityCycleLength, deriveMachineSpec, ensureCoreActivities } from './calculations';
 import { fetchAllPages } from './dataversePaging';
+import { resolveEffectiveFrequencies, type HistoricalFrequencyMap } from './frequencyCatalog';
 
 export interface ResolvedConstruction {
   productId: string;
@@ -52,6 +53,8 @@ function constructionKey(value: string | undefined): string {
 export async function resolveConstructions(
   productIds: string[],
   products: Mpp_wl_productses[],
+  frequencyMode: FrequencyMode = 'manual',
+  frequencyCatalog: HistoricalFrequencyMap | null = null,
 ): Promise<{ resolved: Map<string, ResolvedConstruction>; errors: string[] }> {
   const resolved = new Map<string, ResolvedConstruction>();
   const errors: string[] = [];
@@ -80,7 +83,30 @@ export async function resolveConstructions(
       errors.push(`Construction Detail (id ${productId}) not found in WL_Products.`);
       continue;
     }
-    const spec = mapProductToSpec(product);
+    let spec = mapProductToSpec(product);
+    if (frequencyMode === 'historical' && frequencyCatalog) {
+      const effective = resolveEffectiveFrequencies({
+        manual: {
+          fracturePerTon: spec.fracturePerTon,
+          diesPerTon: spec.diesPerTon,
+          defectsPerTon: spec.defectsPerTon,
+        },
+        lookupParams: {
+          mach: product.mpp_machinecode,
+          product: product.mpp_productspecification,
+          layLength: product.mpp_laylength,
+          tensileGroup: product.mpp_tensilegroup,
+        },
+        mode: frequencyMode,
+        catalog: frequencyCatalog,
+      });
+      spec = {
+        ...spec,
+        fracturePerTon: effective.fracturePerTon,
+        diesPerTon: effective.diesPerTon,
+        defectsPerTon: effective.defectsPerTon,
+      };
+    }
     const derived = deriveMachineSpec(spec);
     const construction = product.mpp_constructioncode?.trim();
 

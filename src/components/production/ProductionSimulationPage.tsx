@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { LayoutMachine, ProductionMachineAssignment, ProductionSetup, TaskPriorityMode, WaitingModel } from '../../types';
+import type { FrequencyMode, LayoutMachine, ProductionMachineAssignment, ProductionSetup, TaskPriorityMode, WaitingModel } from '../../types';
 import { WAITING_MODEL_LABELS } from '../../lib/waitingModel';
 import { WaitingModelInfoDialog } from '../setup/WaitingModelInfoDialog';
 import { loadSavedLayouts, type SavedLayout } from '../../lib/savedLayoutsStore';
+import { loadFrequencyCatalog, type HistoricalFrequencyMap } from '../../lib/frequencyCatalog';
 import {
   listProductionSetupSummaries,
   loadProductionSetup,
@@ -63,6 +64,11 @@ import { TheoreticalOperatorsBadge } from './TheoreticalOperatorsBadge';
 const TASK_PRIORITY_OPTIONS: { value: TaskPriorityMode; label: string }[] = [
   { value: 'nearest', label: 'Nearest Task' },
   { value: 'quickest', label: 'Quickest Task' },
+];
+
+const FREQUENCY_MODE_OPTIONS: { value: FrequencyMode; label: string }[] = [
+  { value: 'manual', label: 'Manual (WL_Products)' },
+  { value: 'historical', label: 'Historical (WL_Frequency)' },
 ];
 
 const WAITING_MODEL_OPTIONS: { value: WaitingModel; label: string }[] = (['none', 'wright', 'finiteSource'] as WaitingModel[]).map(
@@ -445,6 +451,20 @@ export function ProductionSimulationPage() {
 
   const [runState, setRunState] = useState<{ setup: ProductionSetup; resolved: Map<string, ResolvedConstruction>; errors: string[] } | null>(null);
   const [resolving, setResolving] = useState(false);
+  const [freqCatalog, setFreqCatalog] = useState<HistoricalFrequencyMap | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadFrequencyCatalog()
+      .then(({ catalog }) => {
+        if (!cancelled) setFreqCatalog(catalog);
+      })
+      .catch((err) => console.warn('WL_Frequency catalog background load:', err));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const [plannedResolution, setPlannedResolution] = useState<{
     utilization: PlannedUtilization | null;
     resolved: Map<string, ResolvedConstruction> | null;
@@ -458,10 +478,11 @@ export function ProductionSimulationPage() {
       new Set(selectedSetup.assignments.map((assignment) => assignment.constructionDetailId).filter((id): id is string => !!id)),
     );
     let cancelled = false;
+    const freqMode = selectedSetup.frequencyMode ?? 'manual';
     Promise.resolve()
       .then(() => {
         if (!cancelled) setPlannedResolution((previous) => ({ ...previous, loading: true, errors: [] }));
-        return resolveConstructions(productIds, products);
+        return resolveConstructions(productIds, products, freqMode, freqCatalog);
       })
       .then(({ resolved, errors }) => {
         if (!cancelled) {
@@ -486,7 +507,7 @@ export function ProductionSimulationPage() {
     return () => {
       cancelled = true;
     };
-  }, [selectedSetup, products, loadingProducts]);
+  }, [selectedSetup, products, loadingProducts, selectedSetup?.frequencyMode, freqCatalog]);
 
   const runSimulation = async (setup: ProductionSetup) => {
     if (loadingProducts) return;
@@ -505,7 +526,18 @@ export function ProductionSimulationPage() {
         });
         return;
       }
-      const { resolved, errors } = await resolveConstructions(productIds, products);
+      const freqMode = setup.frequencyMode ?? 'manual';
+      let catalog = freqCatalog;
+      if (freqMode === 'historical' && !catalog) {
+        try {
+          const res = await loadFrequencyCatalog();
+          catalog = res.catalog;
+          setFreqCatalog(catalog);
+        } catch {
+          // fallback
+        }
+      }
+      const { resolved, errors } = await resolveConstructions(productIds, products, freqMode, catalog);
       setRunState({ setup, resolved, errors });
     } finally {
       setResolving(false);
@@ -1671,6 +1703,13 @@ function ProductionSetupEditor({
         <div className="grid-2">
           <Field label="Task Priority">
             <SelectInput value={setup.taskPriority} options={TASK_PRIORITY_OPTIONS} onChange={(v) => onHeaderChange({ taskPriority: v })} />
+          </Field>
+          <Field label="Frequency Source" tooltip="Pilihan nilai frequency: Manual dari WL_Products atau Historical dari WL_Frequency (otomatis fallback ke manual jika tidak ada di WL_Frequency)">
+            <SelectInput
+              value={setup.frequencyMode ?? 'manual'}
+              options={FREQUENCY_MODE_OPTIONS}
+              onChange={(v) => onHeaderChange({ frequencyMode: v as FrequencyMode })}
+            />
           </Field>
           <Field label="Shift Time (min)">
             <NumberInput value={setup.shiftTime} onChange={(v) => onHeaderChange({ shiftTime: v })} />

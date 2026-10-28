@@ -77,3 +77,60 @@ export function NumberInput({
     />
   );
 }
+
+export function TextInput({
+  value,
+  onChange,
+  placeholder,
+  readOnly = false,
+  disabled = false,
+  className = '',
+}: {
+  value: string;
+  onChange?: (v: string) => void;
+  placeholder?: string;
+  readOnly?: boolean;
+  disabled?: boolean;
+  className?: string;
+}) {
+  return (
+    <input
+      type="text"
+      className={`input ${readOnly ? 'input-readonly' : ''} ${className}`}
+      value={value ?? ''}
+      placeholder={placeholder}
+      readOnly={readOnly}
+      disabled={disabled}
+      onChange={(e) => onChange?.(e.target.value)}
+    />
+  );
+}
+
+export function DateInput({
+  value,
+  onChange,
+  disabled = false,
+  min,
+  max,
+  className = '',
+}: {
+  value: string;
+  onChange?: (v: string) => void;
+  disabled?: boolean;
+  min?: string;
+  max?: string;
+  className?: string;
+}) {
+  return (
+    <input
+      type="date"
+      className={`input ${className}`}
+      value={value ?? ''}
+      disabled={disabled}
+      min={min}
+      max={max}
+      onChange={(e) => onChange?.(e.target.value)}
+    />
+  );
+}
+

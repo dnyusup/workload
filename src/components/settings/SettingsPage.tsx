@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
-import type { TaskPriorityMode, WaitingModel } from '../../types';
-import { BUILT_IN_DEFAULTS, loadDefaultValues, saveDefaultValues, type DefaultValues } from '../../lib/defaultValuesStore';
+import { useEffect, useMemo, useState } from 'react';
+import type { FrequencyMode, TaskPriorityMode, WaitingModel } from '../../types';
+import { BUILT_IN_DEFAULTS, loadDefaultValues, saveDefaultValues, type DefaultValues, type FrequencyDateRangeType } from '../../lib/defaultValuesStore';
+import { computeFrequencyDateRange, generateDaxQuery } from '../../lib/frequencyCatalog';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
-import { NumberInput, SelectInput } from '../ui/Field';
+import { DateInput, NumberInput, SelectInput, TextInput } from '../ui/Field';
 import { Toggle } from '../ui/Toggle';
 import { DOFF_PRIORITY_TOOLTIP } from '../ui/doffPriorityText';
 import { DefaultLayoutsCard } from './DefaultLayoutsCard';
@@ -20,6 +21,18 @@ const WAITING_MODEL_OPTIONS: { value: WaitingModel; label: string }[] = [
   { value: 'finiteSource', label: 'Finite source (M/M/1//N)' },
 ];
 
+const FREQUENCY_MODE_OPTIONS: { value: FrequencyMode; label: string }[] = [
+  { value: 'manual', label: 'Manual (WL_Products)' },
+  { value: 'historical', label: 'Historical (WL_Frequency Power BI)' },
+];
+
+const DATE_RANGE_OPTIONS: { value: FrequencyDateRangeType; label: string }[] = [
+  { value: 'last7Days', label: '7 Hari Terakhir (Last 7 Days)' },
+  { value: 'last14Days', label: '14 Hari Terakhir (Last 14 Days)' },
+  { value: 'last30Days', label: '30 Hari Terakhir (Last 30 Days)' },
+  { value: 'custom', label: 'Kustom (Pilih Tanggal Awal & Akhir)' },
+];
+
 function DefaultValuesCard() {
   const [saved, setSaved] = useState<DefaultValues | null>(null);
   const [draft, setDraft] = useState<DefaultValues>(BUILT_IN_DEFAULTS);
@@ -27,6 +40,7 @@ function DefaultValuesCard() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [copiedDax, setCopiedDax] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -53,8 +67,49 @@ function DefaultValuesCard() {
     setDraft((prev) => ({ ...prev, [key]: value }));
   };
 
-  type NumberKey = 'shiftTime' | 'lunchTime' | 'lunchStartAt' | 'meetingTime' | 'meetingStartAt' | 'rpc' | 'walkingSpeed' | 'minRemainForDoffPriority';
+  type NumberKey =
+    | 'shiftTime'
+    | 'lunchTime'
+    | 'lunchStartAt'
+    | 'meetingTime'
+    | 'meetingStartAt'
+    | 'rpc'
+    | 'walkingSpeed'
+    | 'minRemainForDoffPriority'
+    | 'defaultFracturePerTon'
+    | 'defaultDefectPerTon'
+    | 'defaultDiesPerTon';
   const setNumber = (key: NumberKey, value: number) => set(key, Number.isFinite(value) ? value : 0);
+
+  const computedRange = useMemo(() => {
+    return computeFrequencyDateRange(draft.frequencyDateRangeType, draft.frequencyStartDate, draft.frequencyEndDate);
+  }, [draft.frequencyDateRangeType, draft.frequencyStartDate, draft.frequencyEndDate]);
+
+  const fullDaxQuery = useMemo(() => {
+    return generateDaxQuery({
+      plant: draft.frequencyPlant?.trim() || 'PTBI',
+      startParts: computedRange.startParts,
+      endParts: computedRange.endParts,
+    });
+  }, [draft.frequencyPlant, computedRange]);
+
+  const daxFilterSnippet = useMemo(() => {
+    const plant = draft.frequencyPlant?.trim() || 'PTBI';
+    return `-- Filter Plant
+TREATAS({"${plant}"}, DimPlantRegion[PlantName]),
+
+-- 2. FILTER DATE BETWEEN (ANTARA TANGGAL AWAL & TANGGAL AKHIR)
+FILTER(
+    ALL(DimDate[Date]), 
+    DimDate[Date] >= DATE(${computedRange.startParts.year}, ${computedRange.startParts.month}, ${computedRange.startParts.day}) && DimDate[Date] <= DATE(${computedRange.endParts.year}, ${computedRange.endParts.month}, ${computedRange.endParts.day})
+)`;
+  }, [draft.frequencyPlant, computedRange]);
+
+  const handleCopyDax = () => {
+    void navigator.clipboard.writeText(fullDaxQuery);
+    setCopiedDax(true);
+    setTimeout(() => setCopiedDax(false), 2500);
+  };
 
   const save = async () => {
     setSaving(true);
@@ -91,6 +146,122 @@ function DefaultValuesCard() {
         <p className="data-manager-hint">Loading…</p>
       ) : (
         <>
+          <SettingGroup title="Historical Frequency & Power BI (WL_Frequency)">
+            <SettingRow
+              label="Default Frequency Source"
+              tooltip="Sumber frekuensi default saat memilih Construction Detail di Workload Simulator dan Production Model. Pengguna tetap dapat mengubahnya langsung per skenario."
+            >
+              <SelectInput
+                value={draft.frequencyMode}
+                options={FREQUENCY_MODE_OPTIONS}
+                onChange={(v) => set('frequencyMode', v)}
+              />
+            </SettingRow>
+            <SettingRow
+              label="Plant Name (Power BI DimPlantRegion)"
+              tooltip="Nama Plant yang difilter dengan TREATAS di Semantic Model Power BI (contoh: PTBI)."
+            >
+              <TextInput
+                value={draft.frequencyPlant}
+                placeholder="PTBI"
+                onChange={(v) => set('frequencyPlant', v)}
+              />
+            </SettingRow>
+            <SettingRow
+              label="Filter Rentang Tanggal (DimDate)"
+              tooltip="Mode filter rentang tanggal pada query DAX. Jika memilih Kustom, tentukan Tanggal Awal & Tanggal Akhir di bawah."
+            >
+              <SelectInput
+                value={draft.frequencyDateRangeType}
+                options={DATE_RANGE_OPTIONS}
+                onChange={(v) => set('frequencyDateRangeType', v as FrequencyDateRangeType)}
+              />
+            </SettingRow>
+            {draft.frequencyDateRangeType === 'custom' ? (
+              <>
+                <SettingRow label="Tanggal Awal (Start Date)">
+                  <DateInput
+                    value={draft.frequencyStartDate}
+                    onChange={(v) => set('frequencyStartDate', v)}
+                  />
+                </SettingRow>
+                <SettingRow label="Tanggal Akhir (End Date)">
+                  <DateInput
+                    value={draft.frequencyEndDate}
+                    onChange={(v) => set('frequencyEndDate', v)}
+                  />
+                </SettingRow>
+              </>
+            ) : (
+              <SettingRow label="Rentang Tanggal Aktif (Kalkulasi)">
+                <div className="frequency-active-date-pill">
+                  <span className="frequency-date-tag">📅 {computedRange.startDate}</span>
+                  <span className="frequency-date-separator">s/d</span>
+                  <span className="frequency-date-tag">📅 {computedRange.endDate}</span>
+                  <span className="frequency-date-badge-type">
+                    {draft.frequencyDateRangeType === 'last14Days'
+                      ? '14 Hari Terakhir'
+                      : draft.frequencyDateRangeType === 'last30Days'
+                      ? '30 Hari Terakhir'
+                      : '7 Hari Terakhir'}
+                  </span>
+                </div>
+              </SettingRow>
+            )}
+            <SettingRow
+              label="Default Fr / Ton Fallback"
+              tooltip="Nilai cadangan Fracture/Ton jika suatu spesifikasi produk tidak memiliki data frekuensi di WL_Products maupun WL_Frequency (0 = tanpa fallback)."
+            >
+              <NumberInput
+                value={draft.defaultFracturePerTon}
+                min={0}
+                onChange={(v) => setNumber('defaultFracturePerTon', v)}
+              />
+            </SettingRow>
+            <SettingRow
+              label="Default Def / Ton Fallback"
+              tooltip="Nilai cadangan Defect/Ton jika tidak ditemukan di WL_Products maupun WL_Frequency."
+            >
+              <NumberInput
+                value={draft.defaultDefectPerTon}
+                min={0}
+                onChange={(v) => setNumber('defaultDefectPerTon', v)}
+              />
+            </SettingRow>
+            <SettingRow
+              label="Default Dies / Ton Fallback"
+              tooltip="Nilai cadangan Dies/Ton jika tidak ditemukan di WL_Products maupun WL_Frequency."
+            >
+              <NumberInput
+                value={draft.defaultDiesPerTon}
+                min={0}
+                onChange={(v) => setNumber('defaultDiesPerTon', v)}
+              />
+            </SettingRow>
+          </SettingGroup>
+
+          {/* Live DAX Filter Preview Box */}
+          <div className="frequency-settings-dax-box">
+            <div className="frequency-settings-dax-header">
+              <div>
+                <span className="frequency-settings-dax-title">🔍 Live DAX Filter Preview</span>
+                <span className="frequency-settings-dax-sub">Filter ini otomatis di-inject ke Power Automate & Semantic Model</span>
+              </div>
+              <div className="frequency-settings-dax-actions">
+                <Button
+                  variant="secondary"
+                  onClick={handleCopyDax}
+                  title="Salin query DAX lengkap sesuai setting saat ini"
+                >
+                  {copiedDax ? '✓ DAX Tersalin!' : '📋 Salin Query DAX'}
+                </Button>
+              </div>
+            </div>
+            <pre className="frequency-settings-dax-code">
+              {daxFilterSnippet}
+            </pre>
+          </div>
+
           <SettingGroup title="Shift & Breaks">
             <SettingRow label="Shift Time (min)">
               <NumberInput value={draft.shiftTime} min={0} onChange={(v) => setNumber('shiftTime', v)} />

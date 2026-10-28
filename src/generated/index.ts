@@ -15,6 +15,7 @@ export * as Mpp_wl_productionsetupsesModel from './models/Mpp_wl_productionsetup
 export * as Mpp_wl_productsesModel from './models/Mpp_wl_productsesModel';
 export * as Mpp_wl_usersesModel from './models/Mpp_wl_usersesModel';
 export * as Office365UsersModel from './models/Office365UsersModel';
+export * as WL_FrequencyModel from './models/WL_FrequencyModel';
 
 // Services
 export * from './services/Mpp_wl_activitiesService';
@@ -27,3 +28,4 @@ export * from './services/Mpp_wl_productionsetupsesService';
 export * from './services/Mpp_wl_productsesService';
 export * from './services/Mpp_wl_usersesService';
 export * from './services/Office365UsersService';
+export * from './services/WL_FrequencyService';

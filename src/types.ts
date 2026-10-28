@@ -27,6 +27,8 @@ export interface MachineSpecDerived {
   runtimePerSpool: number;
 }
 
+export type FrequencyMode = 'manual' | 'historical';
+
 export type TaskPriorityMode = 'nearest' | 'quickest';
 
 /** An extra operator break added in the setup ("Other1", "Other2", …) — like Lunch/Meeting:
@@ -226,6 +228,8 @@ export interface AppConfig {
    * the activity's own segment. Optional so configs saved before this existed still load (treated
    * as the same 12% default shown in the UI). */
   rpcPercent?: number;
+  /** 'manual' = from WL_Products; 'historical' = from WL_Frequency (falls back to WL_Products if missing). */
+  frequencyMode?: FrequencyMode;
 }
 
 export type MachineStatus = 'running' | 'needs-service' | 'being-serviced' | 'unassigned';
@@ -493,6 +497,8 @@ export interface ProductionSetup {
   /** Not stored with the setup: Setting → Default Values "Use Waiting Model" when it was loaded.
    * false = forecast as None and hide the model. undefined = on. */
   useWaitingModel?: boolean;
+  /** 'manual' = from WL_Products; 'historical' = from WL_Frequency (falls back to WL_Products if missing). */
+  frequencyMode?: FrequencyMode;
   updatedAt: number;
 }
 

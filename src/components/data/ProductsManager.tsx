@@ -13,6 +13,7 @@ import { useAuth } from '../../context/auth';
 import { usePagedRows } from '../../hooks/usePagedRows';
 import { TablePager } from '../ui/TablePager';
 import type { AppConfig } from '../../types';
+import { loadFrequencyCatalog, lookupHistoricalFrequency, type HistoricalFrequencyMap } from '../../lib/frequencyCatalog';
 
 interface ProductFields {
   mpp_constructiondetailcode: string;
@@ -49,9 +50,15 @@ interface ProductRow {
   fields: ProductFields;
 }
 
-type ColumnType = 'text' | 'number' | 'area' | 'select' | 'optionalNumber';
+type ColumnKey =
+  | keyof ProductFields
+  | 'hist_fractureperton'
+  | 'hist_dieston'
+  | 'hist_defectston';
 
-const COLUMNS: { key: keyof ProductFields; label: string; type: ColumnType; readOnly?: boolean; options?: { value: string; label: string }[] }[] = [
+type ColumnType = 'text' | 'number' | 'area' | 'select' | 'optionalNumber' | 'historical';
+
+const COLUMNS: { key: ColumnKey; label: string; type: ColumnType; readOnly?: boolean; options?: { value: string; label: string }[] }[] = [
   { key: 'mpp_constructiondetailcode', label: 'ConstructionDetail', type: 'text', readOnly: true },
   { key: 'mpp_constructioncode', label: 'Construction', type: 'text', readOnly: true },
   { key: 'mpp_productspecification', label: 'Product', type: 'text' },
@@ -65,8 +72,11 @@ const COLUMNS: { key: keyof ProductFields; label: string; type: ColumnType; read
   { key: 'mpp_spoollength', label: 'SpoolLength', type: 'number' },
   { key: 'mpp_lineardensity', label: 'LinearDensity', type: 'text' },
   { key: 'mpp_fractureperton', label: 'Fracture/Ton', type: 'text' },
+  { key: 'hist_fractureperton', label: 'Fr/T (Hist)', type: 'historical', readOnly: true },
   { key: 'mpp_dieston', label: 'Dies/Ton', type: 'text' },
+  { key: 'hist_dieston', label: 'Dies/T (Hist)', type: 'historical', readOnly: true },
   { key: 'mpp_defectston', label: 'Defect/Ton', type: 'text' },
+  { key: 'hist_defectston', label: 'Def/T (Hist)', type: 'historical', readOnly: true },
   { key: 'mpp_polength1', label: 'POlength1', type: 'number' },
   { key: 'mpp_polength2', label: 'POlength2', type: 'number' },
   { key: 'mpp_polength3', label: 'POlength3', type: 'number' },
@@ -127,7 +137,7 @@ const DIES_TON_EDITABLE_AREAS = ['WW', 'CA', 'BA'];
 
 /** Generated codes: shown as plain text sized to the value, and frozen with the checkbox column
  * while the table scrolls sideways. */
-const CODE_COLUMN_KEYS: (keyof ProductFields)[] = ['mpp_constructiondetailcode', 'mpp_constructioncode'];
+const isCodeKey = (key: ColumnKey): boolean => key === 'mpp_constructiondetailcode' || key === 'mpp_constructioncode';
 
 function emptyFields(): ProductFields {
   return {
@@ -223,8 +233,26 @@ export function ProductsManager({
   const [records, setRecords] = useState<Map<string, Mpp_wl_productses>>(() => new Map());
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [batch, setBatch] = useState<{ products: Mpp_wl_productses[]; base: AppConfig } | null>(null);
+  const [freqCatalog, setFreqCatalog] = useState<HistoricalFrequencyMap | null>(null);
+  const [loadingFreqCatalog, setLoadingFreqCatalog] = useState(false);
   const { config } = useAppConfig();
   const { user } = useAuth();
+
+  const fetchFreqCatalog = useCallback(async (force = false) => {
+    setLoadingFreqCatalog(true);
+    try {
+      const res = await loadFrequencyCatalog(force);
+      setFreqCatalog(res.catalog);
+    } catch (err) {
+      console.warn('Failed to load frequency catalog in ProductsManager:', err);
+    } finally {
+      setLoadingFreqCatalog(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchFreqCatalog();
+  }, [fetchFreqCatalog]);
 
   useEffect(() => {
     let cancelled = false;
@@ -325,7 +353,7 @@ export function ProductsManager({
     }
   };
 
-  const toggleSort = (key: keyof ProductFields) => {
+  const toggleSort = (key: ColumnKey) => {
     setSortLevels((prev) => {
       const current = prev[0];
       return current?.key === key ? [{ key, dir: current.dir === 'asc' ? 'desc' : 'asc' }] : [{ key, dir: 'asc' }];
@@ -337,29 +365,83 @@ export function ProductsManager({
     const filtered = rows.filter((row) => {
       if (areaFilter && row.fields.mpp_area !== areaFilter) return false;
       if (machineFilter && row.fields.mpp_machinecode !== machineFilter) return false;
-      return !q || COLUMNS.some((col) => String(row.fields[col.key]).toLowerCase().includes(q));
+      if (!q) return true;
+      return COLUMNS.some((col) => {
+        if (col.key === 'hist_fractureperton' || col.key === 'hist_dieston' || col.key === 'hist_defectston') {
+          const item = lookupHistoricalFrequency(
+            freqCatalog,
+            row.fields.mpp_machinecode,
+            row.fields.mpp_productspecification,
+            row.fields.mpp_laylength,
+            row.fields.mpp_tensilegroup,
+          );
+          if (!item) return false;
+          const val =
+            col.key === 'hist_fractureperton'
+              ? item.fracturePerTon
+              : col.key === 'hist_dieston'
+              ? item.diesPerTon
+              : item.defectPerTon;
+          return val !== null && String(val).toLowerCase().includes(q);
+        }
+        return String(row.fields[col.key as keyof ProductFields] ?? '').toLowerCase().includes(q);
+      });
     });
     if (!sortLevels.length) return filtered;
     return [...filtered].sort((a, b) => {
       for (const { key, dir } of sortLevels) {
-        const av = a.fields[key as keyof ProductFields];
-        const bv = b.fields[key as keyof ProductFields];
+        let av: any;
+        let bv: any;
+        if (key === 'hist_fractureperton' || key === 'hist_dieston' || key === 'hist_defectston') {
+          const itemA = lookupHistoricalFrequency(
+            freqCatalog,
+            a.fields.mpp_machinecode,
+            a.fields.mpp_productspecification,
+            a.fields.mpp_laylength,
+            a.fields.mpp_tensilegroup,
+          );
+          const itemB = lookupHistoricalFrequency(
+            freqCatalog,
+            b.fields.mpp_machinecode,
+            b.fields.mpp_productspecification,
+            b.fields.mpp_laylength,
+            b.fields.mpp_tensilegroup,
+          );
+          if (key === 'hist_fractureperton') {
+            av = itemA?.fracturePerTon ?? null;
+            bv = itemB?.fracturePerTon ?? null;
+          } else if (key === 'hist_dieston') {
+            av = itemA?.diesPerTon ?? null;
+            bv = itemB?.diesPerTon ?? null;
+          } else {
+            av = itemA?.defectPerTon ?? null;
+            bv = itemB?.defectPerTon ?? null;
+          }
+        } else {
+          av = a.fields[key as keyof ProductFields];
+          bv = b.fields[key as keyof ProductFields];
+        }
         const sign = dir === 'asc' ? 1 : -1;
+        if (av === bv) continue;
+        if (av === null || av === undefined || av === '') return 1;
+        if (bv === null || bv === undefined || bv === '') return -1;
         const comparison =
-          typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
+          typeof av === 'number' && typeof bv === 'number'
+            ? av - bv
+            : String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
         if (comparison !== 0) return comparison * sign;
       }
       return 0;
     });
-  }, [rows, searchTerm, areaFilter, machineFilter, sortLevels]);
+  }, [rows, searchTerm, areaFilter, machineFilter, sortLevels, freqCatalog]);
 
   const paged = usePagedRows(visibleRows, JSON.stringify([searchTerm, areaFilter, machineFilter, sortLevels]));
 
-  const sortIndicator = (key: keyof ProductFields) => {
+  const sortIndicator = (key: ColumnKey) => {
     const level = sortLevels.findIndex((item) => item.key === key);
     if (level < 0) return '';
-    const direction = sortLevels[level].dir === 'asc' ? '▲' : '▼';
-    return ` ${level + 1}${direction}`;
+    const dir = sortLevels[level].dir === 'asc' ? '▲' : '▼';
+    return sortLevels.length > 1 ? `${dir}${level + 1}` : dir;
   };
 
   // Only saved rows can be batch-simulated.
@@ -436,6 +518,14 @@ export function ProductsManager({
             title="Simulate every checked Construction Detail with Default Values and its Area's Default Layout, saving each result to WL_Outputmodels"
           >
             Batch Simulation{selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => void fetchFreqCatalog(true)}
+            disabled={loadingFreqCatalog}
+            title="Refresh historical frequency dari Semantic Model Power BI melalui flow WL_Frequency"
+          >
+            {loadingFreqCatalog ? 'Loading WL_Frequency…' : `WL_Frequency (${freqCatalog ? freqCatalog.size : '…'})`}
           </Button>
           <Button variant="ghost" onClick={() => setReloadToken((t) => t + 1)} disabled={loading}>
             Refresh
@@ -520,7 +610,7 @@ export function ProductsManager({
                   {COLUMNS.map((col) => (
                     <th
                       key={col.key}
-                      className={`table-sortable-header ${col.key === 'mpp_area' ? 'products-area-column' : ''} ${CODE_COLUMN_KEYS.includes(col.key) ? 'products-frozen-column' : ''}`}
+                      className={`table-sortable-header ${col.key === 'mpp_area' ? 'products-area-column' : ''} ${isCodeKey(col.key) ? 'products-frozen-column' : ''}`}
                       onClick={() => toggleSort(col.key)}
                     >
                       {col.label}
@@ -531,7 +621,7 @@ export function ProductsManager({
                 </tr>
               </thead>
               <tbody>
-                {paged.pageRows.map((row) => (
+                {paged.pageRows.map((row: ProductRow) => (
                   <tr key={row.id} className={selectedIds.has(row.id) ? 'products-row-selected' : undefined}>
                     <td className="products-select-column">
                       <input
@@ -551,7 +641,7 @@ export function ProductsManager({
                       return (
                       <td
                         key={col.key}
-                        className={col.key === 'mpp_area' ? 'products-area-column' : CODE_COLUMN_KEYS.includes(col.key) ? 'products-frozen-column' : undefined}
+                        className={col.key === 'mpp_area' ? 'products-area-column' : isCodeKey(col.key) ? 'products-frozen-column' : undefined}
                         onDoubleClick={
                           col.key === 'mpp_constructioncode' && row.fields.mpp_constructioncode
                             ? () => onOpenActivitiesForConstruction?.(row.fields.mpp_constructioncode)
@@ -559,7 +649,7 @@ export function ProductsManager({
                         }
                         title={col.key === 'mpp_constructioncode' ? 'Double-click to view this Construction in WL_Activities' : undefined}
                       >
-                        {CODE_COLUMN_KEYS.includes(col.key) ? (
+                        {isCodeKey(col.key) ? (
                           <span
                             className="products-code-cell"
                             title={
@@ -568,14 +658,53 @@ export function ProductsManager({
                                 : 'Auto-generated from Mach/Product/LayLength/TensileGroup/SpoolType — double-click to view this Construction in WL_Activities'
                             }
                           >
-                            {String(row.fields[col.key]) || '—'}
+                            {String(row.fields[col.key as keyof ProductFields]) || '—'}
                           </span>
+                        ) : col.type === 'historical' ? (
+                          <div className="products-hist-cell">
+                            {(() => {
+                              const item = lookupHistoricalFrequency(
+                                freqCatalog,
+                                row.fields.mpp_machinecode,
+                                row.fields.mpp_productspecification,
+                                row.fields.mpp_laylength,
+                                row.fields.mpp_tensilegroup,
+                              );
+                              if (!item) {
+                                return (
+                                  <span
+                                    className="products-hist-empty"
+                                    title={`Tidak ada match di WL_Frequency untuk: Mach=${row.fields.mpp_machinecode}, Product=${row.fields.mpp_productspecification}, LayLength=${row.fields.mpp_laylength}, TensileGroup=${row.fields.mpp_tensilegroup}`}
+                                  >
+                                    —
+                                  </span>
+                                );
+                              }
+                              const val =
+                                col.key === 'hist_fractureperton'
+                                  ? item.fracturePerTon
+                                  : col.key === 'hist_dieston'
+                                  ? item.diesPerTon
+                                  : item.defectPerTon;
+                              if (val === null) {
+                                return <span className="products-hist-empty">—</span>;
+                              }
+                              return (
+                                <span
+                                  className="products-hist-badge"
+                                  title={`Dari WL_Frequency: Fr/T=${item.fracturePerTon ?? '—'}, Dies/T=${item.diesPerTon ?? '—'}, Def/T=${item.defectPerTon ?? '—'} (TonProduced: ${item.tonProduced?.toLocaleString() ?? 0})`}
+                                >
+                                  {val}
+                                </span>
+                              );
+                            })()}
+                          </div>
                         ) : col.type === 'select' ? (
                           <select
                             className="input"
-                            value={row.fields[col.key]}
+                            value={row.fields[col.key as keyof ProductFields]}
                             title={OPTIONAL_COLUMN_TITLE}
-                            onChange={(e) => updateField(row.id, col.key, e.target.value)}
+                            onChange={(e) => updateField(row.id, col.key as keyof ProductFields, e.target.value)}
                           >
                             <option value="">{FOLLOW_DEFAULT_LABEL}</option>
                             {col.options?.map((option) => (
@@ -589,16 +718,16 @@ export function ProductsManager({
                             className="input"
                             type="number"
                             min={0}
-                            value={row.fields[col.key]}
+                            value={row.fields[col.key as keyof ProductFields]}
                             placeholder={FOLLOW_DEFAULT_LABEL}
                             title={OPTIONAL_COLUMN_TITLE}
-                            onChange={(e) => updateField(row.id, col.key, e.target.value)}
+                            onChange={(e) => updateField(row.id, col.key as keyof ProductFields, e.target.value)}
                           />
                         ) : col.type === 'area' ? (
                           <select
                             className="input"
-                            value={row.fields[col.key]}
-                            onChange={(e) => updateField(row.id, col.key, e.target.value)}
+                            value={row.fields[col.key as keyof ProductFields]}
+                            onChange={(e) => updateField(row.id, col.key as keyof ProductFields, e.target.value)}
                           >
                             <option value="">Select area</option>
                             {PRODUCT_AREAS.map((area) => (
@@ -611,7 +740,7 @@ export function ProductsManager({
                           <input
                             className={`input ${readOnly ? 'input-readonly' : ''}`}
                             type={col.type}
-                            value={row.fields[col.key]}
+                            value={row.fields[col.key as keyof ProductFields]}
                             readOnly={readOnly}
                             title={
                               col.key === 'mpp_constructiondetailcode'
@@ -625,7 +754,7 @@ export function ProductsManager({
                             onChange={(e) =>
                               readOnly
                                 ? undefined
-                                : updateField(row.id, col.key, col.type === 'number' ? parseFloat(e.target.value) || 0 : e.target.value)
+                                : updateField(row.id, col.key as keyof ProductFields, col.type === 'number' ? parseFloat(e.target.value) || 0 : e.target.value)
                             }
                           />
                         )}

@@ -1,12 +1,13 @@
 import type { Mpp_wl_activities } from '../generated/models/Mpp_wl_activitiesModel';
 import type { Mpp_wl_productses } from '../generated/models/Mpp_wl_productsesModel';
-import type { AppConfig } from '../types';
+import type { AppConfig, FrequencyMode } from '../types';
 import { deriveMachineSpec, ensureCoreActivities, syncAutoActivityValues } from './calculations';
 import type { DefaultValues } from './defaultValuesStore';
 import { DEFAULT_PIXELS_PER_METER } from './layoutConstants';
 import { buildActivitiesFromRows, isLoadingTaskRow, mapProductToSpec, productOperatorSettings } from './productCatalog';
 import type { SavedLayout } from './savedLayoutsStore';
 import { previewAssignedMachineIds, recommendedMachineCountForForecast } from './singleOperatorUtilization';
+import { resolveEffectiveFrequencies, type HistoricalFrequencyMap } from './frequencyCatalog';
 
 /**
  * The Work Load Simulator setup for one Construction Detail: its spec from WL_Products, its
@@ -21,6 +22,8 @@ export function buildConstructionConfig({
   activityRows,
   defaults,
   layout,
+  frequencyMode,
+  frequencyCatalog,
 }: {
   base: AppConfig;
   product: Mpp_wl_productses;
@@ -28,8 +31,46 @@ export function buildConstructionConfig({
   defaults: DefaultValues;
   /** The Area's default layout; null keeps base's layout and assignment. */
   layout: SavedLayout | null;
+  frequencyMode?: FrequencyMode;
+  frequencyCatalog?: HistoricalFrequencyMap | null;
 }): { config: AppConfig; errors: string[] } {
-  const spec = mapProductToSpec(product);
+  let spec = mapProductToSpec(product);
+  const effectiveMode = frequencyMode ?? base.frequencyMode ?? defaults.frequencyMode ?? 'manual';
+  if (effectiveMode === 'historical' && frequencyCatalog) {
+    const effective = resolveEffectiveFrequencies({
+      manual: {
+        fracturePerTon: spec.fracturePerTon > 0 ? spec.fracturePerTon : defaults.defaultFracturePerTon,
+        diesPerTon: spec.diesPerTon > 0 ? spec.diesPerTon : defaults.defaultDiesPerTon,
+        defectsPerTon: spec.defectsPerTon > 0 ? spec.defectsPerTon : defaults.defaultDefectPerTon,
+      },
+      lookupParams: {
+        mach: product.mpp_machinecode,
+        product: product.mpp_productspecification,
+        layLength: product.mpp_laylength,
+        tensileGroup: product.mpp_tensilegroup,
+      },
+      mode: effectiveMode,
+      catalog: frequencyCatalog,
+    });
+    spec = {
+      ...spec,
+      fracturePerTon: effective.fracturePerTon,
+      diesPerTon: effective.diesPerTon,
+      defectsPerTon: effective.defectsPerTon,
+    };
+  } else {
+    // Mode manual: jika produk bernilai 0 tapi ada default fallback, gunakan default fallback
+    if (spec.fracturePerTon === 0 && defaults.defaultFracturePerTon > 0) {
+      spec.fracturePerTon = defaults.defaultFracturePerTon;
+    }
+    if (spec.defectsPerTon === 0 && defaults.defaultDefectPerTon > 0) {
+      spec.defectsPerTon = defaults.defaultDefectPerTon;
+    }
+    if (spec.diesPerTon === 0 && defaults.defaultDiesPerTon > 0) {
+      spec.diesPerTon = defaults.defaultDiesPerTon;
+    }
+  }
+
   const productSettings = productOperatorSettings(product);
   const derived = deriveMachineSpec(spec);
   const built = buildActivitiesFromRows(activityRows, product, derived.spoolWeight, spec.fracturePerTon);
@@ -38,6 +79,7 @@ export function buildConstructionConfig({
   const activities = syncAutoActivityValues(ensureCoreActivities(built.activities, derived.spoolWeight, spec.fracturePerTon), spec);
   const config: AppConfig = {
     ...base,
+    frequencyMode: effectiveMode,
     // A fresh assignment on the default layout, so it follows the default order from the top-left.
     ...(layout
       ? { layout: layout.machines, operatorStart: layout.operatorStart, walls: layout.walls, remarks: layout.remarks, assignedMachineIds: [] }
@@ -72,6 +114,55 @@ export function buildConstructionConfig({
     seed: undefined,
   };
   return { config, errors: built.errors };
+}
+
+/**
+ * Mengubah frequency mode (manual <-> historical) pada AppConfig yang sudah ada
+ * dan memperbarui numerator/denominator aktivitas otomatis.
+ */
+export function applyFrequencyModeToConfig({
+  config,
+  product,
+  mode,
+  catalog,
+}: {
+  config: AppConfig;
+  product: Mpp_wl_productses;
+  mode: FrequencyMode;
+  catalog: HistoricalFrequencyMap | null;
+}): AppConfig {
+  const manualSpec = mapProductToSpec(product);
+  const effective = resolveEffectiveFrequencies({
+    manual: {
+      fracturePerTon: manualSpec.fracturePerTon,
+      diesPerTon: manualSpec.diesPerTon,
+      defectsPerTon: manualSpec.defectsPerTon,
+    },
+    lookupParams: {
+      mach: product.mpp_machinecode,
+      product: product.mpp_productspecification,
+      layLength: product.mpp_laylength,
+      tensileGroup: product.mpp_tensilegroup,
+    },
+    mode,
+    catalog,
+  });
+
+  const updatedSpec = {
+    ...config.spec,
+    fracturePerTon: effective.fracturePerTon,
+    diesPerTon: effective.diesPerTon,
+    defectsPerTon: effective.defectsPerTon,
+  };
+
+  const updatedActivities = syncAutoActivityValues(config.activities, updatedSpec);
+
+  return {
+    ...config,
+    frequencyMode: mode,
+    spec: updatedSpec,
+    activities: updatedActivities,
+  };
 }
 
 /** The config with Optimize applied: the most machines the operator can keep up with, assigned in

@@ -3,7 +3,7 @@ import type { Mpp_wl_outputmodelses } from '../generated/models/Mpp_wl_outputmod
 import type { Mpp_wl_productses } from '../generated/models/Mpp_wl_productsesModel';
 import { Mpp_wl_activitiesService } from '../generated/services/Mpp_wl_activitiesService';
 import { Mpp_wl_outputmodelsesService } from '../generated/services/Mpp_wl_outputmodelsesService';
-import type { AppConfig } from '../types';
+import type { AppConfig, FrequencyMode } from '../types';
 import { areaUsesLayLength, deriveMachineSpec } from './calculations';
 import { buildConstructionConfig } from './constructionConfig';
 import { escapeODataString, fetchAllPages } from './dataversePaging';
@@ -12,6 +12,7 @@ import { buildOutputModelPayload, createOutputModel, percentageForDisplay, repla
 import { loadSavedLayouts } from './savedLayoutsStore';
 import { optimizeAndSimulate, type BatchSimulationResult } from './batchSimulationCore';
 import { calculateSingleOperatorForecast, forecastOutputSummary } from './singleOperatorUtilization';
+import { loadFrequencyCatalog, lookupHistoricalFrequency } from './frequencyCatalog';
 
 /** Every batch result is saved as this version of the Construction Detail, replacing it if it exists. */
 const BATCH_VERSION = '0001';
@@ -25,6 +26,7 @@ export interface BatchLogEntry {
   status: 'success' | 'failed' | 'cancelled';
   /** Success only: whether version 0001 was created or replaced. */
   action?: 'created' | 'replaced';
+  frequencySource?: 'manual' | 'historical' | 'historical_fallback';
   machines?: number;
   forecastManOccupation?: number;
   actualManOccupation?: number;
@@ -115,24 +117,28 @@ export async function runBatchSimulation({
   products,
   base,
   updatedBy,
+  frequencyMode = 'manual',
   onItemDone,
   isCancelled,
 }: {
   products: Mpp_wl_productses[];
   base: AppConfig;
   updatedBy: string;
+  frequencyMode?: FrequencyMode;
   onItemDone: (entry: BatchLogEntry, index: number) => void;
   isCancelled: () => boolean;
 }): Promise<BatchLogEntry[]> {
   if (!updatedBy.trim()) throw new Error('The signed-in email is unavailable, so results cannot be saved.');
-  const [defaults, layoutIdsByArea, savedLayouts, outputRows] = await Promise.all([
+  const [defaults, layoutIdsByArea, savedLayouts, outputRows, freqResult] = await Promise.all([
     loadDefaultValues(),
     loadDefaultLayouts(),
     loadSavedLayouts(),
     fetchAllPages(Mpp_wl_outputmodelsesService.getAll, {
       select: ['mpp_wl_outputmodelsid', 'mpp_constructiondetailcode', 'mpp_version', 'mpp_versionremark'],
     }),
+    frequencyMode === 'historical' ? loadFrequencyCatalog().catch(() => null) : Promise.resolve(null),
   ]);
+  const frequencyCatalog = freqResult?.catalog ?? null;
   const layoutById = new Map(savedLayouts.map((layout) => [layout.id, layout]));
   const detailKey = (detail: string) => detail.trim().toLowerCase();
   const version0001 = new Map<string, Mpp_wl_outputmodelses>();
@@ -221,7 +227,15 @@ export async function runBatchSimulation({
         fail(`No activities in WL_Activities for Construction ${construction}.`);
         continue;
       }
-      const built = buildConstructionConfig({ base, product, activityRows: activities.rows, defaults, layout });
+      const built = buildConstructionConfig({
+        base,
+        product,
+        activityRows: activities.rows,
+        defaults,
+        layout,
+        frequencyMode,
+        frequencyCatalog,
+      });
       if (built.errors.length > 0) {
         fail(built.errors.join(' '));
         continue;
@@ -256,12 +270,30 @@ export async function runBatchSimulation({
             action = 'created';
           }
           const forecast = calculateSingleOperatorForecast(result.config);
+          let frequencySource: BatchLogEntry['frequencySource'] = 'manual';
+          if (frequencyMode === 'historical') {
+            const matched = lookupHistoricalFrequency(
+              frequencyCatalog,
+              product.mpp_machinecode,
+              product.mpp_productspecification,
+              product.mpp_laylength,
+              product.mpp_tensilegroup,
+            );
+            frequencySource = matched ? 'historical' : 'historical_fallback';
+          }
+          const freqNote =
+            frequencySource === 'historical'
+              ? 'WL_Frequency'
+              : frequencySource === 'historical_fallback'
+              ? 'Fallback Manual'
+              : 'Manual';
           finish(index, {
             productId: product.mpp_wl_productsid,
             constructionDetail,
             area,
             status: 'success',
             action,
+            frequencySource,
             machines: result.state.metrics.assignedMachineCount,
             forecastManOccupation: forecast.forecastUtilizationPercent,
             actualManOccupation: percentageForDisplay(payload.mpp_actualmanoccupation),
@@ -270,7 +302,7 @@ export async function runBatchSimulation({
             actualOee: percentageForDisplay(payload.mpp_actualmachineefficiency),
             forecastMhpt: forecastOutputSummary(result.config, forecast).manHourPerTon,
             actualMhpt: payload.mpp_manhoursperton,
-            message: action === 'replaced' ? 'Version 0001 replaced.' : 'Version 0001 created.',
+            message: `${action === 'replaced' ? 'Version 0001 replaced' : 'Version 0001 created'} (${freqNote})`,
             durationMs: performance.now() - started,
           });
         } catch (err) {
