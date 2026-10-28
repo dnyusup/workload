@@ -674,7 +674,7 @@ export function ProductsManager({
                                 return (
                                   <span
                                     className="products-hist-empty"
-                                    title={`Tidak ada match di WL_Frequency untuk: Mach=${row.fields.mpp_machinecode}, Product=${row.fields.mpp_productspecification}, LayLength=${row.fields.mpp_laylength}, TensileGroup=${row.fields.mpp_tensilegroup}`}
+                                    title={`No match in WL_Frequency for: Mach=${row.fields.mpp_machinecode}, Product=${row.fields.mpp_productspecification}, LayLength=${row.fields.mpp_laylength}, TensileGroup=${row.fields.mpp_tensilegroup}`}
                                   >
                                     —
                                   </span>

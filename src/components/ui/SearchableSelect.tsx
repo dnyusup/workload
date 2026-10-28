@@ -49,7 +49,7 @@ export function SearchableSelect({
   onChange,
   options,
   placeholder = 'Select…',
-  searchPlaceholder = 'Cari…',
+  searchPlaceholder = 'Search…',
   disabled = false,
   className = '',
   onOptionIndicatorClick,
@@ -225,7 +225,7 @@ export function SearchableSelect({
               >
                 {placeholder}
               </button>
-              {filtered.length === 0 && <div className="searchable-select-empty">Tidak ada hasil</div>}
+              {filtered.length === 0 && <div className="searchable-select-empty">No results found</div>}
               {filtered.map((o) => (
                 <div key={o.value} className="searchable-select-option-row">
                   <button

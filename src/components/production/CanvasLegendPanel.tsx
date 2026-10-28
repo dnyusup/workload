@@ -158,7 +158,7 @@ export function CanvasLegendPanel({
             onChange={(e) => setQuery(e.target.value)}
           />
           <ul className="canvas-legend-list" onMouseLeave={() => onHover(null)}>
-            {filtered.length === 0 && <li className="canvas-legend-empty">Tidak ada hasil</li>}
+            {filtered.length === 0 && <li className="canvas-legend-empty">No results found</li>}
             {filtered.map((entry) => (
               <li
                 key={entry.id}

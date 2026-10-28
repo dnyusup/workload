@@ -114,19 +114,19 @@ ADDCOLUMNS(
         -- Filter Plant
         TREATAS({"${plant}"}, DimPlantRegion[PlantName]),
 
-        -- 2. FILTER DATE BETWEEN (ANTARA TANGGAL AWAL & TANGGAL AKHIR)
+        -- 2. FILTER DATE BETWEEN (START DATE & END DATE)
         FILTER(
             ALL(DimDate[Date]), 
             DimDate[Date] >= DATE(${sParts.year}, ${sParts.month}, ${sParts.day}) && DimDate[Date] <= DATE(${eParts.year}, ${eParts.month}, ${eParts.day})
         ),
 
-        -- Nilai Agregasi (Jika berupa Measure, cukup tulis di dalam tanda kurung siku [ ])
+        -- Aggregation Values (For Measure, enclose in square brackets [ ])
         "Fr/T", [Fracture/Ton (#)],
         "Def/T", [Def/Ton (#)],
         "Dies/T", [Die/Ton (#)],
         "TonProduced", [TonProduced]
     ),
-    -- PENGGABUNGAN 4 KOLOM DENGAN PEMISAH "-" :
+    -- MERGE 4 COLUMNS WITH "-" DELIMITER:
     "Group_Product_Info", 
         McGroup[Group] & "-" & 
         DimProduct[Construction] & "-" & 
@@ -484,18 +484,18 @@ export async function loadFrequencyCatalog(
         DaxQuery: daxQuery,
       };
 
-      console.log('[WL_Frequency] Mengirim parameter ke flow:', payload);
+      console.log('[WL_Frequency] Sending parameters to flow:', payload);
       const response = await WL_FrequencyService.Run(payload as any);
-      console.log('[WL_Frequency] Respon dari flow:', response);
+      console.log('[WL_Frequency] Response from flow:', response);
 
       if (!response.success) {
-        throw new Error(response.error?.message || 'Pemanggilan Power Automate flow WL_Frequency gagal.');
+        throw new Error(response.error?.message || 'Call to Power Automate flow WL_Frequency failed.');
       }
 
       const rawResult = response.data?.result;
 
       if (!rawResult || rawResult === '[]') {
-        console.warn('[WL_Frequency] Flow mengembalikan data kosong (rawResult):', rawResult);
+        console.warn('[WL_Frequency] Flow returned empty data (rawResult):', rawResult);
         const emptyCatalog: HistoricalFrequencyMap = new Map();
         const emptyRes = { catalog: emptyCatalog, records: [] as FrequencyRecord[] };
         catalogCacheMap.set(cacheKey, emptyRes);
@@ -507,14 +507,14 @@ export async function loadFrequencyCatalog(
         try {
           parsed = JSON.parse(rawResult);
         } catch {
-          throw new Error('Gagal mem-parse output result dari flow sebagai JSON: ' + rawResult.slice(0, 150));
+          throw new Error('Failed to parse flow output result as JSON: ' + rawResult.slice(0, 150));
         }
       } else if (Array.isArray(rawResult)) {
         parsed = rawResult;
       }
 
       if (!Array.isArray(parsed)) {
-        throw new Error('Hasil query bukan berupa array baris data.');
+        throw new Error('Query result is not an array of data rows.');
       }
 
       const records = parseFrequencyRows(parsed);

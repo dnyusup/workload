@@ -40,19 +40,19 @@ ADDCOLUMNS(
         -- Filter Plant
         TREATAS({"PTBI"}, DimPlantRegion[PlantName]),
 		
-        -- 2. FILTER DATE BETWEEN (ANTARA TANGGAL AWAL & TANGGAL AKHIR)
+        -- 2. FILTER DATE BETWEEN (START DATE & END DATE)
         FILTER(
             ALL(DimDate[Date]), 
             DimDate[Date] >= DATE(2026, 10, 20) && DimDate[Date] <= DATE(2026, 10, 27)
         ),
 
-        -- Nilai Agregasi (Jika berupa Measure, cukup tulis di dalam tanda kurung siku [ ])
+        -- Aggregation Values (For Measure, enclose in square brackets [ ])
         "Fr/T", [Fracture/Ton (#)],
         "Def/T", [Def/Ton (#)],
         "Dies/T", [Die/Ton (#)],
         "TonProduced", [TonProduced]
     ),
-    -- PENGGABUNGAN 4 KOLOM DENGAN PEMISAH "-" :
+    -- MERGE 4 COLUMNS WITH "-" DELIMITER:
     "Group_Product_Info", 
         McGroup[Group] & "-" & 
         DimProduct[Construction] & "-" & 
@@ -93,7 +93,7 @@ export function FrequencyManager() {
       setLastRefreshed(new Date());
     } catch (err) {
       console.error('Failed to run WL_Frequency flow:', err);
-      const msg = err instanceof Error ? err.message : 'Gagal memanggil Power Automate flow WL_Frequency.';
+      const msg = err instanceof Error ? err.message : 'Failed to execute Power Automate flow WL_Frequency.';
       setError(msg);
     } finally {
       setLoading(false);

@@ -24,5 +24,5 @@ export const STOP_COLOR_LEGEND: { label: string; color: string }[] = [
   { label: 'Doffing + Loading', color: '#a855f7' },
   { label: 'Doffing + Fracture', color: '#ec4899' },
   { label: 'Loading + Fracture', color: '#eab308' },
-  { label: 'Semua aktivitas', color: '#dc2626' },
+  { label: 'All activities', color: '#dc2626' },
 ];

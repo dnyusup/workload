@@ -101,7 +101,7 @@ function DefaultValuesCard() {
     return `-- Filter Plant
 TREATAS({"${plant}"}, DimPlantRegion[PlantName]),
 
--- 2. FILTER DATE BETWEEN (ANTARA TANGGAL AWAL & TANGGAL AKHIR)
+-- 2. FILTER DATE BETWEEN (START DATE & END DATE)
 FILTER(
     ALL(DimDate[Date]), 
     DimDate[Date] >= DATE(${computedRange.startParts.year}, ${computedRange.startParts.month}, ${computedRange.startParts.day}) && DimDate[Date] <= DATE(${computedRange.endParts.year}, ${computedRange.endParts.month}, ${computedRange.endParts.day})
