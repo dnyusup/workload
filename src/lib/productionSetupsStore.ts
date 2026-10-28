@@ -8,6 +8,7 @@ import { fetchAllPages, escapeODataString, runWithConcurrency } from './datavers
 import { parseLayoutBlob, serializeLayoutBlob } from './savedLayoutsStore';
 import { BUILT_IN_DEFAULTS, loadDefaultValuesOrBuiltIn, type DefaultValues } from './defaultValuesStore';
 import { formatWaitingModel, parseWaitingModel } from './waitingModel';
+import { computeFrequencyDateRange } from './frequencyCatalog';
 
 /** How many Dataverse requests to keep in flight at once for bulk create/update/delete loops
  * (one row per machine) — high enough to meaningfully cut wall-clock time versus fully
@@ -178,7 +179,13 @@ export async function loadProductionSetup(id: string, constructionLabelById: Map
     doffPriority: (header.mpp_doffpriority ?? '').trim().toLowerCase() === 'yes',
     minRemainForDoffPriority: header.mpp_minremaintaskfordoffpriority ?? BUILT_IN_DEFAULTS.minRemainForDoffPriority,
     waitingModel,
-    frequencyMode: (header.mpp_planningtype === 'historical' ? 'historical' : 'manual'),
+    frequencyMode: (
+      (header.mpp_frequencysource ?? header.mpp_planningtype ?? '').trim().toLowerCase() === 'historical'
+        ? 'historical'
+        : 'manual'
+    ),
+    frequencyStartDate: header.mpp_frequencystartdate ? header.mpp_frequencystartdate.slice(0, 10) : undefined,
+    frequencyEndDate: header.mpp_frequencyenddate ? header.mpp_frequencyenddate.slice(0, 10) : undefined,
     updatedAt: header.modifiedon ? new Date(header.modifiedon).getTime() : Date.now(),
   };
 }
@@ -197,6 +204,11 @@ export async function createProductionSetup(
   remarks?: LayoutRemark[],
   defaults: DefaultValues = BUILT_IN_DEFAULTS,
 ): Promise<ProductionSetup> {
+  const defaultDates = computeFrequencyDateRange(
+    defaults.frequencyDateRangeType,
+    defaults.frequencyStartDate,
+    defaults.frequencyEndDate,
+  );
   const headerResult = await Mpp_wl_productionsetupsesService.create({
     mpp_name: name,
     mpp_layoutsnapshotjson: serializeLayoutBlob(layout, operatorStart, walls, remarks),
@@ -213,6 +225,9 @@ export async function createProductionSetup(
     mpp_doffpriority: defaults.doffPriority ? 'Yes' : 'No',
     mpp_minremaintaskfordoffpriority: defaults.minRemainForDoffPriority,
     mpp_optimizemodel: formatWaitingModel(defaults.waitingModel),
+    mpp_frequencysource: defaults.frequencyMode ?? 'manual',
+    mpp_frequencystartdate: defaultDates.startDate,
+    mpp_frequencyenddate: defaultDates.endDate,
     mpp_planningtype: defaults.frequencyMode ?? 'manual',
     // Active state, matching WL_Layouts' `0 | 1` statecode enum.
     statecode: 0,
@@ -259,6 +274,8 @@ export async function createProductionSetup(
     waitingModel: defaults.waitingModel,
     useWaitingModel: defaults.useWaitingModel,
     frequencyMode: defaults.frequencyMode ?? 'manual',
+    frequencyStartDate: defaultDates.startDate,
+    frequencyEndDate: defaultDates.endDate,
     updatedAt: Date.now(),
   };
 }
@@ -281,10 +298,12 @@ export async function updateProductionSetupHeader(
       | 'minRemainForDoffPriority'
       | 'waitingModel'
       | 'frequencyMode'
+      | 'frequencyStartDate'
+      | 'frequencyEndDate'
     >
   >,
 ): Promise<void> {
-  const fields: Record<string, string | number> = {};
+  const fields: Record<string, string | number | null> = {};
   if (patch.name !== undefined) fields.mpp_name = patch.name;
   if (patch.shiftTime !== undefined) fields.mpp_shifttime = patch.shiftTime;
   if (patch.lunchTime !== undefined) fields.mpp_lunchtime = patch.lunchTime;
@@ -300,9 +319,18 @@ export async function updateProductionSetupHeader(
     fields.mpp_walkingspeed = patch.movement.walkingSpeed;
     fields.mpp_pixelspermeter = DEFAULT_PIXELS_PER_METER;
   }
-  if (patch.frequencyMode !== undefined) fields.mpp_planningtype = patch.frequencyMode;
+  if (patch.frequencyMode !== undefined) {
+    fields.mpp_frequencysource = patch.frequencyMode;
+    fields.mpp_planningtype = patch.frequencyMode;
+  }
+  if (patch.frequencyStartDate !== undefined) {
+    fields.mpp_frequencystartdate = patch.frequencyStartDate || null;
+  }
+  if (patch.frequencyEndDate !== undefined) {
+    fields.mpp_frequencyenddate = patch.frequencyEndDate || null;
+  }
   if (Object.keys(fields).length === 0) return;
-  const result = await Mpp_wl_productionsetupsesService.update(id, fields);
+  const result = await Mpp_wl_productionsetupsesService.update(id, fields as any);
   if (!result.success) throw new Error(result.error?.message ?? 'Failed to update Production Setup.');
 }
 

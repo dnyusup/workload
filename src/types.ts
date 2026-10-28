@@ -499,6 +499,8 @@ export interface ProductionSetup {
   useWaitingModel?: boolean;
   /** 'manual' = from WL_Products; 'historical' = from WL_Frequency (falls back to WL_Products if missing). */
   frequencyMode?: FrequencyMode;
+  frequencyStartDate?: string;
+  frequencyEndDate?: string;
   updatedAt: number;
 }
 

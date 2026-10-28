@@ -19,11 +19,11 @@
       ],
       "dataSets": {}
     },
-    "6f9ce833-2325-4b79-a0d8-a89175b0c466": {
+    "0b72eb06-8267-4b50-8ed6-32ac2b7d3587": {
       "id": "/providers/microsoft.powerapps/apis/shared_powerbi",
       "displayName": "Power BI"
     },
-    "d162e555-68ff-4029-b423-02ded7f41207": {
+    "0077e5dd-be22-4322-ad42-eabaee6a0fa6": {
       "id": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
       "displayName": "Logic flows",
       "dataSources": [
@@ -34,7 +34,7 @@
         "workflowDisplayName": "WL_Frequency",
         "workflowName": "ba22ee48-040a-0447-8198-aa73f6291558",
         "dependencies": {
-          "shared_powerbi": "6f9ce833-2325-4b79-a0d8-a89175b0c466"
+          "shared_powerbi": "0b72eb06-8267-4b50-8ed6-32ac2b7d3587"
         }
       }
     }

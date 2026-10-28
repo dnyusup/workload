@@ -159,11 +159,6 @@ export interface HistoricalFrequencyItem {
 
 export type HistoricalFrequencyMap = Map<string, HistoricalFrequencyItem>;
 
-// In-memory cache singleton
-let cachedCatalog: HistoricalFrequencyMap | null = null;
-let cachedRecords: FrequencyRecord[] | null = null;
-let fetchPromise: Promise<{ catalog: HistoricalFrequencyMap; records: FrequencyRecord[] }> | null = null;
-
 function getField(row: Record<string, any>, ...candidates: string[]): any {
   for (const c of candidates) {
     if (row[c] !== undefined && row[c] !== null) return row[c];
@@ -367,56 +362,114 @@ export function buildHistoricalFrequencyMap(records: FrequencyRecord[]): Histori
   return catalog;
 }
 
+export interface LoadFrequencyOptions {
+  forceRefresh?: boolean;
+  plant?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
+const catalogCacheMap = new Map<string, { catalog: HistoricalFrequencyMap; records: FrequencyRecord[] }>();
+const inFlightPromises = new Map<string, Promise<{ catalog: HistoricalFrequencyMap; records: FrequencyRecord[] }>>();
+
 /**
- * Mengambil data frekuensi dari Power Automate flow WL_Frequency dan menyimpannya di memory cache
+ * Mengambil data frekuensi dari Power Automate flow WL_Frequency dan menyimpannya di memory cache.
+ * Mendukung opsi custom date range per production setup.
  */
-export async function loadFrequencyCatalog(forceRefresh = false): Promise<{ catalog: HistoricalFrequencyMap; records: FrequencyRecord[] }> {
-  if (!forceRefresh && cachedCatalog && cachedRecords) {
-    return { catalog: cachedCatalog, records: cachedRecords };
-  }
+export async function loadFrequencyCatalog(
+  optionsOrForceRefresh: boolean | LoadFrequencyOptions = false,
+): Promise<{ catalog: HistoricalFrequencyMap; records: FrequencyRecord[] }> {
+  const options: LoadFrequencyOptions =
+    typeof optionsOrForceRefresh === 'boolean'
+      ? { forceRefresh: optionsOrForceRefresh }
+      : (optionsOrForceRefresh ?? {});
 
-  if (fetchPromise && !forceRefresh) {
-    return fetchPromise;
-  }
+  const defaults = await loadDefaultValuesOrBuiltIn();
+  const plant = options.plant || defaults.frequencyPlant || 'PTBI';
 
-  fetchPromise = (async () => {
-    try {
-      const defaults = await loadDefaultValuesOrBuiltIn();
+  let startDate: string;
+  let endDate: string;
+  let startParts: { year: number; month: number; day: number };
+  let endParts: { year: number; month: number; day: number };
+
+  if (
+    options.startDate &&
+    options.endDate &&
+    /^\d{4}-\d{2}-\d{2}$/.test(options.startDate) &&
+    /^\d{4}-\d{2}-\d{2}$/.test(options.endDate)
+  ) {
+    const s = options.startDate.split('-').map(Number);
+    const e = options.endDate.split('-').map(Number);
+    if (!isNaN(s[0]) && !isNaN(s[1]) && !isNaN(s[2]) && !isNaN(e[0]) && !isNaN(e[1]) && !isNaN(e[2])) {
+      startDate = options.startDate;
+      endDate = options.endDate;
+      startParts = { year: s[0], month: s[1], day: s[2] };
+      endParts = { year: e[0], month: e[1], day: e[2] };
+    } else {
       const rangeInfo = computeFrequencyDateRange(
         defaults.frequencyDateRangeType,
         defaults.frequencyStartDate,
         defaults.frequencyEndDate,
       );
+      startDate = rangeInfo.startDate;
+      endDate = rangeInfo.endDate;
+      startParts = rangeInfo.startParts;
+      endParts = rangeInfo.endParts;
+    }
+  } else {
+    const rangeInfo = computeFrequencyDateRange(
+      defaults.frequencyDateRangeType,
+      defaults.frequencyStartDate,
+      defaults.frequencyEndDate,
+    );
+    startDate = rangeInfo.startDate;
+    endDate = rangeInfo.endDate;
+    startParts = rangeInfo.startParts;
+    endParts = rangeInfo.endParts;
+  }
+
+  const cacheKey = `${plant}|${startDate}|${endDate}`;
+
+  if (!options.forceRefresh && catalogCacheMap.has(cacheKey)) {
+    return catalogCacheMap.get(cacheKey)!;
+  }
+
+  if (inFlightPromises.has(cacheKey) && !options.forceRefresh) {
+    return inFlightPromises.get(cacheKey)!;
+  }
+
+  const promise = (async () => {
+    try {
       const daxQuery = generateDaxQuery({
-        plant: defaults.frequencyPlant,
-        startParts: rangeInfo.startParts,
-        endParts: rangeInfo.endParts,
+        plant,
+        startParts,
+        endParts,
       });
 
       lastActiveFilterParams = {
-        plant: defaults.frequencyPlant,
-        dateRangeType: defaults.frequencyDateRangeType,
-        startDate: rangeInfo.startDate,
-        endDate: rangeInfo.endDate,
+        plant,
+        dateRangeType: options.startDate ? 'custom' : defaults.frequencyDateRangeType,
+        startDate,
+        endDate,
         daxQuery,
       };
 
       const payload = {
         // Parameter names as defined in PowerApps (V2) trigger
-        PlantName: defaults.frequencyPlant,
-        StartDate: rangeInfo.startDate,
-        EndDate: rangeInfo.endDate,
+        PlantName: plant,
+        StartDate: startDate,
+        EndDate: endDate,
         // camelCase aliases
-        plantName: defaults.frequencyPlant,
-        startDate: rangeInfo.startDate,
-        endDate: rangeInfo.endDate,
-        plant: defaults.frequencyPlant,
+        plantName: plant,
+        startDate,
+        endDate,
+        plant,
         // Power Automate internal type keys for Text and Date inputs
-        text: defaults.frequencyPlant,
-        date: rangeInfo.startDate,
-        date_1: rangeInfo.endDate,
-        text_1: rangeInfo.startDate,
-        text_2: rangeInfo.endDate,
+        text: plant,
+        date: startDate,
+        date_1: endDate,
+        text_1: startDate,
+        text_2: endDate,
         // Full query string
         daxQuery,
         DaxQuery: daxQuery,
@@ -435,9 +488,9 @@ export async function loadFrequencyCatalog(forceRefresh = false): Promise<{ cata
       if (!rawResult || rawResult === '[]') {
         console.warn('[WL_Frequency] Flow mengembalikan data kosong (rawResult):', rawResult);
         const emptyCatalog: HistoricalFrequencyMap = new Map();
-        cachedCatalog = emptyCatalog;
-        cachedRecords = [];
-        return { catalog: emptyCatalog, records: [] };
+        const emptyRes = { catalog: emptyCatalog, records: [] as FrequencyRecord[] };
+        catalogCacheMap.set(cacheKey, emptyRes);
+        return emptyRes;
       }
 
       let parsed: any[] = [];
@@ -458,16 +511,17 @@ export async function loadFrequencyCatalog(forceRefresh = false): Promise<{ cata
       const records = parseFrequencyRows(parsed);
       const catalog = buildHistoricalFrequencyMap(records);
 
-      cachedRecords = records;
-      cachedCatalog = catalog;
+      const result = { catalog, records };
+      catalogCacheMap.set(cacheKey, result);
 
-      return { catalog, records };
+      return result;
     } finally {
-      fetchPromise = null;
+      inFlightPromises.delete(cacheKey);
     }
   })();
 
-  return fetchPromise;
+  inFlightPromises.set(cacheKey, promise);
+  return promise;
 }
 
 /**

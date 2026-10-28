@@ -62,6 +62,8 @@ export interface SetupOperatorSettings {
   waitingModel: ProductionSetup['waitingModel'];
   useWaitingModel?: boolean;
   frequencyMode?: FrequencyMode;
+  frequencyStartDate?: string;
+  frequencyEndDate?: string;
 }
 
 export function setupOperatorSettings(setup: ProductionSetup): SetupOperatorSettings {
@@ -79,6 +81,8 @@ export function setupOperatorSettings(setup: ProductionSetup): SetupOperatorSett
     waitingModel: setup.waitingModel,
     useWaitingModel: setup.useWaitingModel,
     frequencyMode: setup.frequencyMode ?? 'manual',
+    frequencyStartDate: setup.frequencyStartDate,
+    frequencyEndDate: setup.frequencyEndDate,
   };
 }
 

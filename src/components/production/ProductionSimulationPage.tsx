@@ -3,7 +3,7 @@ import type { FrequencyMode, LayoutMachine, ProductionMachineAssignment, Product
 import { WAITING_MODEL_LABELS } from '../../lib/waitingModel';
 import { WaitingModelInfoDialog } from '../setup/WaitingModelInfoDialog';
 import { loadSavedLayouts, type SavedLayout } from '../../lib/savedLayoutsStore';
-import { loadFrequencyCatalog, type HistoricalFrequencyMap } from '../../lib/frequencyCatalog';
+import { loadFrequencyCatalog, computeFrequencyDateRange, type HistoricalFrequencyMap } from '../../lib/frequencyCatalog';
 import {
   listProductionSetupSummaries,
   loadProductionSetup,
@@ -32,7 +32,7 @@ import {
 import { buildDistinctColorMap, buildSetupConstructionColorMap } from '../../lib/constructionColors';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
-import { Field, NumberInput, SelectInput } from '../ui/Field';
+import { Field, NumberInput, SelectInput, DateInput } from '../ui/Field';
 import { SearchableSelect } from '../ui/SearchableSelect';
 import { Toggle } from '../ui/Toggle';
 import { DOFF_PRIORITY_TOOLTIP, doffPriorityText } from '../ui/doffPriorityText';
@@ -442,6 +442,28 @@ export function ProductionSimulationPage() {
     };
   }, []);
 
+  // When selected setup changes or has historical frequency, load catalog for its specific date range
+  useEffect(() => {
+    if (!selectedSetup || selectedSetup.frequencyMode !== 'historical') return;
+    let cancelled = false;
+    loadFrequencyCatalog({
+      startDate: selectedSetup.frequencyStartDate,
+      endDate: selectedSetup.frequencyEndDate,
+    })
+      .then(({ catalog }) => {
+        if (!cancelled) setFreqCatalog(catalog);
+      })
+      .catch((err) => console.warn('WL_Frequency catalog load for setup:', err));
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    selectedSetup?.id,
+    selectedSetup?.frequencyMode,
+    selectedSetup?.frequencyStartDate,
+    selectedSetup?.frequencyEndDate,
+  ]);
+
   /** Optimistic local-state patch for the currently loaded setup — callers that already wrote
    * their own change to Dataverse (add/remove operator, bulk assign, CSV import, header edits)
    * use this just to keep the in-memory copy in sync, not to trigger any persistence itself. */
@@ -450,11 +472,6 @@ export function ProductionSimulationPage() {
     setSelectedSetup((prev) => (prev ? { ...prev, ...patch, updatedAt } : prev));
     if (selectedId) {
       setSummaries((prev) => prev.map((summary) => (summary.id === selectedId ? { ...summary, updatedAt } : summary)));
-    }
-    if (patch.frequencyMode === 'historical' && !freqCatalog) {
-      loadFrequencyCatalog()
-        .then(({ catalog }) => setFreqCatalog(catalog))
-        .catch((err) => console.warn('WL_Frequency catalog load on mode change:', err));
     }
   };
 
@@ -534,9 +551,12 @@ export function ProductionSimulationPage() {
       }
       const freqMode = setup.frequencyMode ?? 'manual';
       let catalog = freqCatalog;
-      if (freqMode === 'historical' && !catalog) {
+      if (freqMode === 'historical') {
         try {
-          const res = await loadFrequencyCatalog();
+          const res = await loadFrequencyCatalog({
+            startDate: setup.frequencyStartDate,
+            endDate: setup.frequencyEndDate,
+          });
           catalog = res.catalog;
           setFreqCatalog(catalog);
         } catch {
@@ -1714,9 +1734,37 @@ function ProductionSetupEditor({
             <SelectInput
               value={setup.frequencyMode ?? 'manual'}
               options={FREQUENCY_MODE_OPTIONS}
-              onChange={(v) => onHeaderChange({ frequencyMode: v as FrequencyMode })}
+              onChange={(v) => {
+                const nextMode = v as FrequencyMode;
+                if (nextMode === 'historical' && (!setup.frequencyStartDate || !setup.frequencyEndDate)) {
+                  const defaultRange = computeFrequencyDateRange();
+                  onHeaderChange({
+                    frequencyMode: nextMode,
+                    frequencyStartDate: setup.frequencyStartDate || defaultRange.startDate,
+                    frequencyEndDate: setup.frequencyEndDate || defaultRange.endDate,
+                  });
+                } else {
+                  onHeaderChange({ frequencyMode: nextMode });
+                }
+              }}
             />
           </Field>
+          {setup.frequencyMode === 'historical' && (
+            <>
+              <Field label="Frequency Start Date" tooltip="Tanggal awal filter kejadian aktual Power BI (format: YYYY-MM-DD)">
+                <DateInput
+                  value={setup.frequencyStartDate ?? ''}
+                  onChange={(v) => onHeaderChange({ frequencyStartDate: v })}
+                />
+              </Field>
+              <Field label="Frequency End Date" tooltip="Tanggal akhir filter kejadian aktual Power BI (format: YYYY-MM-DD)">
+                <DateInput
+                  value={setup.frequencyEndDate ?? ''}
+                  onChange={(v) => onHeaderChange({ frequencyEndDate: v })}
+                />
+              </Field>
+            </>
+          )}
           <Field label="Shift Time (min)">
             <NumberInput value={setup.shiftTime} onChange={(v) => onHeaderChange({ shiftTime: v })} />
           </Field>
