@@ -6058,12 +6058,33 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* DAX Query Dialog */
+/* DAX Query Dialog Modal Popup */
+.frequency-dax-overlay,
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.75);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1200;
+  padding: 20px;
+  animation: fadeIn 0.18s ease-out;
+}
+
 .frequency-dax-dialog {
-  width: min(840px, 94vw);
-  max-height: 85vh;
+  width: min(880px, 95vw);
+  max-height: 88vh;
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 16px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.05);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  color: #e2e8f0;
 }
 
 .frequency-dax-dialog-body {

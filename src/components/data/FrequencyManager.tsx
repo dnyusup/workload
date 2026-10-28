@@ -16,7 +16,6 @@ import { SearchableSelect, type SearchableSelectOption } from '../ui/SearchableS
 type SortKey =
   | 'area'
   | 'zoneName'
-  | 'sapMachineTypeGroup'
   | 'group'
   | 'construction'
   | 'layLength'
@@ -31,7 +30,6 @@ const DAX_QUERY_CODE = `EVALUATE
 ADDCOLUMNS(
     SUMMARIZECOLUMNS(
         DimZone[ZoneName],
-        DimWIPOrder[SAPMachineTypeGroup],
         McGroup[Group],
         DimProduct[Construction],
         DimProduct[LayLength],
@@ -73,7 +71,6 @@ export function FrequencyManager() {
   // Filters & Search
   const [search, setSearch] = useState('');
   const [areaFilter, setAreaFilter] = useState('');
-  const [machineTypeGroupFilter, setMachineTypeGroupFilter] = useState('');
   const [groupFilter, setGroupFilter] = useState('');
   const [constructionFilter, setConstructionFilter] = useState('');
 
@@ -110,11 +107,6 @@ export function FrequencyManager() {
     return areas.map((a) => ({ value: a, label: `Area: ${a}` }));
   }, [rows]);
 
-  const machineTypeGroupOptions: SearchableSelectOption[] = useMemo(() => {
-    const types = [...new Set(rows.map((r) => r.sapMachineTypeGroup).filter(Boolean))].sort();
-    return types.map((t) => ({ value: t, label: `Machine Type: ${t}` }));
-  }, [rows]);
-
   const groupOptions: SearchableSelectOption[] = useMemo(() => {
     const groups = [...new Set(rows.map((r) => r.group).filter(Boolean))].sort();
     return groups.map((g) => ({ value: g, label: `Group: ${g}` }));
@@ -130,16 +122,15 @@ export function FrequencyManager() {
     const query = search.trim().toLowerCase();
     return rows.filter((r) => {
       if (areaFilter && r.area !== areaFilter) return false;
-      if (machineTypeGroupFilter && r.sapMachineTypeGroup !== machineTypeGroupFilter) return false;
       if (groupFilter && r.group !== groupFilter) return false;
       if (constructionFilter && r.construction !== constructionFilter) return false;
       if (query) {
-        const text = `${r.area} ${r.zoneName} ${r.sapMachineTypeGroup} ${r.group} ${r.construction} ${r.groupProductInfo} ${r.tensileStrength}`.toLowerCase();
+        const text = `${r.area} ${r.zoneName} ${r.group} ${r.construction} ${r.groupProductInfo} ${r.tensileStrength}`.toLowerCase();
         if (!text.includes(query)) return false;
       }
       return true;
     });
-  }, [rows, areaFilter, machineTypeGroupFilter, groupFilter, constructionFilter, search]);
+  }, [rows, areaFilter, groupFilter, constructionFilter, search]);
 
   const sortedRows = useMemo(() => {
     const list = [...filteredRows];
@@ -164,7 +155,7 @@ export function FrequencyManager() {
 
   const paged = usePagedRows(
     sortedRows,
-    `${search}|${areaFilter}|${machineTypeGroupFilter}|${groupFilter}|${constructionFilter}|${sortKey}|${sortAsc}`,
+    `${search}|${areaFilter}|${groupFilter}|${constructionFilter}|${sortKey}|${sortAsc}`,
     50,
   );
 
@@ -231,7 +222,6 @@ export function FrequencyManager() {
     const headers = [
       'Area',
       'ZoneName',
-      'SAPMachineTypeGroup',
       'McGroup',
       'Construction',
       'LayLength',
@@ -245,7 +235,6 @@ export function FrequencyManager() {
     const csvLines = sortedRows.map((r) => [
       `"${r.area}"`,
       `"${r.zoneName.replace(/"/g, '""')}"`,
-      `"${r.sapMachineTypeGroup.replace(/"/g, '""')}"`,
       `"${r.group.replace(/"/g, '""')}"`,
       `"${r.construction.replace(/"/g, '""')}"`,
       r.layLength,
@@ -270,13 +259,12 @@ export function FrequencyManager() {
   const clearFilters = () => {
     setSearch('');
     setAreaFilter('');
-    setMachineTypeGroupFilter('');
     setGroupFilter('');
     setConstructionFilter('');
   };
 
   const hasActiveFilters = Boolean(
-    search || areaFilter || machineTypeGroupFilter || groupFilter || constructionFilter,
+    search || areaFilter || groupFilter || constructionFilter,
   );
 
   return (
@@ -415,14 +403,6 @@ export function FrequencyManager() {
             className="frequency-filter-select"
           />
           <SearchableSelect
-            value={machineTypeGroupFilter}
-            onChange={setMachineTypeGroupFilter}
-            options={machineTypeGroupOptions}
-            placeholder="All Machine Types"
-            searchPlaceholder="Search Machine Type…"
-            className="frequency-filter-select"
-          />
-          <SearchableSelect
             value={groupFilter}
             onChange={setGroupFilter}
             options={groupOptions}
@@ -474,7 +454,7 @@ export function FrequencyManager() {
               pageSize={paged.pageSize}
               total={paged.total}
               onPageChange={paged.setPage}
-              label="baris data frekuensi"
+              label="frequency data rows"
             />
             <div className="data-table-wrap" ref={tableWrapRef}>
               <table className="table frequency-table">
@@ -485,9 +465,6 @@ export function FrequencyManager() {
                     </th>
                     <th className="table-sortable-header" onClick={() => toggleSort('zoneName')}>
                       Zone Name {sortIndicator('zoneName')}
-                    </th>
-                    <th className="table-sortable-header" onClick={() => toggleSort('sapMachineTypeGroup')}>
-                      Machine Type {sortIndicator('sapMachineTypeGroup')}
                     </th>
                     <th className="table-sortable-header" onClick={() => toggleSort('group')}>
                       McGroup {sortIndicator('group')}
@@ -525,9 +502,6 @@ export function FrequencyManager() {
                         <span className="frequency-area-badge">{row.area || '-'}</span>
                       </td>
                       <td>{row.zoneName || '-'}</td>
-                      <td>
-                        <span className="frequency-type-badge">{row.sapMachineTypeGroup || '-'}</span>
-                      </td>
                       <td>
                         <strong>{row.group || '-'}</strong>
                       </td>
@@ -570,32 +544,73 @@ export function FrequencyManager() {
               pageSize={paged.pageSize}
               total={paged.total}
               onPageChange={paged.setPage}
-              label="baris data frekuensi"
+              label="frequency data rows"
             />
             <FloatingScrollbar targetRef={tableWrapRef} />
           </>
         )}
       </Card>
 
-      {/* DAX Query & Flow Architecture Dialog */}
+      {/* DAX Query & Flow Architecture Dialog Modal Popup */}
       {showDaxModal && (
-        <div className="modal-backdrop" onClick={() => setShowDaxModal(false)}>
-          <div className="modal-card frequency-dax-dialog" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
+        <div className="modal-backdrop frequency-dax-overlay" onClick={() => setShowDaxModal(false)}>
+          <div
+            className="frequency-dax-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Power BI DAX & Flow Integration"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              className="frequency-dax-modal-header"
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'flex-start',
+                padding: '16px 20px',
+                borderBottom: '1px solid #1e293b',
+                background: '#0b1120',
+              }}
+            >
               <div>
-                <h3>Power BI DAX & Flow Integration</h3>
-                <p className="modal-subtitle">Detail arsitektur koneksi Semantic Model ke WorkLoad</p>
+                <span
+                  style={{
+                    color: '#38bdf8',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    letterSpacing: '0.06em',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  Power BI Integration
+                </span>
+                <h3 style={{ margin: '4px 0 2px', fontSize: '1.2rem', color: '#f8fafc', fontWeight: 600 }}>
+                  Power BI DAX & Flow Integration
+                </h3>
+                <p style={{ margin: 0, fontSize: '0.82rem', color: '#94a3b8' }}>
+                  Architecture details and active DAX query connecting Semantic Model to WorkLoad
+                </p>
               </div>
               <button
                 type="button"
                 className="modal-close"
                 onClick={() => setShowDaxModal(false)}
-                title="Tutup dialog"
+                title="Close dialog"
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#94a3b8',
+                  fontSize: '1.4rem',
+                  cursor: 'pointer',
+                  padding: '4px 8px',
+                  borderRadius: '6px',
+                  lineHeight: 1,
+                }}
               >
                 ✕
               </button>
             </div>
-            <div className="modal-body frequency-dax-dialog-body">
+            <div className="frequency-dax-dialog-body">
               <div className="frequency-dialog-section">
                 <h4>1. Architecture & Data Flow</h4>
                 <div className="frequency-arch-diagram">
@@ -647,7 +662,10 @@ export function FrequencyManager() {
                 <h4>3. Column Mapping to WorkLoad</h4>
                 <ul className="frequency-mapping-list">
                   <li>
-                    <code>DimWIPOrder[SAPMachineTypeGroup]</code> ➔ <strong>Machine Type Group</strong> (SAP machine group classification).
+                    <code>DimZone[ZoneName]</code> ➔ <strong>Zone Name & Area</strong> (e.g. RA, BA, RU, etc.).
+                  </li>
+                  <li>
+                    <code>McGroup[Group]</code> ➔ <strong>McGroup</strong> (Machine group identifier).
                   </li>
                   <li>
                     <code>TonProduced</code> ➔ <strong>Ton Produced</strong> (Actual production volume in metric tons).
@@ -667,7 +685,16 @@ export function FrequencyManager() {
                 </ul>
               </div>
             </div>
-            <div className="modal-footer">
+            <div
+              className="modal-footer"
+              style={{
+                display: 'flex',
+                justifyContent: 'flex-end',
+                padding: '12px 20px',
+                borderTop: '1px solid #1e293b',
+                background: '#0b1120',
+              }}
+            >
               <Button variant="secondary" onClick={() => setShowDaxModal(false)}>
                 Close
               </Button>

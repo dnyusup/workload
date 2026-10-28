@@ -105,7 +105,6 @@ export function generateDaxQuery({
 ADDCOLUMNS(
     SUMMARIZECOLUMNS(
         DimZone[ZoneName],
-        DimWIPOrder[SAPMachineTypeGroup],
         McGroup[Group],
         DimProduct[Construction],
         DimProduct[LayLength],
@@ -141,7 +140,7 @@ export interface FrequencyRecord {
   id: string;
   area: string;
   zoneName: string;
-  sapMachineTypeGroup: string;
+  sapMachineTypeGroup?: string;
   group: string;
   construction: string;
   layLength: number | string;
