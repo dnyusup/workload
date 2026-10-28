@@ -4,7 +4,7 @@
   "type": "Microsoft.PowerApps/apis",
   "properties": {
     "displayName": "Office 365 Users",
-    "iconUri": "https://static.powerapps.com/resource/ppcr/releases/v1.0.1818/1.0.1818.4788/office365users/icon.png",
+    "iconUri": "https://static.powerapps.com/resource/ppcr/releases/v1.0.1834/1.0.1834.5105/office365users/icon.png",
     "iconBrandColor": "#FFFFFF",
     "apiEnvironment": "Shared",
     "isCustomApi": false,
@@ -1285,6 +1285,181 @@
               "url": "https://docs.microsoft.com/connectors/office365users/#send-an-http-request"
             }
           }
+        },
+        "/{connectionId}/codeless/substrate/people/search": {
+          "get": {
+            "summary": "Search for people (Information Barriers enforced)",
+            "description": "Searches for people in your organization using the Substrate People API with Information Barrier enforcement.",
+            "operationId": "SearchUserIBEnforced",
+            "parameters": [
+              {
+                "name": "connectionId",
+                "in": "path",
+                "required": true,
+                "x-ms-visibility": "internal",
+                "type": "string"
+              },
+              {
+                "name": "searchTerm",
+                "in": "query",
+                "description": "Search string (applies to: display name, given name, surname, email address, user principal name).",
+                "required": false,
+                "x-ms-summary": "Search term",
+                "type": "string"
+              },
+              {
+                "name": "top",
+                "in": "query",
+                "description": "Maximum number of results to return. Defaults to 25.",
+                "required": false,
+                "x-ms-summary": "Top",
+                "x-ms-visibility": "advanced",
+                "type": "integer",
+                "format": "int32"
+              },
+              {
+                "name": "isSearchTermRequired",
+                "in": "query",
+                "description": "If set to 'Yes' then no people will be returned when the search term is empty. If set to 'No' then no filtering will be applied when the search term is empty.",
+                "required": false,
+                "x-ms-summary": "Is search term required",
+                "x-ms-visibility": "advanced",
+                "type": "boolean",
+                "default": true
+              },
+              {
+                "name": "serveNoEmailContacts",
+                "in": "query",
+                "description": "Whether to include contacts that do not have an email address.",
+                "required": false,
+                "x-ms-summary": "Include contacts without email addresses",
+                "x-ms-visibility": "advanced",
+                "type": "boolean",
+                "default": true
+              }
+            ],
+            "responses": {
+              "200": {
+                "description": "OK",
+                "schema": {
+                  "$ref": "#/definitions/SubstratePeopleResponse"
+                }
+              },
+              "default": {
+                "description": "Operation Failed."
+              }
+            },
+            "deprecated": false,
+            "x-ms-api-annotation": {
+              "status": "Preview",
+              "family": "SearchUser",
+              "revision": 5
+            },
+            "externalDocs": {
+              "url": "https://docs.microsoft.com/connectors/office365users/#search-for-people-(information-barriers-enforced)"
+            }
+          }
+        },
+        "/{connectionId}/codeless/substrate/people/relevant": {
+          "get": {
+            "summary": "Get relevant people (Information Barriers enforced)",
+            "description": "Retrieves people relevant to the signed-in user using the Substrate People API with Information Barrier enforcement.",
+            "operationId": "RelevantPeopleIBEnforced",
+            "parameters": [
+              {
+                "name": "connectionId",
+                "in": "path",
+                "required": true,
+                "x-ms-visibility": "internal",
+                "type": "string"
+              },
+              {
+                "name": "top",
+                "in": "query",
+                "description": "Maximum number of results to return. Defaults to 25.",
+                "required": false,
+                "x-ms-summary": "Top",
+                "x-ms-visibility": "advanced",
+                "type": "integer",
+                "format": "int32"
+              },
+              {
+                "name": "serveNoEmailContacts",
+                "in": "query",
+                "description": "Whether to include contacts that do not have an email address.",
+                "required": false,
+                "x-ms-summary": "Include contacts without email addresses",
+                "x-ms-visibility": "advanced",
+                "type": "boolean",
+                "default": true
+              }
+            ],
+            "responses": {
+              "200": {
+                "description": "OK",
+                "schema": {
+                  "$ref": "#/definitions/SubstratePeopleResponse"
+                }
+              },
+              "default": {
+                "description": "Operation Failed."
+              }
+            },
+            "deprecated": false,
+            "x-ms-visibility": "advanced",
+            "x-ms-api-annotation": {
+              "status": "Preview",
+              "family": "RelevantPeople",
+              "revision": 4
+            },
+            "externalDocs": {
+              "url": "https://docs.microsoft.com/connectors/office365users/#get-relevant-people-(information-barriers-enforced)"
+            }
+          }
+        },
+        "/{connectionId}/codeless/substrate/people/{id}": {
+          "get": {
+            "summary": "Get user profile (Information Barriers enforced)",
+            "description": "Retrieves the profile of a specific user using the Substrate People API with Information Barrier enforcement.",
+            "operationId": "UserProfileIBEnforced",
+            "parameters": [
+              {
+                "name": "connectionId",
+                "in": "path",
+                "required": true,
+                "x-ms-visibility": "internal",
+                "type": "string"
+              },
+              {
+                "name": "id",
+                "in": "path",
+                "description": "User principal name (UPN).",
+                "required": true,
+                "x-ms-summary": "User (UPN)",
+                "type": "string"
+              }
+            ],
+            "responses": {
+              "200": {
+                "description": "OK",
+                "schema": {
+                  "$ref": "#/definitions/SubstratePerson"
+                }
+              },
+              "default": {
+                "description": "Operation Failed."
+              }
+            },
+            "deprecated": false,
+            "x-ms-api-annotation": {
+              "status": "Preview",
+              "family": "UserProfile",
+              "revision": 4
+            },
+            "externalDocs": {
+              "url": "https://docs.microsoft.com/connectors/office365users/#get-user-profile-(information-barriers-enforced)"
+            }
+          }
         }
       },
       "definitions": {
@@ -1958,7 +2133,192 @@
             }
           }
         },
-        "ObjectWithoutType": {}
+        "ObjectWithoutType": {},
+        "SubstratePhone": {
+          "description": "Represents a phone number from the Substrate People API",
+          "type": "object",
+          "properties": {
+            "number": {
+              "description": "The phone number",
+              "type": "string",
+              "x-ms-summary": "Phone Number"
+            },
+            "type": {
+              "description": "The type of phone number (Business, Home, Mobile)",
+              "type": "string",
+              "x-ms-summary": "Phone Type"
+            }
+          }
+        },
+        "SubstrateInferences": {
+          "description": "Describes how the person is represented in the signed-in user's mailbox and directory",
+          "type": "object",
+          "properties": {
+            "isPersonalContact": {
+              "description": "Whether the person exists as a personal contact in the signed-in user's mailbox",
+              "type": "boolean",
+              "x-ms-summary": "Is personal contact"
+            },
+            "existsInGal": {
+              "description": "Whether the person exists in the Global Address List",
+              "type": "boolean",
+              "x-ms-summary": "Exists in GAL"
+            },
+            "isReadOnly": {
+              "description": "Whether the person exists only in the Global Address List",
+              "type": "boolean",
+              "x-ms-summary": "Is read only"
+            }
+          }
+        },
+        "SubstratePerson": {
+          "description": "Represents a person returned by the Substrate People API. Only includes fields supported by substrate; fields like aboutMe and interests are not available.",
+          "type": "object",
+          "properties": {
+            "id": {
+              "description": "Substrate ID of the person in uid@tid format. Use externalDirectoryObjectId to identify the user in AAD.",
+              "type": "string",
+              "x-ms-summary": "Id"
+            },
+            "tenantId": {
+              "description": "The tenant ID for an Azure Active Directory person",
+              "type": "string",
+              "x-ms-summary": "Tenant ID"
+            },
+            "concatenatedId": {
+              "description": "The mailbox identifier for a private contact",
+              "type": "string",
+              "x-ms-summary": "Concatenated ID"
+            },
+            "adObjectId": {
+              "description": "The Exchange Online Active Directory ID. Use externalDirectoryObjectId when identifying an AAD user.",
+              "type": "string",
+              "x-ms-summary": "Exchange AD object ID"
+            },
+            "mri": {
+              "description": "The Teams Message Resource Identifier for an Azure Active Directory person",
+              "type": "string",
+              "x-ms-summary": "MRI"
+            },
+            "alias": {
+              "description": "The alias of the person",
+              "type": "string",
+              "x-ms-summary": "Alias"
+            },
+            "displayName": {
+              "description": "The person's display name",
+              "type": "string",
+              "x-ms-summary": "Display name"
+            },
+            "text": {
+              "description": "The recommended text to display for the person",
+              "type": "string",
+              "x-ms-summary": "Text"
+            },
+            "givenName": {
+              "description": "The person's given name (first name)",
+              "type": "string",
+              "x-ms-summary": "Given name"
+            },
+            "surname": {
+              "description": "The person's surname (last name)",
+              "type": "string",
+              "x-ms-summary": "Surname"
+            },
+            "emailAddresses": {
+              "description": "The person's email addresses. Use the first entry to send email.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "x-ms-summary": "Email addresses"
+            },
+            "proxyEmailAddresses": {
+              "description": "The person's proxy SMTP addresses from Active Directory",
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "x-ms-summary": "Proxy email addresses"
+            },
+            "userPrincipalName": {
+              "description": "The user principal name (UPN) of the user",
+              "type": "string",
+              "x-ms-summary": "User Principal Name (UPN)"
+            },
+            "jobTitle": {
+              "description": "The person's job title",
+              "type": "string",
+              "x-ms-summary": "Job title"
+            },
+            "department": {
+              "description": "The person's department",
+              "type": "string",
+              "x-ms-summary": "Department"
+            },
+            "companyName": {
+              "description": "The person's company name",
+              "type": "string",
+              "x-ms-summary": "Company name"
+            },
+            "officeLocation": {
+              "description": "The person's office location",
+              "type": "string",
+              "x-ms-summary": "Office location"
+            },
+            "imAddress": {
+              "description": "The person's SIP address for instant messaging",
+              "type": "string",
+              "x-ms-summary": "IM address"
+            },
+            "phones": {
+              "description": "The person's phone numbers",
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/SubstratePhone"
+              },
+              "x-ms-summary": "Phones"
+            },
+            "peopleType": {
+              "description": "The type of the person entry (Person, Group, Other)",
+              "type": "string",
+              "x-ms-summary": "People type"
+            },
+            "peopleSubtype": {
+              "description": "The subtype of the person entry (OrganizationUser, PersonalContact, etc.)",
+              "type": "string",
+              "x-ms-summary": "People subtype"
+            },
+            "externalDirectoryObjectId": {
+              "description": "The Azure Active Directory object ID (GUID) of the user. Use this to identify the user in AAD.",
+              "type": "string",
+              "x-ms-summary": "AAD object ID"
+            },
+            "confidence": {
+              "description": "Whether Substrate has high confidence that this person is a good result for the query",
+              "type": "string",
+              "x-ms-summary": "Confidence"
+            },
+            "inferences": {
+              "description": "Information inferred from the person's mailbox and directory presence",
+              "$ref": "#/definitions/SubstrateInferences",
+              "x-ms-summary": "Inferences"
+            }
+          }
+        },
+        "SubstratePeopleResponse": {
+          "description": "Response from the Substrate People API",
+          "type": "object",
+          "properties": {
+            "value": {
+              "description": "List of people",
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/SubstratePerson"
+              }
+            }
+          }
+        }
       },
       "securityDefinitions": {
         "oauth2_auth": {
@@ -2031,8 +2391,8 @@
       "brandColor": "#FFFFFF",
       "useNewApimVersion": "true",
       "version": {
-        "previous": "releases/v1.0.1816\\1.0.1816.4782",
-        "current": "releases/v1.0.1818\\1.0.1818.4788"
+        "previous": "releases/v1.0.1818\\1.0.1818.4788",
+        "current": "releases/v1.0.1834\\1.0.1834.5105"
       }
     },
     "capabilities": [
@@ -2041,7 +2401,7 @@
     "interfaces": {},
     "description": "Office 365 Users Connection provider lets you access user profiles in your organization using your Office 365 account. You can perform various actions such as get your profile, a user's profile, a user's manager or direct reports and also update a user profile.",
     "createdTime": "2016-10-07T18:41:09.083101Z",
-    "changedTime": "2026-07-09T22:01:30.8499534Z",
+    "changedTime": "2026-10-25T07:02:27.9982564Z",
     "releaseTag": "Production",
     "tier": "Standard",
     "publisher": "Microsoft",

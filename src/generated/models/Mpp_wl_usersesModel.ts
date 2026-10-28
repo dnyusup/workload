@@ -27,21 +27,9 @@ export interface Mpp_wl_usersesBase {
 }
 
 export interface Mpp_wl_userses extends Mpp_wl_usersesBase {
-  createdbyname?: string;
-  createdbyyominame: string;
   createdon?: string;
-  createdonbehalfbyname?: string;
-  createdonbehalfbyyominame: string;
-  modifiedbyname?: string;
-  modifiedbyyominame: string;
   modifiedon?: string;
-  modifiedonbehalfbyname?: string;
-  modifiedonbehalfbyyominame: string;
   ownerid: string;
-  owneridname: string;
-  owneridtype: string;
-  owneridyominame: string;
-  owningbusinessunitname: string;
   statecodename?: string;
   statuscodename?: string;
   versionnumber?: number;

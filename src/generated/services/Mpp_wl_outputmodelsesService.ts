@@ -24,19 +24,22 @@ export class Mpp_wl_outputmodelsesService {
     return result;
   }
 
-  public static async update(id: string, changedFields: Partial<Omit<Mpp_wl_outputmodelsesBase, 'mpp_wl_outputmodelsid'>>): Promise<IOperationResult<Mpp_wl_outputmodelses>> {
+  public static async update(id: string, changedFields: Partial<Omit<Mpp_wl_outputmodelsesBase, 'mpp_wl_outputmodelsid'>>, partitionId?: string): Promise<IOperationResult<Mpp_wl_outputmodelses>> {
     const result = await Mpp_wl_outputmodelsesService.client.updateRecordAsync<Partial<Omit<Mpp_wl_outputmodelsesBase, 'mpp_wl_outputmodelsid'>>, Mpp_wl_outputmodelses>(
       Mpp_wl_outputmodelsesService.dataSourceName,
       id,
-      changedFields
+      changedFields,
+      partitionId
     );
     return result;
   }
 
-  public static async delete(id: string): Promise<void> {
-    await Mpp_wl_outputmodelsesService.client.deleteRecordAsync(
+  public static async delete(id: string, partitionId?: string): Promise<IOperationResult<void>> {
+    const result = await Mpp_wl_outputmodelsesService.client.deleteRecordAsync(
       Mpp_wl_outputmodelsesService.dataSourceName,
-      id);
+      id,
+      partitionId);
+    return result;
   }
 
   public static async get(id: string, options?: IGetOptions): Promise<IOperationResult<Mpp_wl_outputmodelses>> {

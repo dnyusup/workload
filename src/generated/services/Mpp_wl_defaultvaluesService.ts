@@ -24,19 +24,22 @@ export class Mpp_wl_defaultvaluesService {
     return result;
   }
 
-  public static async update(id: string, changedFields: Partial<Omit<Mpp_wl_defaultvaluesBase, 'mpp_wl_defaultvalueid'>>): Promise<IOperationResult<Mpp_wl_defaultvalues>> {
+  public static async update(id: string, changedFields: Partial<Omit<Mpp_wl_defaultvaluesBase, 'mpp_wl_defaultvalueid'>>, partitionId?: string): Promise<IOperationResult<Mpp_wl_defaultvalues>> {
     const result = await Mpp_wl_defaultvaluesService.client.updateRecordAsync<Partial<Omit<Mpp_wl_defaultvaluesBase, 'mpp_wl_defaultvalueid'>>, Mpp_wl_defaultvalues>(
       Mpp_wl_defaultvaluesService.dataSourceName,
       id,
-      changedFields
+      changedFields,
+      partitionId
     );
     return result;
   }
 
-  public static async delete(id: string): Promise<void> {
-    await Mpp_wl_defaultvaluesService.client.deleteRecordAsync(
+  public static async delete(id: string, partitionId?: string): Promise<IOperationResult<void>> {
+    const result = await Mpp_wl_defaultvaluesService.client.deleteRecordAsync(
       Mpp_wl_defaultvaluesService.dataSourceName,
-      id);
+      id,
+      partitionId);
+    return result;
   }
 
   public static async get(id: string, options?: IGetOptions): Promise<IOperationResult<Mpp_wl_defaultvalues>> {

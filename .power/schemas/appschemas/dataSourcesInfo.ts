@@ -763,6 +763,110 @@ export const dataSourcesInfo = {
             "type": "void"
           }
         }
+      },
+      "SearchUserIBEnforced": {
+        "path": "/{connectionId}/codeless/substrate/people/search",
+        "method": "GET",
+        "parameters": [
+          {
+            "name": "connectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "searchTerm",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "top",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "isSearchTermRequired",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "serveNoEmailContacts",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          }
+        ],
+        "responseInfo": {
+          "200": {
+            "type": "object"
+          },
+          "default": {
+            "type": "void"
+          }
+        }
+      },
+      "RelevantPeopleIBEnforced": {
+        "path": "/{connectionId}/codeless/substrate/people/relevant",
+        "method": "GET",
+        "parameters": [
+          {
+            "name": "connectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "top",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "serveNoEmailContacts",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          }
+        ],
+        "responseInfo": {
+          "200": {
+            "type": "object"
+          },
+          "default": {
+            "type": "void"
+          }
+        }
+      },
+      "UserProfileIBEnforced": {
+        "path": "/{connectionId}/codeless/substrate/people/{id}",
+        "method": "GET",
+        "parameters": [
+          {
+            "name": "connectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responseInfo": {
+          "200": {
+            "type": "object"
+          },
+          "default": {
+            "type": "void"
+          }
+        }
       }
     }
   },

@@ -1,13 +1,14 @@
 import { Mpp_wl_activitiesService } from '../generated/services/Mpp_wl_activitiesService';
 import type { Mpp_wl_activities } from '../generated/models/Mpp_wl_activitiesModel';
 import type { Mpp_wl_productses } from '../generated/models/Mpp_wl_productsesModel';
-import type { AppConfig, ProductionMachineAssignment, ProductionSetup } from '../types';
+import type { AppConfig, FrequencyMode, ProductionMachineAssignment, ProductionSetup } from '../types';
 import { buildConstructionConfig } from './constructionConfig';
 import { fetchAllPages } from './dataversePaging';
 import { loadDefaultLayouts, loadDefaultValues, type DefaultValues } from './defaultValuesStore';
 import { loadSavedLayouts, type SavedLayout } from './savedLayoutsStore';
 import { productOperatorSettings } from './productCatalog';
 import { recommendedMachineCountForForecast } from './singleOperatorUtilization';
+import type { HistoricalFrequencyMap } from './frequencyCatalog';
 
 /** What the Work Load Simulator's setup for a Construction Detail is built from. */
 export interface OptimizeInputs {
@@ -60,6 +61,7 @@ export interface SetupOperatorSettings {
   minRemainForDoffPriority: number;
   waitingModel: ProductionSetup['waitingModel'];
   useWaitingModel?: boolean;
+  frequencyMode?: FrequencyMode;
 }
 
 export function setupOperatorSettings(setup: ProductionSetup): SetupOperatorSettings {
@@ -76,6 +78,7 @@ export function setupOperatorSettings(setup: ProductionSetup): SetupOperatorSett
     minRemainForDoffPriority: setup.minRemainForDoffPriority,
     waitingModel: setup.waitingModel,
     useWaitingModel: setup.useWaitingModel,
+    frequencyMode: setup.frequencyMode ?? 'manual',
   };
 }
 
@@ -91,13 +94,22 @@ export function optimizeConfigFor(
   product: Mpp_wl_productses,
   inputs: OptimizeInputs,
   settings: SetupOperatorSettings,
+  frequencyCatalog?: HistoricalFrequencyMap | null,
 ): { config: AppConfig; hasDefaultLayout: boolean } {
   const area = (product.mpp_area ?? '').trim().toUpperCase();
   const layout = inputs.layoutByArea.get(area) ?? null;
   const activityRows = inputs.activitiesByConstruction.get(constructionKey(product.mpp_constructioncode)) ?? [];
   // No Default Layout: start from an empty one rather than whatever the simulator last had open.
   const neutralBase: AppConfig = layout ? base : { ...base, layout: [], walls: [], remarks: [], operatorStart: undefined, assignedMachineIds: [] };
-  const { config: built } = buildConstructionConfig({ base: neutralBase, product, activityRows, defaults: inputs.defaults, layout });
+  const { config: built } = buildConstructionConfig({
+    base: neutralBase,
+    product,
+    activityRows,
+    defaults: inputs.defaults,
+    layout,
+    frequencyMode: settings.frequencyMode,
+    frequencyCatalog,
+  });
   const own = productOperatorSettings(product);
   const config: AppConfig = {
     ...built,

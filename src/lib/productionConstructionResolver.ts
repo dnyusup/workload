@@ -3,7 +3,7 @@ import type { Mpp_wl_activities } from '../generated/models/Mpp_wl_activitiesMod
 import type { Mpp_wl_productses } from '../generated/models/Mpp_wl_productsesModel';
 import type { ActivityConfig, ActivityKey, FrequencyMode, MachineSpecInput } from '../types';
 import { buildActivitiesFromRows, mapProductToSpec, productOperatorSettings, type ProductOperatorSettings } from './productCatalog';
-import { activityCycleLength, deriveMachineSpec, ensureCoreActivities } from './calculations';
+import { activityCycleLength, deriveMachineSpec, ensureCoreActivities, syncAutoActivityValues } from './calculations';
 import { fetchAllPages } from './dataversePaging';
 import { resolveEffectiveFrequencies, type HistoricalFrequencyMap } from './frequencyCatalog';
 
@@ -118,7 +118,10 @@ export async function resolveConstructions(
     }
 
     const built = buildActivitiesFromRows(activityRows, product, derived.spoolWeight, spec.fracturePerTon);
-    const activities = ensureCoreActivities(built.activities, derived.spoolWeight, spec.fracturePerTon);
+    const activities = syncAutoActivityValues(
+      ensureCoreActivities(built.activities, derived.spoolWeight, spec.fracturePerTon),
+      spec,
+    );
     built.errors.forEach((e) => errors.push(`${product.mpp_constructiondetailcode}: ${e}`));
 
     const cycleLengths = Object.fromEntries(activities.map((a) => [a.key, activityCycleLength(a)]));

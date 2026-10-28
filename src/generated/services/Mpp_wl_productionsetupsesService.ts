@@ -24,19 +24,22 @@ export class Mpp_wl_productionsetupsesService {
     return result;
   }
 
-  public static async update(id: string, changedFields: Partial<Omit<Mpp_wl_productionsetupsesBase, 'mpp_wl_productionsetupsid'>>): Promise<IOperationResult<Mpp_wl_productionsetupses>> {
+  public static async update(id: string, changedFields: Partial<Omit<Mpp_wl_productionsetupsesBase, 'mpp_wl_productionsetupsid'>>, partitionId?: string): Promise<IOperationResult<Mpp_wl_productionsetupses>> {
     const result = await Mpp_wl_productionsetupsesService.client.updateRecordAsync<Partial<Omit<Mpp_wl_productionsetupsesBase, 'mpp_wl_productionsetupsid'>>, Mpp_wl_productionsetupses>(
       Mpp_wl_productionsetupsesService.dataSourceName,
       id,
-      changedFields
+      changedFields,
+      partitionId
     );
     return result;
   }
 
-  public static async delete(id: string): Promise<void> {
-    await Mpp_wl_productionsetupsesService.client.deleteRecordAsync(
+  public static async delete(id: string, partitionId?: string): Promise<IOperationResult<void>> {
+    const result = await Mpp_wl_productionsetupsesService.client.deleteRecordAsync(
       Mpp_wl_productionsetupsesService.dataSourceName,
-      id);
+      id,
+      partitionId);
+    return result;
   }
 
   public static async get(id: string, options?: IGetOptions): Promise<IOperationResult<Mpp_wl_productionsetupses>> {

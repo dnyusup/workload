@@ -17,6 +17,9 @@ export interface Mpp_wl_productionsetupsesBase {
   importsequencenumber?: number;
   mpp_creator_email?: string;
   mpp_doffpriority?: string;
+  mpp_frequencyenddate?: string;
+  mpp_frequencysource?: string;
+  mpp_frequencystartdate?: string;
   mpp_layoutsnapshotjson?: string;
   mpp_lunchstartat?: number;
   mpp_lunchtime?: number;
@@ -40,21 +43,9 @@ export interface Mpp_wl_productionsetupsesBase {
 }
 
 export interface Mpp_wl_productionsetupses extends Mpp_wl_productionsetupsesBase {
-  createdbyname?: string;
-  createdbyyominame: string;
   createdon?: string;
-  createdonbehalfbyname?: string;
-  createdonbehalfbyyominame: string;
-  modifiedbyname?: string;
-  modifiedbyyominame: string;
   modifiedon?: string;
-  modifiedonbehalfbyname?: string;
-  modifiedonbehalfbyyominame: string;
   ownerid: string;
-  owneridname: string;
-  owneridtype: string;
-  owneridyominame: string;
-  owningbusinessunitname: string;
   statecodename?: string;
   statuscodename?: string;
   versionnumber?: number;

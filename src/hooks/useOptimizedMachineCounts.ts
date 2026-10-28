@@ -8,6 +8,7 @@ import {
   type OptimizeInputs,
   type SetupOperatorSettings,
 } from '../lib/theoreticalOperators';
+import type { HistoricalFrequencyMap } from '../lib/frequencyCatalog';
 
 export interface OptimizedCount {
   machinesPerOperator: number;
@@ -68,6 +69,7 @@ export function useOptimizedMachineCounts(
   products: Mpp_wl_productses[],
   base: AppConfig,
   settings: SetupOperatorSettings | null,
+  frequencyCatalog?: HistoricalFrequencyMap | null,
 ) {
   /** Keyed `<settings>
 <productId>`. */
@@ -99,10 +101,13 @@ export function useOptimizedMachineCounts(
   }, []);
 
   const idsKey = [...new Set(productIds)].sort().join('|');
-  const settingsKey = settings ? JSON.stringify(settings) : '';
+  const catalogKey = settings?.frequencyMode === 'historical' ? (frequencyCatalog ? 'loaded' : 'pending') : '';
+  const settingsKey = settings ? `${JSON.stringify(settings)}:${catalogKey}` : '';
   const settingsRef = useRef(settings);
+  const frequencyCatalogRef = useRef(frequencyCatalog);
   useEffect(() => {
     settingsRef.current = settings;
+    frequencyCatalogRef.current = frequencyCatalog;
   });
   useEffect(() => {
     const runner = runnerRef.current;
@@ -119,7 +124,13 @@ ${id}`;
     void (async () => {
       for (const id of todo) {
         if (!alive) return;
-        const { config, hasDefaultLayout } = optimizeConfigFor(baseRef.current, productById.get(id)!, inputs, currentSettings);
+        const { config, hasDefaultLayout } = optimizeConfigFor(
+          baseRef.current,
+          productById.get(id)!,
+          inputs,
+          currentSettings,
+          frequencyCatalogRef.current,
+        );
         const machinesPerOperator = await runner.run(config);
         if (!alive) return;
         finished.add(id);
@@ -133,7 +144,7 @@ ${id}`;
         if (!finished.has(id)) requestedIds.delete(keyOf(id));
       });
     };
-  }, [idsKey, settingsKey, inputs, products]);
+  }, [idsKey, settingsKey, inputs, products, frequencyCatalog]);
 
   /** This settings' counts, by Construction Detail id. */
   const counts = useMemo(() => {

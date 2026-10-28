@@ -81,21 +81,9 @@ export interface Mpp_wl_outputmodelsesBase {
 }
 
 export interface Mpp_wl_outputmodelses extends Mpp_wl_outputmodelsesBase {
-  createdbyname?: string;
-  createdbyyominame: string;
   createdon?: string;
-  createdonbehalfbyname?: string;
-  createdonbehalfbyyominame: string;
-  modifiedbyname?: string;
-  modifiedbyyominame: string;
   modifiedon?: string;
-  modifiedonbehalfbyname?: string;
-  modifiedonbehalfbyyominame: string;
   ownerid: string;
-  owneridname: string;
-  owneridtype: string;
-  owneridyominame: string;
-  owningbusinessunitname: string;
   statecodename?: string;
   statuscodename?: string;
   versionnumber?: number;

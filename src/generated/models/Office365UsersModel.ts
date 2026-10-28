@@ -252,3 +252,75 @@ export interface GraphUser_V1 {
 }
 
 export type ObjectWithoutType = object;
+
+export interface SubstratePhone {
+  // The phone number
+  number?: string;
+  // The type of phone number (Business, Home, Mobile)
+  type?: string;
+}
+
+export interface SubstrateInferences {
+  // Whether the person exists as a personal contact in the signed-in user's mailbox
+  isPersonalContact?: boolean;
+  // Whether the person exists in the Global Address List
+  existsInGal?: boolean;
+  // Whether the person exists only in the Global Address List
+  isReadOnly?: boolean;
+}
+
+export interface SubstratePerson {
+  // Substrate ID of the person in uid@tid format. Use externalDirectoryObjectId to identify the user in AAD.
+  id?: string;
+  // The tenant ID for an Azure Active Directory person
+  tenantId?: string;
+  // The mailbox identifier for a private contact
+  concatenatedId?: string;
+  // The Exchange Online Active Directory ID. Use externalDirectoryObjectId when identifying an AAD user.
+  adObjectId?: string;
+  // The Teams Message Resource Identifier for an Azure Active Directory person
+  mri?: string;
+  // The alias of the person
+  alias?: string;
+  // The person's display name
+  displayName?: string;
+  // The recommended text to display for the person
+  text?: string;
+  // The person's given name (first name)
+  givenName?: string;
+  // The person's surname (last name)
+  surname?: string;
+  // The person's email addresses. Use the first entry to send email.
+  emailAddresses?: string[];
+  // The person's proxy SMTP addresses from Active Directory
+  proxyEmailAddresses?: string[];
+  // The user principal name (UPN) of the user
+  userPrincipalName?: string;
+  // The person's job title
+  jobTitle?: string;
+  // The person's department
+  department?: string;
+  // The person's company name
+  companyName?: string;
+  // The person's office location
+  officeLocation?: string;
+  // The person's SIP address for instant messaging
+  imAddress?: string;
+  // The person's phone numbers
+  phones?: SubstratePhone[];
+  // The type of the person entry (Person, Group, Other)
+  peopleType?: string;
+  // The subtype of the person entry (OrganizationUser, PersonalContact, etc.)
+  peopleSubtype?: string;
+  // The Azure Active Directory object ID (GUID) of the user. Use this to identify the user in AAD.
+  externalDirectoryObjectId?: string;
+  // Whether Substrate has high confidence that this person is a good result for the query
+  confidence?: string;
+  // Information inferred from the person's mailbox and directory presence
+  inferences?: SubstrateInferences;
+}
+
+export interface SubstratePeopleResponse {
+  // List of people
+  value?: SubstratePerson[];
+}

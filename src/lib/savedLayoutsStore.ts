@@ -95,7 +95,7 @@ export async function loadSavedLayouts(): Promise<SavedLayout[]> {
       updatedAt: row.modifiedon ? new Date(row.modifiedon).getTime() : Date.now(),
       createdAt: row.createdon ? new Date(row.createdon).getTime() : Date.now(),
       createdByEmail: row.mpp_creator_email ?? '',
-      createdByName: row.createdbyname ?? '',
+      createdByName: (row as any).createdbyname ?? '',
     };
   });
 }
@@ -125,7 +125,7 @@ export async function createSavedLayout(
     updatedAt: Date.now(),
     createdAt: Date.now(),
     createdByEmail: creatorEmail,
-    createdByName: result.data.createdbyname ?? '',
+    createdByName: (result.data as any).createdbyname ?? '',
   };
 }
 

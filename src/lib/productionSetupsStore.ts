@@ -114,7 +114,7 @@ export async function listProductionSetupSummaries(): Promise<ProductionSetupSum
     updatedAt: row.modifiedon ? new Date(row.modifiedon).getTime() : Date.now(),
     createdAt: row.createdon ? new Date(row.createdon).getTime() : Date.now(),
     createdByEmail: row.mpp_creator_email ?? '',
-    createdByName: row.createdbyname ?? '',
+    createdByName: (row as any).createdbyname ?? '',
   }));
 }
 
@@ -178,6 +178,7 @@ export async function loadProductionSetup(id: string, constructionLabelById: Map
     doffPriority: (header.mpp_doffpriority ?? '').trim().toLowerCase() === 'yes',
     minRemainForDoffPriority: header.mpp_minremaintaskfordoffpriority ?? BUILT_IN_DEFAULTS.minRemainForDoffPriority,
     waitingModel,
+    frequencyMode: (header.mpp_planningtype === 'historical' ? 'historical' : 'manual'),
     updatedAt: header.modifiedon ? new Date(header.modifiedon).getTime() : Date.now(),
   };
 }
@@ -212,6 +213,7 @@ export async function createProductionSetup(
     mpp_doffpriority: defaults.doffPriority ? 'Yes' : 'No',
     mpp_minremaintaskfordoffpriority: defaults.minRemainForDoffPriority,
     mpp_optimizemodel: formatWaitingModel(defaults.waitingModel),
+    mpp_planningtype: defaults.frequencyMode ?? 'manual',
     // Active state, matching WL_Layouts' `0 | 1` statecode enum.
     statecode: 0,
   });
@@ -256,6 +258,7 @@ export async function createProductionSetup(
     minRemainForDoffPriority: defaults.minRemainForDoffPriority,
     waitingModel: defaults.waitingModel,
     useWaitingModel: defaults.useWaitingModel,
+    frequencyMode: defaults.frequencyMode ?? 'manual',
     updatedAt: Date.now(),
   };
 }
@@ -277,6 +280,7 @@ export async function updateProductionSetupHeader(
       | 'doffPriority'
       | 'minRemainForDoffPriority'
       | 'waitingModel'
+      | 'frequencyMode'
     >
   >,
 ): Promise<void> {
@@ -296,6 +300,7 @@ export async function updateProductionSetupHeader(
     fields.mpp_walkingspeed = patch.movement.walkingSpeed;
     fields.mpp_pixelspermeter = DEFAULT_PIXELS_PER_METER;
   }
+  if (patch.frequencyMode !== undefined) fields.mpp_planningtype = patch.frequencyMode;
   if (Object.keys(fields).length === 0) return;
   const result = await Mpp_wl_productionsetupsesService.update(id, fields);
   if (!result.success) throw new Error(result.error?.message ?? 'Failed to update Production Setup.');

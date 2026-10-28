@@ -11,6 +11,8 @@ import type { GraphUser_V1 } from '../models/Office365UsersModel';
 import type { IOperationResult } from '@microsoft/power-apps/data';
 import type { LinklessEntityListResponse_List_Person } from '../models/Office365UsersModel';
 import type { ObjectWithoutType } from '../models/Office365UsersModel';
+import type { SubstratePeopleResponse } from '../models/Office365UsersModel';
+import type { SubstratePerson } from '../models/Office365UsersModel';
 import type { User } from '../models/Office365UsersModel';
 import { dataSourcesInfo } from '../../../.power/schemas/appschemas/dataSourcesInfo';
 import { getClient } from '@microsoft/power-apps/data';
@@ -335,6 +337,57 @@ export class Office365UsersService {
         connectorOperation: {
           tableName: Office365UsersService.dataSourceName,
           operationName: 'HttpRequest',
+          parameters: params
+        },
+      });
+    return result;
+  }
+
+  /**
+   * Search for people (Information Barriers enforced)
+   * Searches for people in your organization using the Substrate People API with Information Barrier enforcement.
+   */
+  public static async SearchUserIBEnforced(searchTerm?: string, top?: number, isSearchTermRequired?: boolean, serveNoEmailContacts?: boolean): Promise<IOperationResult<SubstratePeopleResponse>> {
+    const params: { searchTerm?: string, top?: number, isSearchTermRequired?: boolean, serveNoEmailContacts?: boolean } = { searchTerm, top, isSearchTermRequired, serveNoEmailContacts };
+    const result = await Office365UsersService.client.executeAsync<{ searchTerm?: string, top?: number, isSearchTermRequired?: boolean, serveNoEmailContacts?: boolean }, SubstratePeopleResponse>(
+      {
+        connectorOperation: {
+          tableName: Office365UsersService.dataSourceName,
+          operationName: 'SearchUserIBEnforced',
+          parameters: params
+        },
+      });
+    return result;
+  }
+
+  /**
+   * Get relevant people (Information Barriers enforced)
+   * Retrieves people relevant to the signed-in user using the Substrate People API with Information Barrier enforcement.
+   */
+  public static async RelevantPeopleIBEnforced(top?: number, serveNoEmailContacts?: boolean): Promise<IOperationResult<SubstratePeopleResponse>> {
+    const params: { top?: number, serveNoEmailContacts?: boolean } = { top, serveNoEmailContacts };
+    const result = await Office365UsersService.client.executeAsync<{ top?: number, serveNoEmailContacts?: boolean }, SubstratePeopleResponse>(
+      {
+        connectorOperation: {
+          tableName: Office365UsersService.dataSourceName,
+          operationName: 'RelevantPeopleIBEnforced',
+          parameters: params
+        },
+      });
+    return result;
+  }
+
+  /**
+   * Get user profile (Information Barriers enforced)
+   * Retrieves the profile of a specific user using the Substrate People API with Information Barrier enforcement.
+   */
+  public static async UserProfileIBEnforced(id: string): Promise<IOperationResult<SubstratePerson>> {
+    const params: { id: string } = { id };
+    const result = await Office365UsersService.client.executeAsync<{ id: string }, SubstratePerson>(
+      {
+        connectorOperation: {
+          tableName: Office365UsersService.dataSourceName,
+          operationName: 'UserProfileIBEnforced',
           parameters: params
         },
       });

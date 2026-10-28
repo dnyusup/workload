@@ -4,11 +4,13 @@
  */
 
 export interface IGetOptions {
+  partitionId?: string;
   select?: string[];
 };
 
 export interface IGetAllOptions {
   maxPageSize?: number;
+  partitionId?: string;
   select?: string[];
   filter?: string;
   orderBy?: string[];

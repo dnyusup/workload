@@ -73,8 +73,36 @@
       "definitions": {
         "ManualTriggerInput": {
           "type": "object",
-          "properties": {},
-          "required": []
+          "properties": {
+            "text": {
+              "title": "PlantName",
+              "type": "string",
+              "x-ms-dynamically-added": true,
+              "description": "Please enter your input",
+              "x-ms-content-hint": "TEXT"
+            },
+            "date": {
+              "title": "StartDate",
+              "type": "string",
+              "format": "date",
+              "x-ms-dynamically-added": true,
+              "description": "Please enter or select a date (YYYY-MM-DD)",
+              "x-ms-content-hint": "DATE"
+            },
+            "date_1": {
+              "title": "EndDate",
+              "type": "string",
+              "format": "date",
+              "x-ms-dynamically-added": true,
+              "description": "Please enter or select a date (YYYY-MM-DD)",
+              "x-ms-content-hint": "DATE"
+            }
+          },
+          "required": [
+            "text",
+            "date",
+            "date_1"
+          ]
         },
         "ResponseActionOutput": {
           "type": "object",

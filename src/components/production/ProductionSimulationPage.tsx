@@ -428,29 +428,6 @@ export function ProductionSimulationPage() {
     }
   };
 
-  /** Optimistic local-state patch for the currently loaded setup — callers that already wrote
-   * their own change to Dataverse (add/remove operator, bulk assign, CSV import, header edits)
-   * use this just to keep the in-memory copy in sync, not to trigger any persistence itself. */
-  const patchLocalSetup = (patch: Partial<ProductionSetup>) => {
-    const updatedAt = Date.now();
-    setSelectedSetup((prev) => (prev ? { ...prev, ...patch, updatedAt } : prev));
-    if (selectedId) {
-      setSummaries((prev) => prev.map((summary) => (summary.id === selectedId ? { ...summary, updatedAt } : summary)));
-    }
-  };
-
-  // Theoretical Operator Required: Optimize's # Assigned Machines per Construction Detail in use,
-  // worked out in the background and kept while the page is open (switching setups reuses them).
-  const { config: simulatorConfig } = useAppConfig();
-  const plannedProductIds = useMemo(
-    () => (selectedSetup?.assignments ?? []).map((a) => a.constructionDetailId).filter((id): id is string => !!id),
-    [selectedSetup],
-  );
-  const operatorSettings = useMemo(() => (selectedSetup ? setupOperatorSettings(selectedSetup) : null), [selectedSetup]);
-  const optimizedCounts = useOptimizedMachineCounts(plannedProductIds, products, simulatorConfig, operatorSettings);
-
-  const [runState, setRunState] = useState<{ setup: ProductionSetup; resolved: Map<string, ResolvedConstruction>; errors: string[] } | null>(null);
-  const [resolving, setResolving] = useState(false);
   const [freqCatalog, setFreqCatalog] = useState<HistoricalFrequencyMap | null>(null);
 
   useEffect(() => {
@@ -464,6 +441,35 @@ export function ProductionSimulationPage() {
       cancelled = true;
     };
   }, []);
+
+  /** Optimistic local-state patch for the currently loaded setup — callers that already wrote
+   * their own change to Dataverse (add/remove operator, bulk assign, CSV import, header edits)
+   * use this just to keep the in-memory copy in sync, not to trigger any persistence itself. */
+  const patchLocalSetup = (patch: Partial<ProductionSetup>) => {
+    const updatedAt = Date.now();
+    setSelectedSetup((prev) => (prev ? { ...prev, ...patch, updatedAt } : prev));
+    if (selectedId) {
+      setSummaries((prev) => prev.map((summary) => (summary.id === selectedId ? { ...summary, updatedAt } : summary)));
+    }
+    if (patch.frequencyMode === 'historical' && !freqCatalog) {
+      loadFrequencyCatalog()
+        .then(({ catalog }) => setFreqCatalog(catalog))
+        .catch((err) => console.warn('WL_Frequency catalog load on mode change:', err));
+    }
+  };
+
+  // Theoretical Operator Required: Optimize's # Assigned Machines per Construction Detail in use,
+  // worked out in the background and kept while the page is open (switching setups reuses them).
+  const { config: simulatorConfig } = useAppConfig();
+  const plannedProductIds = useMemo(
+    () => (selectedSetup?.assignments ?? []).map((a) => a.constructionDetailId).filter((id): id is string => !!id),
+    [selectedSetup],
+  );
+  const operatorSettings = useMemo(() => (selectedSetup ? setupOperatorSettings(selectedSetup) : null), [selectedSetup]);
+  const optimizedCounts = useOptimizedMachineCounts(plannedProductIds, products, simulatorConfig, operatorSettings, freqCatalog);
+
+  const [runState, setRunState] = useState<{ setup: ProductionSetup; resolved: Map<string, ResolvedConstruction>; errors: string[] } | null>(null);
+  const [resolving, setResolving] = useState(false);
 
   const [plannedResolution, setPlannedResolution] = useState<{
     utilization: PlannedUtilization | null;
