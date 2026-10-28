@@ -29,7 +29,7 @@ const PAGE_DESCRIPTION: Record<AppPage, string> = {
   products: 'Manage WL product and machine specifications',
   activities: 'Configure machine activity times and rules',
   frequency: 'Historical defect, fracture, and dies frequency from Power BI semantic model',
-  actualOutput: 'Actual machine production and productivity output from Power BI MES data',
+  actualOutput: 'Shift actual machine output and productivity from Power BI MES data (WL_ActualOutput)',
   outputModels: 'Review saved workload simulation outputs',
   users: 'Manage user access and roles',
   settings: 'Application settings, such as default values for new setups',
