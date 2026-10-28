@@ -249,6 +249,50 @@ export function ConstructionDetailSelector({
     }
   };
 
+  const handleResetToDefaultRange = async () => {
+    setLoadingCatalog(true);
+    try {
+      const defaults = await loadDefaultValuesOrBuiltIn();
+      const defaultRange = computeFrequencyDateRange(
+        defaults.frequencyDateRangeType,
+        defaults.frequencyStartDate,
+        defaults.frequencyEndDate,
+      );
+      const nextStart = defaultRange.startDate;
+      const nextEnd = defaultRange.endDate;
+
+      const res = await loadFrequencyCatalog({
+        startDate: nextStart,
+        endDate: nextEnd,
+      });
+      setFreqCatalog(res.catalog);
+
+      setConfig((prev) => {
+        const withDates: AppConfig = {
+          ...prev,
+          frequencyStartDate: nextStart,
+          frequencyEndDate: nextEnd,
+        };
+        if (selectedProduct) {
+          const updated = applyFrequencyModeToConfig({
+            config: withDates,
+            product: selectedProduct,
+            mode: 'historical',
+            catalog: res.catalog,
+          });
+          const optimized = withOptimizedAssignment(updated);
+          onApplied?.(optimized);
+          return optimized;
+        }
+        return withDates;
+      });
+    } catch (err) {
+      console.warn('Failed to reset to default frequency range:', err);
+    } finally {
+      setLoadingCatalog(false);
+    }
+  };
+
   const [filters, setFilters] = useState<Record<FilterKey, string>>({ area: '', mach: '', product: '' });
 
   // Each filter's options are narrowed by the OTHER filters (so every filter affects every other
@@ -437,6 +481,19 @@ export function ConstructionDetailSelector({
                 disabled={loadingCatalog || applying}
                 className="construction-selector-date-input"
               />
+              <button
+                type="button"
+                className="construction-selector-date-reset"
+                title="Reset ke rentang tanggal default dari Setting"
+                aria-label="Reset ke rentang tanggal default dari Setting"
+                disabled={loadingCatalog || applying}
+                onClick={() => void handleResetToDefaultRange()}
+              >
+                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                  <path d="M3 3v5h5" />
+                </svg>
+              </button>
             </div>
           )}
 

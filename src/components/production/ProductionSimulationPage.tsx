@@ -1758,10 +1758,36 @@ function ProductionSetupEditor({
                 />
               </Field>
               <Field label="Frequency End Date" tooltip="Tanggal akhir filter kejadian aktual Power BI (format: YYYY-MM-DD)">
-                <DateInput
-                  value={setup.frequencyEndDate ?? ''}
-                  onChange={(v) => onHeaderChange({ frequencyEndDate: v })}
-                />
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                  <DateInput
+                    value={setup.frequencyEndDate ?? ''}
+                    onChange={(v) => onHeaderChange({ frequencyEndDate: v })}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    style={{ padding: '4px 8px', height: '36px', display: 'inline-flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap', fontSize: '0.78rem' }}
+                    title="Reset rentang tanggal ke default dari Setting"
+                    onClick={async () => {
+                      const defaults = await loadDefaultValuesOrBuiltIn();
+                      const range = computeFrequencyDateRange(
+                        defaults.frequencyDateRangeType,
+                        defaults.frequencyStartDate,
+                        defaults.frequencyEndDate,
+                      );
+                      onHeaderChange({
+                        frequencyStartDate: range.startDate,
+                        frequencyEndDate: range.endDate,
+                      });
+                    }}
+                  >
+                    <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                      <path d="M3 3v5h5" />
+                    </svg>
+                    Reset
+                  </button>
+                </div>
               </Field>
             </>
           )}
