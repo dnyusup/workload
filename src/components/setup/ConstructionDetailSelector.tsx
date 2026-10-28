@@ -10,10 +10,11 @@ import { fetchAllPages } from '../../lib/dataversePaging';
 import { loadDefaultLayoutsOrNone, loadDefaultValuesOrBuiltIn } from '../../lib/defaultValuesStore';
 import { loadSavedLayouts } from '../../lib/savedLayoutsStore';
 import { applyFrequencyModeToConfig, buildConstructionConfig, withOptimizedAssignment } from '../../lib/constructionConfig';
-import { loadFrequencyCatalog, lookupHistoricalFrequency, type HistoricalFrequencyMap } from '../../lib/frequencyCatalog';
+import { loadFrequencyCatalog, lookupHistoricalFrequency, computeFrequencyDateRange, type HistoricalFrequencyMap } from '../../lib/frequencyCatalog';
 import type { AppConfig, FrequencyMode } from '../../types';
 import { Card } from '../ui/Card';
 import { SearchableSelect } from '../ui/SearchableSelect';
+import { DateInput } from '../ui/Field';
 import { OutputModelDetailDialog } from '../data/OutputModelDetailDialog';
 import { OUTPUT_MODEL_LIST_SELECT } from '../../lib/outputModelColumns';
 
@@ -63,14 +64,22 @@ export function ConstructionDetailSelector({
   }, []);
 
   useEffect(() => {
-    if (config.frequencyMode === undefined) {
+    if (config.frequencyMode === undefined || !config.frequencyStartDate || !config.frequencyEndDate) {
       void loadDefaultValuesOrBuiltIn().then((defaults) => {
-        if (defaults.frequencyMode) {
-          setConfig((prev) => (prev.frequencyMode !== undefined ? prev : { ...prev, frequencyMode: defaults.frequencyMode }));
-        }
+        const defaultRange = computeFrequencyDateRange(
+          defaults.frequencyDateRangeType,
+          defaults.frequencyStartDate,
+          defaults.frequencyEndDate,
+        );
+        setConfig((prev) => ({
+          ...prev,
+          frequencyMode: prev.frequencyMode ?? defaults.frequencyMode ?? 'manual',
+          frequencyStartDate: prev.frequencyStartDate || defaultRange.startDate,
+          frequencyEndDate: prev.frequencyEndDate || defaultRange.endDate,
+        }));
       });
     }
-  }, [config.frequencyMode, setConfig]);
+  }, [config.frequencyMode, config.frequencyStartDate, config.frequencyEndDate, setConfig]);
 
   useEffect(() => {
     let cancelled = false;
@@ -143,10 +152,21 @@ export function ConstructionDetailSelector({
   const handleFrequencyModeChange = async (newMode: FrequencyMode) => {
     if (newMode === frequencyMode) return;
     let catalog = freqCatalog;
-    if (newMode === 'historical' && !catalog) {
+    let startDate = config.frequencyStartDate;
+    let endDate = config.frequencyEndDate;
+
+    if (newMode === 'historical') {
+      if (!startDate || !endDate) {
+        const defaultRange = computeFrequencyDateRange();
+        startDate = startDate || defaultRange.startDate;
+        endDate = endDate || defaultRange.endDate;
+      }
       setLoadingCatalog(true);
       try {
-        const res = await loadFrequencyCatalog();
+        const res = await loadFrequencyCatalog({
+          startDate,
+          endDate,
+        });
         catalog = res.catalog;
         setFreqCatalog(catalog);
       } catch (err) {
@@ -158,7 +178,12 @@ export function ConstructionDetailSelector({
 
     if (selectedProduct) {
       const updated = applyFrequencyModeToConfig({
-        config,
+        config: {
+          ...config,
+          frequencyMode: newMode,
+          frequencyStartDate: startDate,
+          frequencyEndDate: endDate,
+        },
         product: selectedProduct,
         mode: newMode,
         catalog,
@@ -167,7 +192,60 @@ export function ConstructionDetailSelector({
       setConfig(() => optimized);
       onApplied?.(optimized);
     } else {
-      setConfig((prev) => ({ ...prev, frequencyMode: newMode }));
+      setConfig((prev) => ({
+        ...prev,
+        frequencyMode: newMode,
+        frequencyStartDate: startDate,
+        frequencyEndDate: endDate,
+      }));
+    }
+  };
+
+  const handleDateChange = async (field: 'frequencyStartDate' | 'frequencyEndDate', value: string) => {
+    const nextStart = field === 'frequencyStartDate' ? value : (config.frequencyStartDate ?? '');
+    const nextEnd = field === 'frequencyEndDate' ? value : (config.frequencyEndDate ?? '');
+
+    setConfig((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+
+    if (
+      frequencyMode === 'historical' &&
+      nextStart &&
+      nextEnd &&
+      /^\d{4}-\d{2}-\d{2}$/.test(nextStart) &&
+      /^\d{4}-\d{2}-\d{2}$/.test(nextEnd)
+    ) {
+      setLoadingCatalog(true);
+      try {
+        const res = await loadFrequencyCatalog({
+          startDate: nextStart,
+          endDate: nextEnd,
+        });
+        setFreqCatalog(res.catalog);
+        if (selectedProduct) {
+          setConfig((prev) => {
+            const updated = applyFrequencyModeToConfig({
+              config: {
+                ...prev,
+                frequencyStartDate: nextStart,
+                frequencyEndDate: nextEnd,
+              },
+              product: selectedProduct,
+              mode: 'historical',
+              catalog: res.catalog,
+            });
+            const optimized = withOptimizedAssignment(updated);
+            onApplied?.(optimized);
+            return optimized;
+          });
+        }
+      } catch (err) {
+        console.warn('Failed to load frequency catalog for updated dates:', err);
+      } finally {
+        setLoadingCatalog(false);
+      }
     }
   };
 
@@ -230,9 +308,12 @@ export function ConstructionDetailSelector({
       }
 
       let catalog = freqCatalog;
-      if (frequencyMode === 'historical' && !catalog) {
+      if (frequencyMode === 'historical') {
         try {
-          const res = await loadFrequencyCatalog();
+          const res = await loadFrequencyCatalog({
+            startDate: config.frequencyStartDate,
+            endDate: config.frequencyEndDate,
+          });
           catalog = res.catalog;
           setFreqCatalog(catalog);
         } catch {
@@ -339,6 +420,26 @@ export function ConstructionDetailSelector({
               Historical (WL_Frequency)
             </button>
           </div>
+
+          {frequencyMode === 'historical' && (
+            <div className="construction-selector-date-range">
+              <span className="construction-selector-date-label">Range:</span>
+              <DateInput
+                value={config.frequencyStartDate ?? ''}
+                onChange={(v) => void handleDateChange('frequencyStartDate', v)}
+                disabled={loadingCatalog || applying}
+                className="construction-selector-date-input"
+              />
+              <span className="construction-selector-date-sep">to</span>
+              <DateInput
+                value={config.frequencyEndDate ?? ''}
+                onChange={(v) => void handleDateChange('frequencyEndDate', v)}
+                disabled={loadingCatalog || applying}
+                className="construction-selector-date-input"
+              />
+            </div>
+          )}
+
           {loadingCatalog && <span className="construction-selector-status">Loading WL_Frequency…</span>}
         </div>
 

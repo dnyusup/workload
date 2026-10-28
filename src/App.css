@@ -6202,7 +6202,46 @@
 .construction-selector-freq-control {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
+}
+
+.construction-selector-date-range {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #090e17;
+  border: 1px solid #1e293b;
+  border-radius: 6px;
+  padding: 2px 8px;
+}
+
+.construction-selector-date-label {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.construction-selector-date-sep {
+  color: #64748b;
+  font-size: 0.75rem;
+}
+
+.construction-selector-date-input {
+  background: transparent !important;
+  border: 1px solid #334155 !important;
+  border-radius: 4px !important;
+  color: #f1f5f9 !important;
+  font-size: 0.78rem !important;
+  padding: 2px 6px !important;
+  width: 122px;
+  height: 26px;
+  color-scheme: dark;
+}
+
+.construction-selector-date-input:focus {
+  outline: none !important;
+  border-color: #38bdf8 !important;
 }
 
 .segmented-control {

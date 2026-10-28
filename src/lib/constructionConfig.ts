@@ -80,6 +80,8 @@ export function buildConstructionConfig({
   const config: AppConfig = {
     ...base,
     frequencyMode: effectiveMode,
+    frequencyStartDate: base.frequencyStartDate,
+    frequencyEndDate: base.frequencyEndDate,
     // A fresh assignment on the default layout, so it follows the default order from the top-left.
     ...(layout
       ? { layout: layout.machines, operatorStart: layout.operatorStart, walls: layout.walls, remarks: layout.remarks, assignedMachineIds: [] }

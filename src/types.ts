@@ -230,6 +230,8 @@ export interface AppConfig {
   rpcPercent?: number;
   /** 'manual' = from WL_Products; 'historical' = from WL_Frequency (falls back to WL_Products if missing). */
   frequencyMode?: FrequencyMode;
+  frequencyStartDate?: string;
+  frequencyEndDate?: string;
 }
 
 export type MachineStatus = 'running' | 'needs-service' | 'being-serviced' | 'unassigned';
