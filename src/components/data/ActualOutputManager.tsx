@@ -43,6 +43,69 @@ function getTodayIso(): string {
   return `${y}-${m}-${d}`;
 }
 
+const FLOW_DAX_TEMPLATE = `EVALUATE
+ADDCOLUMNS(
+SUMMARIZECOLUMNS(
+    -- 1. DIMENSI GROUP BY
+    DimPlantRegion[PlantName],
+    DimDate[Date],
+    DimShift[DaySequenceNo],
+    DimZone[ZoneName],
+    McGroup[Group],
+    DimMachine[MachineType],
+    DimWIPOrder[SAPMachineTypeGroup],
+    DimMachine[Name],
+    DimProduct[ProductGroup],
+    DimProduct[BK_ProductNo],
+    DimProduct[SPGCode],
+    DimProduct[Const+TG],
+    DimProduct[Construction],
+    DimProduct[LayLength],
+    DimProduct[TensileStrength],
+    DimProduct[SpoolType],
+    DimProduct[StandardLength],
+    DimWIPOrder[StandardSpeed],
+
+    -- 2. FILTER PLANT, TANGGAL & SHIFT (Wajib DATEVALUE & Tanpa Spasi di Dalam Petik):
+    TREATAS({"@{triggerBody()['text']}"}, DimPlantRegion[PlantName]),
+    TREATAS({DATEVALUE("@{triggerBody()['date']}")}, DimDate[Date]),
+    TREATAS({@{triggerBody()['number']}}, DimShift[DaySequenceNo]),
+
+    -- 3. NILAI AGREGASI
+    "DoffedSpoolCount", SUM(FactMachineProductivity[DoffedSpoolCount]),
+    "DoffedRejectSpoolCount", SUM(FactMachineProductivity[DoffedRejectSpoolCount]),
+    "AQualityKG", SUM(FactMachineProductivity[AQualityKG]),
+    "ShortLengthAQualityKG", SUM(FactMachineEmployeeProductivity[ShortLengthAQualityKG]),
+    "TotalRejectedKG", SUM(FactMachineProductivity[TotalRejectedKG]),
+    "TotalProducedKG", SUM(FactMachineProductivity[TotalProducedKG]),
+    "EffectiveHours", SUM(FactMachineEmployeeProductivity[EffectiveHours]),
+    "TotalFracture", SUM(FactMachineProductivity[TotalFracture]),
+    "DiesCount", SUM(FactMachineProductivity[DiesCount]),
+    "HeadDiesCount", SUM(FactMachineProductivity[HeadDiesCount]),
+    
+    -- 4. MEASURES RESMI
+    "TotalDefect", [TotalDefect],
+    "EffectiveHrs", [Effective Time (Hrs)],
+    "ScheduledHrs", [Scheduled Time (Hrs)],
+    "TonProduced", [TonProduced]
+),
+
+    "ConstructionDetail", 
+        McGroup[Group] & "-" & 
+        DimProduct[Construction] & "-" & 
+        DimProduct[LayLength] & "-" & 
+        DimProduct[TensileStrength] & "-" &
+        IF(
+            LEFT(DimProduct[SpoolType], 2) = "BS",
+            LEFT(DimProduct[SpoolType], 4),
+            DimProduct[SpoolType]
+        ) & "-" &
+        DimProduct[StandardLength] & "-" &
+        DimWIPOrder[StandardSpeed],
+        
+    "Area", Left(DimZone[ZoneName], 2)
+)`;
+
 export function ActualOutputManager() {
   const [rows, setRows] = useState<ActualOutputRecord[]>([]);
   const [loading, setLoading] = useState(false);
@@ -50,6 +113,7 @@ export function ActualOutputManager() {
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [copiedDax, setCopiedDax] = useState(false);
   const [showDaxModal, setShowDaxModal] = useState(false);
+  const [daxViewMode, setDaxViewMode] = useState<'flow' | 'evaluated'>('flow');
 
   // Trigger Parameters
   const [plant, setPlant] = useState('PTBI');
@@ -785,20 +849,83 @@ export function ActualOutputManager() {
               </div>
 
               <div className="frequency-dialog-section">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <h4 style={{ margin: 0 }}>2. DAX Query Evaluation (Active Parameters)</h4>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <Button
+                      variant={daxViewMode === 'flow' ? 'primary' : 'secondary'}
+                      style={{ padding: '6px 12px', fontSize: '0.82rem' }}
+                      onClick={() => setDaxViewMode('flow')}
+                    >
+                      ⚡ Flow DAX (Power Automate)
+                    </Button>
+                    <Button
+                      variant={daxViewMode === 'evaluated' ? 'primary' : 'secondary'}
+                      style={{ padding: '6px 12px', fontSize: '0.82rem' }}
+                      onClick={() => setDaxViewMode('evaluated')}
+                    >
+                      📊 Evaluated DAX ({plant}, {date}, Shift {shift})
+                    </Button>
+                  </div>
                   <Button
                     variant="secondary"
+                    style={{ padding: '6px 12px', fontSize: '0.82rem' }}
                     onClick={() => {
-                      void navigator.clipboard.writeText(activeDaxQuery);
+                      const textToCopy = daxViewMode === 'flow' ? FLOW_DAX_TEMPLATE : activeDaxQuery;
+                      void navigator.clipboard.writeText(textToCopy);
                       setCopiedDax(true);
                       setTimeout(() => setCopiedDax(false), 2000);
                     }}
                   >
-                    {copiedDax ? '✓ DAX Copied!' : '📋 Copy DAX'}
+                    {copiedDax ? '✓ Copied!' : '📋 Copy Query'}
                   </Button>
                 </div>
-                <pre className="frequency-dax-code">{activeDaxQuery}</pre>
+
+                {daxViewMode === 'flow' && (
+                  <div
+                    style={{
+                      background: 'rgba(56, 189, 248, 0.08)',
+                      border: '1px solid rgba(56, 189, 248, 0.25)',
+                      borderRadius: 8,
+                      padding: '12px 16px',
+                      marginBottom: 12,
+                      fontSize: '0.82rem',
+                      lineHeight: 1.5,
+                      color: '#cbd5e1',
+                    }}
+                  >
+                    <strong style={{ color: '#38bdf8', display: 'block', marginBottom: 4 }}>
+                      ⚠️ Aturan Penting Formatting di Power Automate (Penyebab Data Kosong/0 Record):
+                    </strong>
+                    <ol style={{ margin: '0 0 0 16px', padding: 0 }}>
+                      <li style={{ marginBottom: 4 }}>
+                        <strong>Tanggal Wajib DATEVALUE:</strong> Gunakan{' '}
+                        <code style={{ color: '#fcd34d', background: '#1e293b', padding: '2px 4px', borderRadius: 4 }}>
+                          TREATAS(&#123;DATEVALUE("@&#123;triggerBody()['date']&#125;")&#125;, DimDate[Date])
+                        </code>
+                        . Jika tanpa tanda petik / DATEVALUE, ekspresi <code>2026-10-25</code> terbaca pengurangan matematika (1991) sehingga data 0 baris.
+                      </li>
+                      <li style={{ marginBottom: 4 }}>
+                        <strong>Tanda Petik Tanpa Spasi:</strong> Pada PlantName, pastikan tidak ada spasi di dalam petik:{' '}
+                        <code style={{ color: '#fcd34d', background: '#1e293b', padding: '2px 4px', borderRadius: 4 }}>
+                          "&#64;&#123;triggerBody()['text']&#125;"
+                        </code>
+                        , BUKAN <code style={{ color: '#f87171' }}>" &#64;&#123;triggerBody()['text']&#125; "</code>.
+                      </li>
+                      <li>
+                        <strong>Shift (Angka Numerik):</strong> Shift bertipe Number sehingga{' '}
+                        <strong>TIDAK menggunakan tanda petik</strong>:{' '}
+                        <code style={{ color: '#fcd34d', background: '#1e293b', padding: '2px 4px', borderRadius: 4 }}>
+                          TREATAS(&#123;&#64;&#123;triggerBody()['number']&#125;&#125;, DimShift[DaySequenceNo])
+                        </code>
+                        .
+                      </li>
+                    </ol>
+                  </div>
+                )}
+
+                <pre className="frequency-dax-code">
+                  {daxViewMode === 'flow' ? FLOW_DAX_TEMPLATE : activeDaxQuery}
+                </pre>
               </div>
 
               <div className="frequency-dialog-section">
