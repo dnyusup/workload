@@ -399,7 +399,7 @@ export function ConstructionDetailSelector({
               onChange={(value) => setFilters((prev) => ({ ...prev, [key]: value }))}
               disabled={loadingProducts || applying}
               placeholder="All"
-              searchPlaceholder={`Cari ${label}…`}
+              searchPlaceholder={`Search ${label}…`}
               options={filterOptions[key]}
             />
           </div>
@@ -424,10 +424,10 @@ export function ConstructionDetailSelector({
             onChange={handleSelect}
             disabled={loadingProducts || applying}
             placeholder={loadingProducts ? 'Loading products…' : `Select Construction Detail (${constructionOptions.length})`}
-            searchPlaceholder="Cari Construction Detail…"
+            searchPlaceholder="Search Construction Detail…"
             options={constructionOptions}
             onOptionIndicatorClick={handleViewOutputModel}
-            indicatorTitle="Lihat output model tersimpan"
+            indicatorTitle="View saved output model"
           />
         </div>
         {selectedProduct && (
@@ -484,8 +484,8 @@ export function ConstructionDetailSelector({
               <button
                 type="button"
                 className="construction-selector-date-reset"
-                title="Reset ke rentang tanggal default dari Setting"
-                aria-label="Reset ke rentang tanggal default dari Setting"
+                title="Reset to default date range from Settings"
+                aria-label="Reset to default date range from Settings"
                 disabled={loadingCatalog || applying}
                 onClick={() => void handleResetToDefaultRange()}
               >
@@ -503,22 +503,22 @@ export function ConstructionDetailSelector({
         {selectedProduct && (
           <div className="construction-selector-freq-info">
             {frequencyMode === 'manual' ? (
-              <span className="badge badge-neutral" title="Menggunakan nilai frekuensi manual dari WL_Products">
+              <span className="badge badge-neutral" title="Using manual frequency values from WL_Products">
                 Manual: Fr={config.spec.fracturePerTon} · Dies={config.spec.diesPerTon} · Def={config.spec.defectsPerTon}
               </span>
             ) : matchedHistorical ? (
               <span
                 className="badge badge-success"
-                title={`Data ditemukan di WL_Frequency (TonProduced: ${matchedHistorical.tonProduced?.toLocaleString() ?? 0})`}
+                title={`Found in WL_Frequency (Ton Produced: ${matchedHistorical.tonProduced?.toLocaleString() ?? 0})`}
               >
                 Historical (WL_Frequency): Fr={config.spec.fracturePerTon} · Dies={config.spec.diesPerTon} · Def={config.spec.defectsPerTon}
               </span>
             ) : (
               <span
                 className="badge badge-warning"
-                title="Produk tidak ditemukan di WL_Frequency, otomatis fallback menggunakan nilai manual dari WL_Products"
+                title="Product not found in WL_Frequency, automatically falling back to manual values from WL_Products"
               >
-                ⚠️ Historical tidak ditemukan → Fallback Manual: Fr={config.spec.fracturePerTon} · Dies={config.spec.diesPerTon} · Def={config.spec.defectsPerTon}
+                ⚠️ Historical not found → Fallback to Manual: Fr={config.spec.fracturePerTon} · Dies={config.spec.diesPerTon} · Def={config.spec.defectsPerTon}
               </span>
             )}
           </div>

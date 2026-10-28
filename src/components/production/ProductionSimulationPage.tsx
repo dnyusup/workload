@@ -1730,7 +1730,7 @@ function ProductionSetupEditor({
           <Field label="Task Priority">
             <SelectInput value={setup.taskPriority} options={TASK_PRIORITY_OPTIONS} onChange={(v) => onHeaderChange({ taskPriority: v })} />
           </Field>
-          <Field label="Frequency Source" tooltip="Pilihan nilai frequency: Manual dari WL_Products atau Historical dari WL_Frequency (otomatis fallback ke manual jika tidak ada di WL_Frequency)">
+          <Field label="Frequency Source" tooltip="Frequency value source: Manual from WL_Products or Historical from WL_Frequency (automatically falls back to manual if not in WL_Frequency)">
             <SelectInput
               value={setup.frequencyMode ?? 'manual'}
               options={FREQUENCY_MODE_OPTIONS}
@@ -1751,13 +1751,13 @@ function ProductionSetupEditor({
           </Field>
           {setup.frequencyMode === 'historical' && (
             <>
-              <Field label="Frequency Start Date" tooltip="Tanggal awal filter kejadian aktual Power BI (format: YYYY-MM-DD)">
+              <Field label="Frequency Start Date" tooltip="Start date for actual Power BI events filter (format: YYYY-MM-DD)">
                 <DateInput
                   value={setup.frequencyStartDate ?? ''}
                   onChange={(v) => onHeaderChange({ frequencyStartDate: v })}
                 />
               </Field>
-              <Field label="Frequency End Date" tooltip="Tanggal akhir filter kejadian aktual Power BI (format: YYYY-MM-DD)">
+              <Field label="Frequency End Date" tooltip="End date for actual Power BI events filter (format: YYYY-MM-DD)">
                 <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                   <DateInput
                     value={setup.frequencyEndDate ?? ''}
@@ -1767,7 +1767,7 @@ function ProductionSetupEditor({
                     type="button"
                     className="btn btn-ghost"
                     style={{ padding: '4px 8px', height: '36px', display: 'inline-flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap', fontSize: '0.78rem' }}
-                    title="Reset rentang tanggal ke default dari Setting"
+                    title="Reset date range to default from Settings"
                     onClick={async () => {
                       const defaults = await loadDefaultValuesOrBuiltIn();
                       const range = computeFrequencyDateRange(

@@ -27,10 +27,13 @@ const FREQUENCY_MODE_OPTIONS: { value: FrequencyMode; label: string }[] = [
 ];
 
 const DATE_RANGE_OPTIONS: { value: FrequencyDateRangeType; label: string }[] = [
-  { value: 'last7Days', label: '7 Hari Terakhir (Last 7 Days)' },
-  { value: 'last14Days', label: '14 Hari Terakhir (Last 14 Days)' },
-  { value: 'last30Days', label: '30 Hari Terakhir (Last 30 Days)' },
-  { value: 'custom', label: 'Kustom (Pilih Tanggal Awal & Akhir)' },
+  { value: 'last7Days', label: 'Last 7 Days' },
+  { value: 'last14Days', label: 'Last 14 Days' },
+  { value: 'last30Days', label: 'Last 30 Days' },
+  { value: 'last3Months', label: 'Last 3 Months' },
+  { value: 'last6Months', label: 'Last 6 Months' },
+  { value: 'last1Year', label: 'Last 1 Year' },
+  { value: 'custom', label: 'Custom (Select Start & End Date)' },
 ];
 
 function DefaultValuesCard() {
@@ -149,7 +152,7 @@ FILTER(
           <SettingGroup title="Historical Frequency & Power BI (WL_Frequency)">
             <SettingRow
               label="Default Frequency Source"
-              tooltip="Sumber frekuensi default saat memilih Construction Detail di Workload Simulator dan Production Model. Pengguna tetap dapat mengubahnya langsung per skenario."
+              tooltip="Default frequency source when selecting a Construction Detail in Work Load Simulator and Production Model. Users can override directly per scenario."
             >
               <SelectInput
                 value={draft.frequencyMode}
@@ -159,7 +162,7 @@ FILTER(
             </SettingRow>
             <SettingRow
               label="Plant Name (Power BI DimPlantRegion)"
-              tooltip="Nama Plant yang difilter dengan TREATAS di Semantic Model Power BI (contoh: PTBI)."
+              tooltip="Plant name filtered with TREATAS in Power BI Semantic Model (e.g. PTBI)."
             >
               <TextInput
                 value={draft.frequencyPlant}
@@ -168,8 +171,8 @@ FILTER(
               />
             </SettingRow>
             <SettingRow
-              label="Filter Rentang Tanggal (DimDate)"
-              tooltip="Mode filter rentang tanggal pada query DAX. Jika memilih Kustom, tentukan Tanggal Awal & Tanggal Akhir di bawah."
+              label="Date Range Filter (DimDate)"
+              tooltip="Date range filter mode for DAX query. If selecting Custom, specify Start Date and End Date below."
             >
               <SelectInput
                 value={draft.frequencyDateRangeType}
@@ -179,13 +182,13 @@ FILTER(
             </SettingRow>
             {draft.frequencyDateRangeType === 'custom' ? (
               <>
-                <SettingRow label="Tanggal Awal (Start Date)">
+                <SettingRow label="Start Date">
                   <DateInput
                     value={draft.frequencyStartDate}
                     onChange={(v) => set('frequencyStartDate', v)}
                   />
                 </SettingRow>
-                <SettingRow label="Tanggal Akhir (End Date)">
+                <SettingRow label="End Date">
                   <DateInput
                     value={draft.frequencyEndDate}
                     onChange={(v) => set('frequencyEndDate', v)}
@@ -193,24 +196,30 @@ FILTER(
                 </SettingRow>
               </>
             ) : (
-              <SettingRow label="Rentang Tanggal Aktif (Kalkulasi)">
+              <SettingRow label="Active Calculated Date Range">
                 <div className="frequency-active-date-pill">
                   <span className="frequency-date-tag">📅 {computedRange.startDate}</span>
-                  <span className="frequency-date-separator">s/d</span>
+                  <span className="frequency-date-separator">to</span>
                   <span className="frequency-date-tag">📅 {computedRange.endDate}</span>
                   <span className="frequency-date-badge-type">
                     {draft.frequencyDateRangeType === 'last14Days'
-                      ? '14 Hari Terakhir'
+                      ? 'Last 14 Days'
                       : draft.frequencyDateRangeType === 'last30Days'
-                      ? '30 Hari Terakhir'
-                      : '7 Hari Terakhir'}
+                      ? 'Last 30 Days'
+                      : draft.frequencyDateRangeType === 'last3Months'
+                      ? 'Last 3 Months'
+                      : draft.frequencyDateRangeType === 'last6Months'
+                      ? 'Last 6 Months'
+                      : draft.frequencyDateRangeType === 'last1Year'
+                      ? 'Last 1 Year'
+                      : 'Last 7 Days'}
                   </span>
                 </div>
               </SettingRow>
             )}
             <SettingRow
               label="Default Fr / Ton Fallback"
-              tooltip="Nilai cadangan Fracture/Ton jika suatu spesifikasi produk tidak memiliki data frekuensi di WL_Products maupun WL_Frequency (0 = tanpa fallback)."
+              tooltip="Fallback Fracture/Ton rate if product specification has no frequency in WL_Products or WL_Frequency (0 = no fallback)."
             >
               <NumberInput
                 value={draft.defaultFracturePerTon}
@@ -220,7 +229,7 @@ FILTER(
             </SettingRow>
             <SettingRow
               label="Default Def / Ton Fallback"
-              tooltip="Nilai cadangan Defect/Ton jika tidak ditemukan di WL_Products maupun WL_Frequency."
+              tooltip="Fallback Defect/Ton rate if not found in WL_Products or WL_Frequency."
             >
               <NumberInput
                 value={draft.defaultDefectPerTon}
@@ -230,7 +239,7 @@ FILTER(
             </SettingRow>
             <SettingRow
               label="Default Dies / Ton Fallback"
-              tooltip="Nilai cadangan Dies/Ton jika tidak ditemukan di WL_Products maupun WL_Frequency."
+              tooltip="Fallback Dies/Ton rate if not found in WL_Products or WL_Frequency."
             >
               <NumberInput
                 value={draft.defaultDiesPerTon}
@@ -245,15 +254,15 @@ FILTER(
             <div className="frequency-settings-dax-header">
               <div>
                 <span className="frequency-settings-dax-title">🔍 Live DAX Filter Preview</span>
-                <span className="frequency-settings-dax-sub">Filter ini otomatis di-inject ke Power Automate & Semantic Model</span>
+                <span className="frequency-settings-dax-sub">This filter is automatically injected into Power Automate & Semantic Model</span>
               </div>
               <div className="frequency-settings-dax-actions">
                 <Button
                   variant="secondary"
                   onClick={handleCopyDax}
-                  title="Salin query DAX lengkap sesuai setting saat ini"
+                  title="Copy complete DAX query according to current settings"
                 >
-                  {copiedDax ? '✓ DAX Tersalin!' : '📋 Salin Query DAX'}
+                  {copiedDax ? '✓ DAX Copied!' : '📋 Copy DAX Query'}
                 </Button>
               </div>
             </div>

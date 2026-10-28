@@ -179,10 +179,10 @@ export function BatchSimulationDialog({
         {phase === 'confirm' ? (
           <div className="batch-confirm-container">
             <div className="batch-confirm-card">
-              <h4 className="batch-confirm-title">Pilih Sumber Nilai Frekuensi (Frequency Source)</h4>
+              <h4 className="batch-confirm-title">Select Frequency Source</h4>
               <p className="batch-confirm-desc">
-                Sebelum memulai batch simulation untuk <strong>{total} Construction Detail(s)</strong> yang dipilih,
-                tentukan sumber nilai Fracture/Ton, Dies/Ton, dan Defect/Ton:
+                Before starting batch simulation for the selected <strong>{total} Construction Detail(s)</strong>,
+                choose the source for Fracture/Ton, Dies/Ton, and Defect/Ton values:
               </p>
 
               <div className="batch-freq-options">
@@ -198,7 +198,7 @@ export function BatchSimulationDialog({
                     <strong className="batch-freq-card-title">Manual (WL_Products)</strong>
                   </div>
                   <p className="batch-freq-card-body">
-                    Menggunakan nilai spesifikasi Fracture/Ton, Dies/Ton, dan Defect/Ton yang tercatat langsung pada master data WL_Products.
+                    Uses Fracture/Ton, Dies/Ton, and Defect/Ton values recorded directly in master data (WL_Products).
                   </p>
                 </label>
 
@@ -214,12 +214,12 @@ export function BatchSimulationDialog({
                     <strong className="batch-freq-card-title">Historical (WL_Frequency)</strong>
                   </div>
                   <p className="batch-freq-card-body">
-                    Mengambil data aktual historis dari Semantic Model Power BI melalui flow WL_Frequency berdasarkan relasi:
+                    Fetches actual historical data from Power BI Semantic Model via WL_Frequency flow using relations:
                     <br />
                     <code>Mach = McGroup</code>, <code>Product = Construction</code>, <code>LayLength = LayLength</code>, <code>TensileGroup = TensileStrength</code>.
                     <br />
                     <span className="batch-fallback-note">
-                      ⚡ <strong>Otomatis Fallback:</strong> Jika data historis produk tidak ditemukan di WL_Frequency, simulasi akan otomatis menggunakan nilai manual dari WL_Products.
+                      ⚡ <strong>Automatic Fallback:</strong> If a product is not found in WL_Frequency, the simulation automatically falls back to manual values from WL_Products.
                     </span>
                   </p>
                 </label>
@@ -228,10 +228,10 @@ export function BatchSimulationDialog({
 
             <div className="batch-confirm-footer">
               <Button variant="ghost" onClick={close}>
-                Batal
+                Cancel
               </Button>
               <Button variant="primary" onClick={startBatch}>
-                ▶ Mulai Batch Simulation ({total} Produk)
+                ▶ Start Batch Simulation ({total} Products)
               </Button>
             </div>
           </div>

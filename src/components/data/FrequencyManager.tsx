@@ -313,19 +313,25 @@ export function FrequencyManager() {
             🏭 Plant: <strong>{activeParams?.plant ?? 'PTBI'}</strong>
           </span>
           <span className="frequency-filter-banner-item">
-            📅 Periode: <strong>{activeParams?.startDate ?? '2026-10-20'}</strong> s/d <strong>{activeParams?.endDate ?? '2026-10-27'}</strong>
+            📅 Period: <strong>{activeParams?.startDate ?? '2026-10-20'}</strong> to <strong>{activeParams?.endDate ?? '2026-10-27'}</strong>
           </span>
           <span className="frequency-filter-banner-type">
             {activeParams?.dateRangeType === 'last14Days'
-              ? '14 Hari Terakhir'
+              ? 'Last 14 Days'
               : activeParams?.dateRangeType === 'last30Days'
-              ? '30 Hari Terakhir'
+              ? 'Last 30 Days'
+              : activeParams?.dateRangeType === 'last3Months'
+              ? 'Last 3 Months'
+              : activeParams?.dateRangeType === 'last6Months'
+              ? 'Last 6 Months'
+              : activeParams?.dateRangeType === 'last1Year'
+              ? 'Last 1 Year'
               : activeParams?.dateRangeType === 'custom'
-              ? 'Rentang Kustom'
-              : '7 Hari Terakhir'}
+              ? 'Custom Range'
+              : 'Last 7 Days'}
           </span>
           <span className="frequency-filter-banner-hint">
-            (Filter dapat diatur di Setting → Default Values)
+            (Configured in Setting → Default Values)
           </span>
         </div>
 
@@ -442,21 +448,21 @@ export function FrequencyManager() {
         {loading ? (
           <div className="frequency-loading-state">
             <div className="frequency-spinner" />
-            <p>Menjalankan query Power BI via Power Automate flow…</p>
-            <span className="frequency-loading-sub">Mengambil hasil query DAX dari Semantic Model</span>
+            <p>Running Power BI query via Power Automate flow…</p>
+            <span className="frequency-loading-sub">Fetching DAX query results from Semantic Model</span>
           </div>
         ) : sortedRows.length === 0 ? (
           <div className="frequency-empty-state">
             <span className="frequency-empty-icon">📂</span>
-            <h4>Tidak ada data ditemukan</h4>
+            <h4>No records found</h4>
             <p>
               {hasActiveFilters
-                ? 'Tidak ada baris yang sesuai dengan kriteria filter saat ini.'
-                : 'Klik "Refresh Data" untuk mengambil data dari Power Automate Flow.'}
+                ? 'No rows match the current filter criteria.'
+                : 'Click "Refresh Data" to load records from Power Automate Flow.'}
             </p>
             {hasActiveFilters && (
               <Button variant="secondary" onClick={clearFilters}>
-                Reset Filter
+                Reset Filters
               </Button>
             )}
           </div>
@@ -591,13 +597,13 @@ export function FrequencyManager() {
             </div>
             <div className="modal-body frequency-dax-dialog-body">
               <div className="frequency-dialog-section">
-                <h4>1. Arsitektur Koneksi</h4>
+                <h4>1. Architecture & Data Flow</h4>
                 <div className="frequency-arch-diagram">
                   <div className="frequency-arch-step">
                     <span className="frequency-arch-icon">📊</span>
                     <div>
                       <strong>Power BI Semantic Model</strong>
-                      <p>Dataset terpusat (PTBI Plant, DimDate, DimProduct, DimZone, McGroup)</p>
+                      <p>Centralized dataset (PTBI Plant, DimDate, DimProduct, DimZone, McGroup)</p>
                     </div>
                   </div>
                   <div className="frequency-arch-arrow">➔</div>
@@ -621,7 +627,7 @@ export function FrequencyManager() {
 
               <div className="frequency-dialog-section">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <h4 style={{ margin: 0 }}>2. Evaluasi DAX Query (Aktif Sesuai Setting)</h4>
+                  <h4 style={{ margin: 0 }}>2. DAX Query Evaluation (Active with Current Settings)</h4>
                   <Button
                     variant="secondary"
                     onClick={() => {
@@ -631,39 +637,39 @@ export function FrequencyManager() {
                       setTimeout(() => setCopiedDax(false), 2000);
                     }}
                   >
-                    {copiedDax ? '✓ DAX Tersalin!' : '📋 Salin DAX'}
+                    {copiedDax ? '✓ DAX Copied!' : '📋 Copy DAX'}
                   </Button>
                 </div>
                 <pre className="frequency-dax-code">{activeParams?.daxQuery || DAX_QUERY_CODE}</pre>
               </div>
 
               <div className="frequency-dialog-section">
-                <h4>3. Pemetaan Kolom ke WorkLoad</h4>
+                <h4>3. Column Mapping to WorkLoad</h4>
                 <ul className="frequency-mapping-list">
                   <li>
-                    <code>DimWIPOrder[SAPMachineTypeGroup]</code> ➔ <strong>Machine Type Group</strong> (Pengelompokan jenis mesin SAP).
+                    <code>DimWIPOrder[SAPMachineTypeGroup]</code> ➔ <strong>Machine Type Group</strong> (SAP machine group classification).
                   </li>
                   <li>
-                    <code>TonProduced</code> ➔ <strong>Ton Produced</strong> (Volume produksi aktual dalam ton).
+                    <code>TonProduced</code> ➔ <strong>Ton Produced</strong> (Actual production volume in metric tons).
                   </li>
                   <li>
-                    <code>Fr/T</code> ➔ <strong>Fracture/Ton</strong>. Nilai KPI dihitung menggunakan <strong>SumProduct</strong>: <code>Σ (Fr/T × TonProduced) ÷ Total TonProduced</code>.
+                    <code>Fr/T</code> ➔ <strong>Fracture/Ton</strong>. KPI calculated using <strong>SumProduct</strong>: <code>Σ (Fr/T × TonProduced) ÷ Total TonProduced</code>.
                   </li>
                   <li>
-                    <code>Def/T</code> ➔ <strong>Defect/Ton</strong>. Nilai KPI dihitung menggunakan <strong>SumProduct</strong>: <code>Σ (Def/T × TonProduced) ÷ Total TonProduced</code>.
+                    <code>Def/T</code> ➔ <strong>Defect/Ton</strong>. KPI calculated using <strong>SumProduct</strong>: <code>Σ (Def/T × TonProduced) ÷ Total TonProduced</code>.
                   </li>
                   <li>
-                    <code>Dies/T</code> ➔ <strong>Dies/Ton</strong>. Nilai KPI dihitung menggunakan <strong>SumProduct</strong>: <code>Σ (Dies/T × TonProduced) ÷ Total TonProduced</code>.
+                    <code>Dies/T</code> ➔ <strong>Dies/Ton</strong>. KPI calculated using <strong>SumProduct</strong>: <code>Σ (Dies/T × TonProduced) ÷ Total TonProduced</code>.
                   </li>
                   <li>
-                    <code>Group_Product_Info</code> ➔ Kunci identifikasi unik kombinasi McGroup, Construction, LayLength, dan Tensile.
+                    <code>Group_Product_Info</code> ➔ Unique key combining McGroup, Construction, LayLength, and Tensile.
                   </li>
                 </ul>
               </div>
             </div>
             <div className="modal-footer">
               <Button variant="secondary" onClick={() => setShowDaxModal(false)}>
-                Tutup
+                Close
               </Button>
             </div>
           </div>

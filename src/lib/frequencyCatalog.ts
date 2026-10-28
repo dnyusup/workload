@@ -43,10 +43,19 @@ export function computeFrequencyDateRange(
   }
 
   const now = new Date();
-  const days = type === 'last14Days' ? 14 : type === 'last30Days' ? 30 : 7;
   const end = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const start = new Date(end);
-  start.setDate(start.getDate() - days);
+
+  if (type === 'last3Months') {
+    start.setMonth(start.getMonth() - 3);
+  } else if (type === 'last6Months') {
+    start.setMonth(start.getMonth() - 6);
+  } else if (type === 'last1Year') {
+    start.setFullYear(start.getFullYear() - 1);
+  } else {
+    const days = type === 'last14Days' ? 14 : type === 'last30Days' ? 30 : 7;
+    start.setDate(start.getDate() - days);
+  }
 
   const pad = (n: number) => String(n).padStart(2, '0');
   const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;

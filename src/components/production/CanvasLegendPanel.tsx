@@ -34,9 +34,9 @@ export function CanvasLegendPanel({
   const resizeRef = useRef<{ startX: number; startWidth: number; maxWidth: number } | null>(null);
 
   const tabs: { key: LegendTab; label: string; search: string; entries: LegendEntry[] }[] = [
-    { key: 'construction', label: 'Construction', search: 'Cari Construction…', entries: constructionEntries },
-    { key: 'operator', label: 'Operator', search: 'Cari Operator…', entries: operatorEntries },
-    { key: 'group', label: 'Machine Group', search: 'Cari Machine Group…', entries: groupEntries },
+    { key: 'construction', label: 'Construction', search: 'Search Construction…', entries: constructionEntries },
+    { key: 'operator', label: 'Operator', search: 'Search Operator…', entries: operatorEntries },
+    { key: 'group', label: 'Machine Group', search: 'Search Machine Group…', entries: groupEntries },
   ];
   const activeTab = tabs.find((t) => t.key === tab) ?? tabs[0];
   const entries = activeTab.entries;

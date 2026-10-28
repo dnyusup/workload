@@ -5,7 +5,14 @@ import { fetchAllPages } from './dataversePaging';
 import { DEFAULT_OPTIMIZE_STEP_UP_BELOW, DEFAULT_WAITING_MODEL } from './singleOperatorUtilization';
 import { formatWaitingModel, parseWaitingModel } from './waitingModel';
 
-export type FrequencyDateRangeType = 'last7Days' | 'last14Days' | 'last30Days' | 'custom';
+export type FrequencyDateRangeType =
+  | 'last7Days'
+  | 'last14Days'
+  | 'last30Days'
+  | 'last3Months'
+  | 'last6Months'
+  | 'last1Year'
+  | 'custom';
 
 /** Starting values for a new Production Setup and for the Work Load Simulator's setup whenever a
  * Construction Detail is picked — maintained by admins in Setting → Default Values. */
@@ -124,7 +131,15 @@ function parseValue<K extends keyof DefaultValues>(key: K, raw: string | undefin
     return (mode === 'historical' || mode === 'manual' ? mode : undefined) as DefaultValues[K] | undefined;
   }
   if (key === 'frequencyDateRangeType') {
-    const valid: FrequencyDateRangeType[] = ['last7Days', 'last14Days', 'last30Days', 'custom'];
+    const valid: FrequencyDateRangeType[] = [
+      'last7Days',
+      'last14Days',
+      'last30Days',
+      'last3Months',
+      'last6Months',
+      'last1Year',
+      'custom',
+    ];
     return (valid.includes(text as FrequencyDateRangeType) ? (text as FrequencyDateRangeType) : undefined) as DefaultValues[K] | undefined;
   }
   if (key === 'frequencyPlant') {
