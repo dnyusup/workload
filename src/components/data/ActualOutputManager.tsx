@@ -261,6 +261,7 @@ export function ActualOutputManager() {
         fracturePerTon: 0,
         defectPerTon: 0,
         diesCount: 0,
+        headDiesCount: 0,
         diesPerTon: 0,
         oeePct: 0,
         effectiveHoursMinutes: 0,

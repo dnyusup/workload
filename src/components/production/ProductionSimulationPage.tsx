@@ -41,6 +41,7 @@ import { LayoutBuilder, type MachineAppearance } from '../setup/LayoutBuilder';
 import { ProductionRunView } from './ProductionRunView';
 import { CanvasLegendPanel } from './CanvasLegendPanel';
 import { OperatorStartTimesDialog } from './OperatorStartTimesDialog';
+import { ImportConstructionFromMesDialog } from './ImportConstructionFromMesDialog';
 import {
   MachineAssignmentsGroupBySelect,
   MachineAssignmentsSearch,
@@ -786,6 +787,7 @@ function ProductionSetupEditor({
   const [assignmentsSearch, setAssignmentsSearch] = useState('');
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
+  const [mesImportOpen, setMesImportOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [plannedUtilizationOpen, setPlannedUtilizationOpen] = useState(false);
   const [startTimesOpen, setStartTimesOpen] = useState(false);
@@ -2001,6 +2003,14 @@ function ProductionSetupEditor({
                 e.target.value = '';
               }}
             />
+            <Button
+              variant="secondary"
+              onClick={() => setMesImportOpen(true)}
+              disabled={importProgress !== null}
+              title="Import active machine Construction Details from Power BI MES (WL_ActualOutput)"
+            >
+              ⚡ Import from MES
+            </Button>
             <Button variant="ghost" onClick={() => importInputRef.current?.click()} disabled={importProgress !== null}>
               {importProgress ? `Importing… ${importProgress.done}/${importProgress.total}` : 'Import CSV'}
             </Button>
@@ -2027,6 +2037,16 @@ function ProductionSetupEditor({
           search={assignmentsSearch}
         />
       </Card>
+
+      {mesImportOpen && (
+        <ImportConstructionFromMesDialog
+          setup={setup}
+          products={products}
+          onClose={() => setMesImportOpen(false)}
+          onLocalChange={onLocalChange}
+          onSuccess={(msg) => setImportMessage(msg)}
+        />
+      )}
     </>
   );
 }
