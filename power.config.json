@@ -37,6 +37,21 @@
           "shared_powerbi": "0b72eb06-8267-4b50-8ed6-32ac2b7d3587"
         }
       }
+    },
+    "7968d87a-8dab-4fdd-a348-a0cf24483dfd": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
+      "displayName": "Logic flows",
+      "dataSources": [
+        "wl_actualoutput"
+      ],
+      "workflowDetails": {
+        "workflowEntityId": "025865f3-a1d2-f111-a05d-002248172742",
+        "workflowDisplayName": "WL_ActualOutput",
+        "workflowName": "558e5dbc-c8b4-f78d-842a-91a5061b58f3",
+        "dependencies": {
+          "shared_powerbi": "0b72eb06-8267-4b50-8ed6-32ac2b7d3587"
+        }
+      }
     }
   },
   "databaseReferences": {

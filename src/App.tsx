@@ -18,6 +18,7 @@ import { UsersManagerPage } from './components/users/UsersManagerPage';
 import { SettingsPage } from './components/settings/SettingsPage';
 import { GuidancePage } from './components/guidance/GuidancePage';
 import { FrequencyManager } from './components/data/FrequencyManager';
+import { ActualOutputManager } from './components/data/ActualOutputManager';
 import './App.css';
 
 const ROLE_LABEL: Record<string, string> = { admin: 'Admin', contribute: 'Contribute', guest: 'Guest' };
@@ -28,6 +29,7 @@ const PAGE_DESCRIPTION: Record<AppPage, string> = {
   products: 'Manage WL product and machine specifications',
   activities: 'Configure machine activity times and rules',
   frequency: 'Historical defect, fracture, and dies frequency from Power BI semantic model',
+  actualOutput: 'Actual machine production and productivity output from Power BI MES data',
   outputModels: 'Review saved workload simulation outputs',
   users: 'Manage user access and roles',
   settings: 'Application settings, such as default values for new setups',
@@ -105,6 +107,7 @@ function AppShell() {
           )}
           {activePage === 'activities' && <ActivitiesManager initialConstructionFilter={activitiesConstructionFilter} />}
           {activePage === 'frequency' && <FrequencyManager />}
+          {activePage === 'actualOutput' && <ActualOutputManager />}
           {activePage === 'outputModels' && (
             <OutputModelsManager
               onUseStartCondition={(row, snapshot) => {

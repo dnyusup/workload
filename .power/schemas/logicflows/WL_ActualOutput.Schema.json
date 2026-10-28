@@ -1,0 +1,120 @@
+{
+  "name": "WL_ActualOutput",
+  "id": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
+  "type": "Microsoft.PowerApps/apis",
+  "properties": {
+    "displayName": "WL_ActualOutput",
+    "isCustom": false,
+    "swagger": {
+      "swagger": "2.0",
+      "info": {
+        "title": "WL_ActualOutput",
+        "version": "2015-02-01-preview"
+      },
+      "host": "asia-001.azure-apim.net",
+      "schemes": [
+        "https"
+      ],
+      "consumes": [
+        "application/json"
+      ],
+      "produces": [
+        "application/json"
+      ],
+      "paths": {
+        "/{connectionId}/triggers/manual/run": {
+          "post": {
+            "operationId": "Run",
+            "description": "Runs a logic flow trigger.",
+            "parameters": [
+              {
+                "name": "connectionId",
+                "in": "path",
+                "required": true,
+                "type": "string",
+                "x-ms-visibility": "internal"
+              },
+              {
+                "name": "input",
+                "description": "The trigger's input",
+                "in": "body",
+                "required": true,
+                "schema": {
+                  "$ref": "#/definitions/ManualTriggerInput"
+                }
+              },
+              {
+                "name": "api-version",
+                "description": "The api version",
+                "in": "query",
+                "required": true,
+                "default": "2015-02-01-preview",
+                "x-ms-visibility": "internal",
+                "type": "string"
+              }
+            ],
+            "responses": {
+              "200": {
+                "description": "Ok",
+                "schema": {
+                  "$ref": "#/definitions/ResponseActionOutput"
+                }
+              },
+              "default": {
+                "description": "The Flow Response.",
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      },
+      "definitions": {
+        "ManualTriggerInput": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "title": "PlantName",
+              "type": "string",
+              "x-ms-dynamically-added": true,
+              "description": "Please enter your input",
+              "x-ms-content-hint": "TEXT"
+            },
+            "date": {
+              "title": "Date",
+              "type": "string",
+              "format": "date",
+              "x-ms-dynamically-added": true,
+              "description": "Please enter or select a date (YYYY-MM-DD)",
+              "x-ms-content-hint": "DATE"
+            },
+            "number": {
+              "title": "Shift",
+              "type": "number",
+              "x-ms-dynamically-added": true,
+              "description": "Please enter a number",
+              "x-ms-content-hint": "NUMBER"
+            }
+          },
+          "required": [
+            "text",
+            "date",
+            "number"
+          ]
+        },
+        "ResponseActionOutput": {
+          "type": "object",
+          "properties": {
+            "result": {
+              "title": "result",
+              "x-ms-dynamically-added": true,
+              "type": "string"
+            }
+          }
+        }
+      },
+      "basePath": "/apim/logicflows"
+    }
+  }
+}

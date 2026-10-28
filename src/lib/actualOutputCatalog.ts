@@ -1,0 +1,303 @@
+import { WL_ActualOutputService } from '../generated/services/WL_ActualOutputService';
+
+export interface ActualOutputRecord {
+  id: string;
+  plantName: string;
+  date: string;
+  shift: number;
+  zoneName: string;
+  area: string;
+  group: string;
+  machineType: string;
+  sapMachineTypeGroup: string;
+  machineName: string;
+  productGroup: string;
+  bkProductNo: string;
+  spgCode: string;
+  constTG: string;
+  construction: string;
+  layLength: number | string;
+  tensileStrength: string;
+  spoolType: string;
+  standardLength: number | string;
+  standardSpeed: number | string;
+  constructionDetail: string;
+
+  // Aggregations
+  doffedSpoolCount: number | null;
+  doffedRejectSpoolCount: number | null;
+  aQualityKG: number | null;
+  shortLengthAQualityKG: number | null;
+  totalRejectedKG: number | null;
+  totalProducedKG: number | null;
+  effectiveHours: number | null;
+  totalFracture: number | null;
+  diesCount: number | null;
+  headDiesCount: number | null;
+
+  // Measures
+  totalDefect: number | null;
+  effectiveHrs: number | null;
+  scheduledHrs: number | null;
+  tonProduced: number | null;
+
+  raw: Record<string, any>;
+}
+
+export interface ActualOutputFilterParams {
+  plant: string;
+  date: string;
+  shift: number;
+}
+
+export function generateActualOutputDax(params: ActualOutputFilterParams): string {
+  const { plant, date, shift } = params;
+  return `EVALUATE
+ADDCOLUMNS(
+SUMMARIZECOLUMNS(
+    -- 1. DIMENSI GROUP BY
+    DimPlantRegion[PlantName],
+    DimDate[Date],
+    DimShift[DaySequenceNo],
+    DimZone[ZoneName],
+    McGroup[Group],
+    DimMachine[MachineType],
+    DimWIPOrder[SAPMachineTypeGroup],
+    DimMachine[Name],
+    DimProduct[ProductGroup],
+    DimProduct[BK_ProductNo],
+    DimProduct[SPGCode],
+    DimProduct[Const+TG],
+    DimProduct[Construction],
+    DimProduct[LayLength],
+    DimProduct[TensileStrength],
+    DimProduct[SpoolType],
+    DimProduct[StandardLength],
+    DimWIPOrder[StandardSpeed],
+
+    -- 2. FILTER PLANT, DATE & SHIFT:
+    TREATAS({"${plant}"}, DimPlantRegion[PlantName]),
+    TREATAS({DATE(${date.replace(/-/g, ', ')})}, DimDate[Date]),
+    TREATAS({${shift}}, DimShift[DaySequenceNo]),
+
+    -- 3. NILAI AGREGASI
+    "DoffedSpoolCount", SUM(FactMachineProductivity[DoffedSpoolCount]),
+    "DoffedRejectSpoolCount", SUM(FactMachineProductivity[DoffedRejectSpoolCount]),
+    "AQualityKG", SUM(FactMachineProductivity[AQualityKG]),
+    "ShortLengthAQualityKG", SUM(FactMachineEmployeeProductivity[ShortLengthAQualityKG]),
+    "TotalRejectedKG", SUM(FactMachineProductivity[TotalRejectedKG]),
+    "TotalProducedKG", SUM(FactMachineProductivity[TotalProducedKG]),
+    "EffectiveHours", SUM(FactMachineEmployeeProductivity[EffectiveHours]),
+    "TotalFracture", SUM(FactMachineProductivity[TotalFracture]),
+    "DiesCount", SUM(FactMachineProductivity[DiesCount]),
+    "HeadDiesCount", SUM(FactMachineProductivity[HeadDiesCount]),
+    
+    -- 4. MEASURES RESMI
+    "TotalDefect", [TotalDefect],
+    "EffectiveHrs", [Effective Time (Hrs)],
+    "ScheduledHrs", [Scheduled Time (Hrs)],
+    "TonProduced", [TonProduced]
+),
+
+    "ConstructionDetail", 
+        McGroup[Group] & "-" & 
+        DimProduct[Construction] & "-" & 
+        DimProduct[LayLength] & "-" & 
+        DimProduct[TensileStrength] & "-" &
+        IF(
+            LEFT(DimProduct[SpoolType], 2) = "BS",
+            LEFT(DimProduct[SpoolType], 4),
+            DimProduct[SpoolType]
+        ) & "-" &
+        DimProduct[StandardLength] & "-" &
+        DimWIPOrder[StandardSpeed],
+        
+    "Area", Left(DimZone[ZoneName], 2)
+)`;
+}
+
+function getField(obj: any, ...keys: string[]): any {
+  if (!obj || typeof obj !== 'object') return undefined;
+  for (const k of keys) {
+    if (obj[k] !== undefined && obj[k] !== null) return obj[k];
+    const stripped = k.replace(/^\[|\]$/g, '').replace(/.*\[(.*)\]/, '$1');
+    if (obj[stripped] !== undefined && obj[stripped] !== null) return obj[stripped];
+  }
+  return undefined;
+}
+
+function parseNumber(val: any): number | null {
+  if (val === null || val === undefined || val === '') return null;
+  const num = typeof val === 'number' ? val : Number(String(val).replace(/,/g, '').trim());
+  return isNaN(num) ? null : num;
+}
+
+function cleanFloat(val: any, decimals = 2): number | null {
+  const n = parseNumber(val);
+  if (n === null) return null;
+  return Number(n.toFixed(decimals));
+}
+
+export function parseActualOutputRows(rawItems: any[]): ActualOutputRecord[] {
+  return rawItems.map((raw, index) => {
+    const plantName = String(getField(raw, 'DimPlantRegion[PlantName]', '[DimPlantRegion].[PlantName]', 'PlantName') ?? '').trim();
+    const date = String(getField(raw, 'DimDate[Date]', '[DimDate].[Date]', 'Date') ?? '').trim();
+    const shift = parseNumber(getField(raw, 'DimShift[DaySequenceNo]', '[DimShift].[DaySequenceNo]', 'DaySequenceNo', 'Shift')) ?? 1;
+    const zoneName = String(getField(raw, 'DimZone[ZoneName]', '[DimZone].[ZoneName]', 'ZoneName') ?? '').trim();
+    let area = String(getField(raw, 'Area', '[Area]') ?? '').trim();
+    if (!area && zoneName) {
+      area = zoneName.slice(0, 2).toUpperCase();
+    }
+
+    const group = String(getField(raw, 'McGroup[Group]', '[McGroup].[Group]', 'Group') ?? '').trim();
+    const machineType = String(getField(raw, 'DimMachine[MachineType]', '[DimMachine].[MachineType]', 'MachineType') ?? '').trim();
+    const sapMachineTypeGroup = String(getField(raw, 'DimWIPOrder[SAPMachineTypeGroup]', '[DimWIPOrder].[SAPMachineTypeGroup]', 'SAPMachineTypeGroup') ?? '').trim();
+    const machineName = String(getField(raw, 'DimMachine[Name]', '[DimMachine].[Name]', 'MachineName', 'Name') ?? '').trim();
+
+    const productGroup = String(getField(raw, 'DimProduct[ProductGroup]', '[DimProduct].[ProductGroup]', 'ProductGroup') ?? '').trim();
+    const bkProductNo = String(getField(raw, 'DimProduct[BK_ProductNo]', '[DimProduct].[BK_ProductNo]', 'BK_ProductNo') ?? '').trim();
+    const spgCode = String(getField(raw, 'DimProduct[SPGCode]', '[DimProduct].[SPGCode]', 'SPGCode') ?? '').trim();
+    const constTG = String(getField(raw, 'DimProduct[Const+TG]', '[DimProduct].[Const+TG]', 'Const+TG') ?? '').trim();
+    const construction = String(getField(raw, 'DimProduct[Construction]', '[DimProduct].[Construction]', 'Construction') ?? '').trim();
+
+    const layLengthRaw = getField(raw, 'DimProduct[LayLength]', '[DimProduct].[LayLength]', 'LayLength');
+    const layLengthClean = cleanFloat(layLengthRaw, 2);
+    const layLength = layLengthClean !== null ? layLengthClean : String(layLengthRaw ?? '').trim();
+
+    const tensileStrength = String(getField(raw, 'DimProduct[TensileStrength]', '[DimProduct].[TensileStrength]', 'TensileStrength') ?? '').trim();
+    const spoolType = String(getField(raw, 'DimProduct[SpoolType]', '[DimProduct].[SpoolType]', 'SpoolType') ?? '').trim();
+
+    const standardLengthRaw = getField(raw, 'DimProduct[StandardLength]', '[DimProduct].[StandardLength]', 'StandardLength');
+    const standardLengthClean = cleanFloat(standardLengthRaw, 0);
+    const standardLength = standardLengthClean !== null ? standardLengthClean : String(standardLengthRaw ?? '').trim();
+
+    const standardSpeedRaw = getField(raw, 'DimWIPOrder[StandardSpeed]', '[DimWIPOrder].[StandardSpeed]', 'StandardSpeed');
+    const standardSpeedClean = cleanFloat(standardSpeedRaw, 1);
+    const standardSpeed = standardSpeedClean !== null ? standardSpeedClean : String(standardSpeedRaw ?? '').trim();
+
+    let constructionDetail = String(getField(raw, 'ConstructionDetail', '[ConstructionDetail]') ?? '').trim();
+    if (!constructionDetail && group && construction) {
+      const spoolNorm = spoolType.startsWith('BS') ? spoolType.slice(0, 4) : spoolType;
+      constructionDetail = `${group}-${construction}-${layLength}-${tensileStrength}-${spoolNorm}-${standardLength}-${standardSpeed}`;
+    }
+
+    const doffedSpoolCount = parseNumber(getField(raw, 'DoffedSpoolCount', '[DoffedSpoolCount]'));
+    const doffedRejectSpoolCount = parseNumber(getField(raw, 'DoffedRejectSpoolCount', '[DoffedRejectSpoolCount]'));
+    const aQualityKG = parseNumber(getField(raw, 'AQualityKG', '[AQualityKG]'));
+    const shortLengthAQualityKG = parseNumber(getField(raw, 'ShortLengthAQualityKG', '[ShortLengthAQualityKG]'));
+    const totalRejectedKG = parseNumber(getField(raw, 'TotalRejectedKG', '[TotalRejectedKG]'));
+    const totalProducedKG = parseNumber(getField(raw, 'TotalProducedKG', '[TotalProducedKG]'));
+    const effectiveHours = parseNumber(getField(raw, 'EffectiveHours', '[EffectiveHours]'));
+    const totalFracture = parseNumber(getField(raw, 'TotalFracture', '[TotalFracture]'));
+    const diesCount = parseNumber(getField(raw, 'DiesCount', '[DiesCount]'));
+    const headDiesCount = parseNumber(getField(raw, 'HeadDiesCount', '[HeadDiesCount]'));
+
+    const totalDefect = parseNumber(getField(raw, 'TotalDefect', '[TotalDefect]'));
+    const effectiveHrs = parseNumber(getField(raw, 'EffectiveHrs', '[EffectiveHrs]', 'Effective Time (Hrs)'));
+    const scheduledHrs = parseNumber(getField(raw, 'ScheduledHrs', '[ScheduledHrs]', 'Scheduled Time (Hrs)'));
+    const tonProduced = parseNumber(getField(raw, 'TonProduced', '[TonProduced]'));
+
+    return {
+      id: `act-out-${index}-${machineName}-${constructionDetail || Math.random()}`,
+      plantName,
+      date,
+      shift,
+      zoneName,
+      area,
+      group,
+      machineType,
+      sapMachineTypeGroup,
+      machineName,
+      productGroup,
+      bkProductNo,
+      spgCode,
+      constTG,
+      construction,
+      layLength,
+      tensileStrength,
+      spoolType,
+      standardLength,
+      standardSpeed,
+      constructionDetail,
+      doffedSpoolCount,
+      doffedRejectSpoolCount,
+      aQualityKG,
+      shortLengthAQualityKG,
+      totalRejectedKG,
+      totalProducedKG,
+      effectiveHours,
+      totalFracture,
+      diesCount,
+      headDiesCount,
+      totalDefect,
+      effectiveHrs,
+      scheduledHrs,
+      tonProduced,
+      raw,
+    };
+  });
+}
+
+const cacheMap = new Map<string, ActualOutputRecord[]>();
+
+export async function loadActualOutputData(
+  params: ActualOutputFilterParams,
+  forceRefresh = false,
+): Promise<{ records: ActualOutputRecord[]; daxQuery: string }> {
+  const { plant, date, shift } = params;
+  const cacheKey = `${plant}|${date}|${shift}`;
+
+  if (!forceRefresh && cacheMap.has(cacheKey)) {
+    return {
+      records: cacheMap.get(cacheKey)!,
+      daxQuery: generateActualOutputDax(params),
+    };
+  }
+
+  const payload = {
+    text: plant,
+    date,
+    number: Number(shift),
+    PlantName: plant,
+    Date: date,
+    Shift: Number(shift),
+  };
+
+  console.log('[WL_ActualOutput] Sending parameters to flow:', payload);
+  const response = await WL_ActualOutputService.Run(payload as any);
+  console.log('[WL_ActualOutput] Response from flow:', response);
+
+  if (!response.success) {
+    throw new Error(response.error?.message || 'Call to Power Automate flow WL_ActualOutput failed.');
+  }
+
+  const rawResult = response.data?.result;
+
+  if (!rawResult || rawResult === '[]') {
+    console.warn('[WL_ActualOutput] Flow returned empty data:', rawResult);
+    cacheMap.set(cacheKey, []);
+    return { records: [], daxQuery: generateActualOutputDax(params) };
+  }
+
+  let parsed: any[] = [];
+  if (typeof rawResult === 'string') {
+    try {
+      parsed = JSON.parse(rawResult);
+    } catch {
+      throw new Error('Failed to parse flow output result as JSON: ' + rawResult.slice(0, 150));
+    }
+  } else if (Array.isArray(rawResult)) {
+    parsed = rawResult;
+  }
+
+  if (!Array.isArray(parsed)) {
+    throw new Error('Query result is not an array of rows.');
+  }
+
+  const records = parseActualOutputRows(parsed);
+  cacheMap.set(cacheKey, records);
+  return {
+    records,
+    daxQuery: generateActualOutputDax(params),
+  };
+}
