@@ -68,7 +68,7 @@ const TASK_PRIORITY_OPTIONS: { value: TaskPriorityMode; label: string }[] = [
 
 const FREQUENCY_MODE_OPTIONS: { value: FrequencyMode; label: string }[] = [
   { value: 'manual', label: 'Manual (WL_Products)' },
-  { value: 'historical', label: 'Historical (WL_Frequency)' },
+  { value: 'historical', label: 'Historical (MES Data)' },
 ];
 
 const WAITING_MODEL_OPTIONS: { value: WaitingModel; label: string }[] = (['none', 'wright', 'finiteSource'] as WaitingModel[]).map(
@@ -1730,7 +1730,7 @@ function ProductionSetupEditor({
           <Field label="Task Priority">
             <SelectInput value={setup.taskPriority} options={TASK_PRIORITY_OPTIONS} onChange={(v) => onHeaderChange({ taskPriority: v })} />
           </Field>
-          <Field label="Frequency Source" tooltip="Frequency value source: Manual from WL_Products or Historical from WL_Frequency (automatically falls back to manual if not in WL_Frequency)">
+          <Field label="Frequency Source" tooltip="Frequency value source: Manual from WL_Products or Historical from MES Data (automatically falls back to manual if not in MES Data)">
             <SelectInput
               value={setup.frequencyMode ?? 'manual'}
               options={FREQUENCY_MODE_OPTIONS}

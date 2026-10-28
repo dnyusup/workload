@@ -523,9 +523,9 @@ export function ProductsManager({
             variant="ghost"
             onClick={() => void fetchFreqCatalog(true)}
             disabled={loadingFreqCatalog}
-            title="Refresh historical frequency dari Semantic Model Power BI melalui flow WL_Frequency"
+            title="Refresh historical frequency (MES Data) from Power BI Semantic Model via flow WL_Frequency"
           >
-            {loadingFreqCatalog ? 'Loading WL_Frequency…' : `WL_Frequency (${freqCatalog ? freqCatalog.size : '…'})`}
+            {loadingFreqCatalog ? 'Loading MES Data…' : `MES Data (${freqCatalog ? freqCatalog.size : '…'})`}
           </Button>
           <Button variant="ghost" onClick={() => setReloadToken((t) => t + 1)} disabled={loading}>
             Refresh
@@ -674,7 +674,7 @@ export function ProductsManager({
                                 return (
                                   <span
                                     className="products-hist-empty"
-                                    title={`No match in WL_Frequency for: Mach=${row.fields.mpp_machinecode}, Product=${row.fields.mpp_productspecification}, LayLength=${row.fields.mpp_laylength}, TensileGroup=${row.fields.mpp_tensilegroup}`}
+                                    title={`No match in MES Data for: Mach=${row.fields.mpp_machinecode}, Product=${row.fields.mpp_productspecification}, LayLength=${row.fields.mpp_laylength}, TensileGroup=${row.fields.mpp_tensilegroup}`}
                                   >
                                     —
                                   </span>

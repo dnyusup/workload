@@ -211,15 +211,15 @@ export function BatchSimulationDialog({
                       checked={frequencyMode === 'historical'}
                       onChange={() => setFrequencyMode('historical')}
                     />
-                    <strong className="batch-freq-card-title">Historical (WL_Frequency)</strong>
+                    <strong className="batch-freq-card-title">Historical (MES Data)</strong>
                   </div>
                   <p className="batch-freq-card-body">
-                    Fetches actual historical data from Power BI Semantic Model via WL_Frequency flow using relations:
+                    Fetches actual historical data from MES Data (Power BI Semantic Model) via WL_Frequency flow using relations:
                     <br />
                     <code>Mach = McGroup</code>, <code>Product = Construction</code>, <code>LayLength = LayLength</code>, <code>TensileGroup = TensileStrength</code>.
                     <br />
                     <span className="batch-fallback-note">
-                      ⚡ <strong>Automatic Fallback:</strong> If a product is not found in WL_Frequency, the simulation automatically falls back to manual values from WL_Products.
+                      ⚡ <strong>Automatic Fallback:</strong> If a product is not found in MES Data, the simulation automatically falls back to manual values from WL_Products.
                     </span>
                   </p>
                 </label>

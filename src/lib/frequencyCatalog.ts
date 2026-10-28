@@ -375,6 +375,7 @@ export interface LoadFrequencyOptions {
   plant?: string;
   startDate?: string;
   endDate?: string;
+  dateRangeType?: FrequencyDateRangeType;
 }
 
 const catalogCacheMap = new Map<string, { catalog: HistoricalFrequencyMap; records: FrequencyRecord[] }>();
@@ -456,7 +457,7 @@ export async function loadFrequencyCatalog(
 
       lastActiveFilterParams = {
         plant,
-        dateRangeType: options.startDate ? 'custom' : defaults.frequencyDateRangeType,
+        dateRangeType: options.dateRangeType || (options.startDate ? 'custom' : defaults.frequencyDateRangeType),
         startDate,
         endDate,
         daxQuery,

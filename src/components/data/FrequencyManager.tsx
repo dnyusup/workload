@@ -2,13 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   loadFrequencyCatalog,
   getActiveFrequencyFilterParams,
+  computeFrequencyDateRange,
   type FrequencyRecord,
   type ActiveFrequencyFilterParams,
+  type LoadFrequencyOptions,
 } from '../../lib/frequencyCatalog';
+import { loadDefaultValuesOrBuiltIn, type FrequencyDateRangeType } from '../../lib/defaultValuesStore';
 import { usePagedRows } from '../../hooks/usePagedRows';
 import { TablePager } from '../ui/TablePager';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
+import { DateInput } from '../ui/Field';
 import { FloatingScrollbar } from '../ui/FloatingScrollbar';
 import { SearchableSelect, type SearchableSelectOption } from '../ui/SearchableSelect';
 
@@ -68,6 +72,11 @@ export function FrequencyManager() {
   const [copiedDax, setCopiedDax] = useState(false);
   const [showDaxModal, setShowDaxModal] = useState(false);
 
+  // Date Range Filter States
+  const [dateRangeType, setDateRangeType] = useState<FrequencyDateRangeType>('last1Year');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+
   // Filters & Search
   const [search, setSearch] = useState('');
   const [areaFilter, setAreaFilter] = useState('');
@@ -80,11 +89,38 @@ export function FrequencyManager() {
 
   const tableWrapRef = useRef<HTMLDivElement>(null);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (customOpts?: LoadFrequencyOptions) => {
     setLoading(true);
     setError(null);
     try {
-      const { records } = await loadFrequencyCatalog(true);
+      const defaults = await loadDefaultValuesOrBuiltIn();
+      let start = customOpts?.startDate;
+      let end = customOpts?.endDate;
+      let type = customOpts?.dateRangeType;
+
+      if (!start || !end) {
+        if (startDate && endDate) {
+          start = startDate;
+          end = endDate;
+          type = dateRangeType;
+        } else {
+          type = defaults.frequencyDateRangeType;
+          const computed = computeFrequencyDateRange(type, defaults.frequencyStartDate, defaults.frequencyEndDate);
+          start = computed.startDate;
+          end = computed.endDate;
+        }
+      }
+
+      setStartDate(start);
+      setEndDate(end);
+      if (type) setDateRangeType(type);
+
+      const { records } = await loadFrequencyCatalog({
+        startDate: start,
+        endDate: end,
+        dateRangeType: type,
+        forceRefresh: true,
+      });
       setRows(records);
       setActiveParams(getActiveFrequencyFilterParams());
       setLastRefreshed(new Date());
@@ -95,11 +131,60 @@ export function FrequencyManager() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [startDate, endDate, dateRangeType]);
 
   useEffect(() => {
     void fetchData();
   }, [fetchData]);
+
+  const handlePresetChange = (type: FrequencyDateRangeType) => {
+    setDateRangeType(type);
+    if (type !== 'custom') {
+      const range = computeFrequencyDateRange(type);
+      setStartDate(range.startDate);
+      setEndDate(range.endDate);
+      void fetchData({ startDate: range.startDate, endDate: range.endDate, dateRangeType: type, forceRefresh: true });
+    }
+  };
+
+  const handleStartDateChange = (val: string) => {
+    setStartDate(val);
+    setDateRangeType('custom');
+  };
+
+  const handleEndDateChange = (val: string) => {
+    setEndDate(val);
+    setDateRangeType('custom');
+  };
+
+  const handleApplyDate = () => {
+    if (!startDate || !endDate) return;
+    void fetchData({ startDate, endDate, dateRangeType: 'custom', forceRefresh: true });
+  };
+
+  const handleResetToDefaultRange = async () => {
+    setLoading(true);
+    try {
+      const defaults = await loadDefaultValuesOrBuiltIn();
+      const range = computeFrequencyDateRange(
+        defaults.frequencyDateRangeType,
+        defaults.frequencyStartDate,
+        defaults.frequencyEndDate,
+      );
+      setDateRangeType(defaults.frequencyDateRangeType);
+      setStartDate(range.startDate);
+      setEndDate(range.endDate);
+      await fetchData({
+        startDate: range.startDate,
+        endDate: range.endDate,
+        dateRangeType: defaults.frequencyDateRangeType,
+        forceRefresh: true,
+      });
+    } catch (err) {
+      console.warn('Failed to reset to default range:', err);
+      setLoading(false);
+    }
+  };
 
   // Unique options for filters
   const areaOptions: SearchableSelectOption[] = useMemo(() => {
@@ -271,10 +356,10 @@ export function FrequencyManager() {
     <div className="frequency-manager">
       <Card
         title="WL_Frequency"
-        subtitle="Power BI Semantic Model data via Power Automate Flow (WL_Frequency)"
+        subtitle="Power BI Semantic Model data (MES Data) via Power Automate Flow (WL_Frequency)"
         actions={
           <div className="data-manager-actions">
-            <Button variant="ghost" onClick={fetchData} disabled={loading} title="Run flow again to fetch latest data">
+            <Button variant="ghost" onClick={() => void fetchData({ forceRefresh: true })} disabled={loading} title="Run flow again to fetch latest data">
               {loading ? 'Refreshing…' : '🔄 Refresh Data'}
             </Button>
             <Button
@@ -295,31 +380,76 @@ export function FrequencyManager() {
           </div>
         }
       >
-        {/* Active Filter Info Banner */}
+        {/* Active Filter Info & Editable Date Range Banner */}
         <div className="frequency-active-filter-banner">
           <span className="frequency-filter-banner-item">
             🏭 Plant: <strong>{activeParams?.plant ?? 'PTBI'}</strong>
           </span>
-          <span className="frequency-filter-banner-item">
-            📅 Period: <strong>{activeParams?.startDate ?? '2026-10-20'}</strong> to <strong>{activeParams?.endDate ?? '2026-10-27'}</strong>
-          </span>
-          <span className="frequency-filter-banner-type">
-            {activeParams?.dateRangeType === 'last14Days'
-              ? 'Last 14 Days'
-              : activeParams?.dateRangeType === 'last30Days'
-              ? 'Last 30 Days'
-              : activeParams?.dateRangeType === 'last3Months'
-              ? 'Last 3 Months'
-              : activeParams?.dateRangeType === 'last6Months'
-              ? 'Last 6 Months'
-              : activeParams?.dateRangeType === 'last1Year'
-              ? 'Last 1 Year'
-              : activeParams?.dateRangeType === 'custom'
-              ? 'Custom Range'
-              : 'Last 7 Days'}
-          </span>
+
+          <span className="frequency-filter-banner-divider">|</span>
+
+          <div className="frequency-date-controls">
+            <span className="frequency-filter-banner-item">
+              📅 Period:
+            </span>
+
+            <select
+              className="frequency-date-preset-select"
+              value={dateRangeType}
+              onChange={(e) => handlePresetChange(e.target.value as FrequencyDateRangeType)}
+              disabled={loading}
+              title="Select date range preset"
+            >
+              <option value="last7Days">Last 7 Days</option>
+              <option value="last14Days">Last 14 Days</option>
+              <option value="last30Days">Last 30 Days</option>
+              <option value="last3Months">Last 3 Months</option>
+              <option value="last6Months">Last 6 Months</option>
+              <option value="last1Year">Last 1 Year</option>
+              <option value="custom">Custom Range</option>
+            </select>
+
+            <DateInput
+              value={startDate}
+              onChange={handleStartDateChange}
+              disabled={loading}
+              className="frequency-date-input"
+            />
+            <span className="frequency-date-sep">to</span>
+            <DateInput
+              value={endDate}
+              onChange={handleEndDateChange}
+              disabled={loading}
+              className="frequency-date-input"
+            />
+
+            <button
+              type="button"
+              className="frequency-date-apply-btn"
+              onClick={handleApplyDate}
+              disabled={loading || !startDate || !endDate}
+              title="Apply date range and query MES Data"
+            >
+              {loading ? 'Querying…' : 'Apply'}
+            </button>
+
+            <button
+              type="button"
+              className="frequency-date-reset-btn"
+              title="Reset date range to default from Settings"
+              aria-label="Reset date range to default from Settings"
+              disabled={loading}
+              onClick={() => void handleResetToDefaultRange()}
+            >
+              <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                <path d="M3 3v5h5" />
+              </svg>
+            </button>
+          </div>
+
           <span className="frequency-filter-banner-hint">
-            (Configured in Setting → Default Values)
+            (Default configured in Setting → Default Values)
           </span>
         </div>
 
@@ -376,7 +506,7 @@ export function FrequencyManager() {
             <div className="frequency-alert-body">
               <strong>Error Loading Data:</strong> {error}
               <div className="frequency-alert-actions">
-                <Button variant="ghost" onClick={fetchData} disabled={loading}>
+                <Button variant="ghost" onClick={() => void fetchData({ forceRefresh: true })} disabled={loading}>
                   Try Again
                 </Button>
               </div>

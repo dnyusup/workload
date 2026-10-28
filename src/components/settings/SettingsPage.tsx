@@ -23,7 +23,7 @@ const WAITING_MODEL_OPTIONS: { value: WaitingModel; label: string }[] = [
 
 const FREQUENCY_MODE_OPTIONS: { value: FrequencyMode; label: string }[] = [
   { value: 'manual', label: 'Manual (WL_Products)' },
-  { value: 'historical', label: 'Historical (WL_Frequency Power BI)' },
+  { value: 'historical', label: 'Historical (MES Data)' },
 ];
 
 const DATE_RANGE_OPTIONS: { value: FrequencyDateRangeType; label: string }[] = [
@@ -149,7 +149,7 @@ FILTER(
         <p className="data-manager-hint">Loading…</p>
       ) : (
         <>
-          <SettingGroup title="Historical Frequency & Power BI (WL_Frequency)">
+          <SettingGroup title="Historical Frequency & Power BI (MES Data)">
             <SettingRow
               label="Default Frequency Source"
               tooltip="Default frequency source when selecting a Construction Detail in Work Load Simulator and Production Model. Users can override directly per scenario."

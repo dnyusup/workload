@@ -461,7 +461,7 @@ export function ConstructionDetailSelector({
               onClick={() => void handleFrequencyModeChange('historical')}
               disabled={loadingProducts || applying || loadingCatalog}
             >
-              Historical (WL_Frequency)
+              Historical (MES Data)
             </button>
           </div>
 
@@ -497,7 +497,7 @@ export function ConstructionDetailSelector({
             </div>
           )}
 
-          {loadingCatalog && <span className="construction-selector-status">Loading WL_Frequency…</span>}
+          {loadingCatalog && <span className="construction-selector-status">Loading MES Data…</span>}
         </div>
 
         {selectedProduct && (
@@ -509,14 +509,14 @@ export function ConstructionDetailSelector({
             ) : matchedHistorical ? (
               <span
                 className="badge badge-success"
-                title={`Found in WL_Frequency (Ton Produced: ${matchedHistorical.tonProduced?.toLocaleString() ?? 0})`}
+                title={`Found in MES Data (Ton Produced: ${matchedHistorical.tonProduced?.toLocaleString() ?? 0})`}
               >
-                Historical (WL_Frequency): Fr={config.spec.fracturePerTon} · Dies={config.spec.diesPerTon} · Def={config.spec.defectsPerTon}
+                Historical (MES Data): Fr={config.spec.fracturePerTon} · Dies={config.spec.diesPerTon} · Def={config.spec.defectsPerTon}
               </span>
             ) : (
               <span
                 className="badge badge-warning"
-                title="Product not found in WL_Frequency, automatically falling back to manual values from WL_Products"
+                title="Product not found in MES Data, automatically falling back to manual values from WL_Products"
               >
                 ⚠️ Historical not found → Fallback to Manual: Fr={config.spec.fracturePerTon} · Dies={config.spec.diesPerTon} · Def={config.spec.defectsPerTon}
               </span>
