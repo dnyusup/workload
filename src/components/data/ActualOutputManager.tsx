@@ -66,9 +66,12 @@ SUMMARIZECOLUMNS(
     DimProduct[StandardLength],
     DimWIPOrder[StandardSpeed],
 
-    -- 2. FILTER PLANT, TANGGAL & SHIFT:
+    -- 2. FILTER PLANT, TANGGAL & SHIFT (Sama seperti WL_Frequency):
     TREATAS({"@{triggerBody()['text']}"}, DimPlantRegion[PlantName]),
-    TREATAS({DATE(VALUE(LEFT("@{triggerBody()['date']}", 4)), VALUE(MID("@{triggerBody()['date']}", 6, 2)), VALUE(RIGHT("@{triggerBody()['date']}", 2)))}, DimDate[Date]),
+    FILTER(
+        ALL(DimDate[Date]), 
+        DimDate[Date] = DATEVALUE("@{triggerBody()['date']}")
+    ),
     TREATAS({@{triggerBody()['number']}}, DimShift[DaySequenceNo]),
 
     -- 3. NILAI AGREGASI
@@ -898,11 +901,11 @@ export function ActualOutputManager() {
                     </strong>
                     <ol style={{ margin: '0 0 0 16px', padding: 0 }}>
                       <li style={{ marginBottom: 4 }}>
-                        <strong>Tanggal Menggunakan DATE:</strong> Gunakan{' '}
+                        <strong>Tanggal (Sama seperti WL_Frequency):</strong> Gunakan{' '}
                         <code style={{ color: '#fcd34d', background: '#1e293b', padding: '2px 4px', borderRadius: 4 }}>
-                          TREATAS(&#123;DATE(VALUE(LEFT("@&#123;triggerBody()['date']&#125;", 4)), VALUE(MID("@&#123;triggerBody()['date']&#125;", 6, 2)), VALUE(RIGHT("@&#123;triggerBody()['date']&#125;", 2)))&#125;, DimDate[Date])
+                          FILTER(ALL(DimDate[Date]), DimDate[Date] = DATEVALUE("@&#123;triggerBody()['date']&#125;"))
                         </code>
-                        . Cara ini otomatis menghasilkan <code>DATE(2026, 10, 25)</code> yang 100% cocok dan kebal terhadap perbedaan locale/regional server Power BI.
+                        . Pastikan tanda petik <code>""</code> menempel rapat tanpa spasi di dalamnya.
                       </li>
                       <li style={{ marginBottom: 4 }}>
                         <strong>Tanda Petik Tanpa Spasi:</strong> Pada PlantName, pastikan tidak ada spasi di dalam petik:{' '}
