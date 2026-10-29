@@ -1160,7 +1160,31 @@ export function ImportConstructionFromMesDialog({
             )}
           </div>
 
-          <div style={{ display: 'flex', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            {stage === 'preview' && (
+              <div
+                style={{
+                  fontSize: '0.74rem',
+                  color: '#94a3b8',
+                  lineHeight: 1.35,
+                  textAlign: 'right',
+                }}
+              >
+                <div>
+                  <strong style={{ color: '#4ade80' }}>{matchedItems.length}</strong> assigned
+                  {matchedItems.filter((m) => m.willChange).length > 0 && (
+                    <span> (<span style={{ color: '#38bdf8' }}>{matchedItems.filter((m) => m.willChange).length}</span> to update)</span>
+                  )}
+                </div>
+                <div>
+                  <strong style={{ color: '#cbd5e1' }}>{unmatchedCatalog.length + noActivity.length}</strong> unassigned
+                  {(unmatchedCatalog.filter((m) => m.willChange).length + noActivity.filter((m) => m.willChange).length) > 0 && (
+                    <span> (<span style={{ color: '#f87171' }}>{unmatchedCatalog.filter((m) => m.willChange).length + noActivity.filter((m) => m.willChange).length}</span> to clear)</span>
+                  )}
+                </div>
+              </div>
+            )}
+
             <Button
               variant="secondary"
               onClick={onClose}
@@ -1171,7 +1195,7 @@ export function ImportConstructionFromMesDialog({
 
             {stage === 'saving' ? (
               <Button variant="primary" disabled style={{ fontWeight: 600 }}>
-                Saving…
+                Saving to Dataverse…
               </Button>
             ) : stage === 'preview' ? (
               <Button
@@ -1179,10 +1203,11 @@ export function ImportConstructionFromMesDialog({
                 onClick={() => void handleApplyImport()}
                 disabled={loading || totalChangedMachines === 0}
                 style={{ fontWeight: 600 }}
+                title={`${totalChangedMachines} machines will have their construction assignment changed in Dataverse`}
               >
                 {totalChangedMachines > 0
-                  ? `💾 Apply (${totalChangedMachines} Machines) to Setup`
-                  : 'No Changes Needed'}
+                  ? `💾 Apply Changes (${totalChangedMachines} Updates)`
+                  : '✅ All 1,256 Machines Already Up-to-Date'}
               </Button>
             ) : (
               <Button

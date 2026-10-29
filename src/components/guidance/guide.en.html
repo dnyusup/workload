@@ -115,6 +115,7 @@
       <ul>
         <li><strong>Construction Detail View</strong> colors machines by Construction. <strong>Operator View</strong> splits each machine body by operator. Hover a legend entry to highlight its machines; the legend has Construction, Operator and Machine Group tabs.</li>
         <li>The <strong>Machine Assignments</strong> table lists every column per machine: Construction, Group Name, Multi Task, the operators per activity (hover a count to see the names), and the machine's Doff Priority ("—" = follows the setup). The row above the headers totals each column (machines, distinct Constructions, groups and operators). <span class="ui">Group by</span> Construction, Group Name or Operator rolls the table up: per group, how many machines, Constructions, groups and operators (in total, Multi Task and per activity) it has. Under Operator, a machine counts toward every operator working it. Click any column header to sort; click again to reverse. <span class="ui">Search</span> keeps only machines with that text in any column (machine, Construction, Group Name, any operator, Doff Priority); totals and Group by then cover just those.</li>
+        <li>Use <span class="ui">⚡ Import from MES</span> to pull actual production output from the Power BI Semantic Model (<code>MES_ActualOutput</code>) for a specified plant, date (H-1), and shift. The system matches layout machines with the highest-volume product run on that machine during the shift. Active machines matching registered products are assigned, while idle machines or unregistered codes are set to Unassigned (blank). A full audit log is displayed for any missing catalog codes with a copy button. Only the Construction column is updated; operator assignments, groups, and doff priorities remain completely untouched.</li>
         <li>Use <span class="ui">Export CSV</span>, edit in Excel, then <span class="ui">Import CSV</span>. The Multi Task and activity columns take operator names separated by <code>;</code>. Doff Priority takes <code>Yes</code>, <code>No</code> or blank; Min Remain Task takes minutes or blank (blank = follow the setup).</li>
       </ul>
 
@@ -124,7 +125,7 @@
     </section>
 
     <section>
-      <h2 id="en-data">Master data</h2>
+      <h2 id="en-data">Master data &amp; MES Data</h2>
       <h3>WL_Products</h3>
       <p>One row per Construction Detail: Area, Mach, Product, machine specification, POlength1–3, Fracture/Dies/Defect per ton. The <strong>Fr/T (Hist)</strong>, <strong>Dies/T (Hist)</strong>, and <strong>Def/T (Hist)</strong> columns provide a direct comparison with actual historical frequencies from Power BI (matched by Mach = McGroup, Product = Construction, LayLength, and TensileGroup). The <span class="ui">🔄 MES_Frequency</span> button at the top right re-synchronizes Power BI data. Double-click a Construction cell to open that Construction's WL_Activities.</p>
       <p><strong>TaskPriority, DoffPriority, MinRemainTaskForDoffPriority</strong> are optional — leave them blank (<em>— Default —</em>) to follow Setting → Default Values in the Work Load Simulator and Batch Simulation, or the Production Setup in Production Simulation. Filled in, they apply to that Construction Detail only. In Production Simulation a machine's own Doff Priority (Machine Assignments) still comes first; an operator uses the products' Task Priority when all of its machines come to the same one, otherwise the setup's.</p>
@@ -136,6 +137,14 @@
         <li><strong>Summary KPIs</strong>: Computes total production volume (Ton Produced) and weighted averages for Fr/T, Def/T, and Dies/T using the SumProduct method: <code>Σ (Rate × TonProduced) ÷ Total TonProduced</code>.</li>
         <li><strong>Search &amp; Filters</strong>: Filters rows by Area, Machine Type Group (SAP), McGroup, and Construction, plus free-text search matching Group_Product_Info combinations.</li>
         <li><strong>Export CSV &amp; DAX Info</strong>: The <span class="ui">Export CSV</span> button downloads all filtered rows to a spreadsheet. The <span class="ui">DAX &amp; Flow Info</span> button displays integration architecture and active DAX query evaluation.</li>
+      </ul>
+
+      <h3>MES_ActualOutput</h3>
+      <p>Displays actual production output and machine productivity records retrieved directly from the Power BI Semantic Model via the Power Automate cloud flow <code>MES_ActualOutput</code>.</p>
+      <ul>
+        <li><strong>Summary KPIs</strong>: Tracks Total Produced (KG), Ton Produced, Quality A (KG), Reject (KG &amp; %), Doffed Spools, Effective Hours, Scheduled Hours, Overall Equipment Effectiveness (OEE % = <code>(EffectiveHours ÷ 60) ÷ ScheduledHours × 100</code>), Fracture/Ton (FR / T), Defect/Ton (DEF / T), and Dies/Ton (DIES / T = <code>(DiesCount + HeadDiesCount) ÷ TonProduced</code>).</li>
+        <li><strong>Shift Parameters</strong>: Evaluates shift data by Plant Name, Production Date (H-1), Shift (1, 2, 3), Area, Group, and Machine Type.</li>
+        <li><strong>DAX Query &amp; CSV Export</strong>: View the underlying DAX template executed against Power BI and export filtered actual output records to CSV.</li>
       </ul>
       <h3>WL_Activities</h3>
       <p>One row per Task/SubTask per Construction. A blank SubTask is the parent activity.</p>

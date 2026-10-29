@@ -115,6 +115,7 @@
       <ul>
         <li><strong>Construction Detail View</strong> mewarnai mesin per Construction. <strong>Operator View</strong> membagi badan mesin per operator. Arahkan kursor ke legend untuk menyorot mesinnya; legend punya tab Construction, Operator, dan Machine Group.</li>
         <li>Tabel <strong>Machine Assignments</strong> menampilkan semua kolom per mesin: Construction, Group Name, Multi Task, operator per aktivitas (arahkan kursor ke jumlahnya untuk melihat nama-namanya), dan Doff Priority mesin ("—" = ikut setup). Baris di atas header berisi total tiap kolom (jumlah mesin, Construction, group, dan operator yang berbeda). <span class="ui">Group by</span> Construction, Group Name, atau Operator merangkum tabel per grup: berapa mesin, Construction, group, dan operator (total, Multi Task, dan per aktivitas). Untuk Operator, satu mesin dihitung di setiap operator yang mengerjakannya. Klik header kolom mana pun untuk mengurutkan; klik lagi untuk membalik urutan. <span class="ui">Search</span> hanya menampilkan mesin yang mengandung teks itu di kolom mana pun (mesin, Construction, Group Name, operator mana pun, Doff Priority); total dan Group by lalu hanya menghitung mesin tersebut.</li>
+        <li>Gunakan tombol <span class="ui">⚡ Import from MES</span> untuk menarik data produksi aktual dari Power BI MES Semantic Model (<code>MES_ActualOutput</code>) berdasarkan Plant, Tanggal (H-1), dan Shift. Sistem otomatis mencocokkan mesin layout dengan produk ber-volume terbesar yang berjalan di shift tersebut. Mesin aktif dengan kode yang terdaftar di WL_Products langsung di-assign, sedangkan mesin tanpa aktivitas MES atau kode yang belum terdaftar di katalog disetel Unassigned (kosong/blank) dengan log audit lengkap serta tombol copy kode missing. Proses ini <u>hanya</u> memperbarui kolom Construction; penugasan operator, nama grup, dan prioritas doffing tetap utuh 100%.</li>
         <li>Gunakan <span class="ui">Export CSV</span>, edit di Excel, lalu <span class="ui">Import CSV</span>. Kolom Multi Task dan kolom aktivitas diisi nama operator dipisah <code>;</code>. Kolom Doff Priority diisi <code>Yes</code>, <code>No</code>, atau kosong; Min Remain Task diisi angka menit atau kosong (kosong = ikut setup).</li>
       </ul>
 
@@ -124,7 +125,7 @@
     </section>
 
     <section>
-      <h2 id="id-data">Data master</h2>
+      <h2 id="id-data">Data master &amp; Data MES</h2>
       <h3>WL_Products</h3>
       <p>Satu baris per Construction Detail: Area, Mach, Product, spesifikasi mesin, POlength1–3, Fracture/Dies/Defect per ton. Kolom <strong>Fr/T (Hist)</strong>, <strong>Dies/T (Hist)</strong>, dan <strong>Def/T (Hist)</strong> menampilkan perbandingan langsung dengan frekuensi historis aktual dari Power BI (dicocokkan berdasarkan Mach = McGroup, Product = Construction, LayLength, dan TensileGroup). Tombol <span class="ui">🔄 MES_Frequency</span> di kanan atas melakukan sinkronisasi ulang data Power BI. Double-click sel Construction untuk membuka WL_Activities milik Construction itu.</p>
       <p><strong>TaskPriority, DoffPriority, MinRemainTaskForDoffPriority</strong> boleh kosong — kosong (<em>— Default —</em>) berarti mengikuti Setting → Default Values di Work Load Simulator dan Batch Simulation, atau Production Setup di Production Simulation. Kalau diisi, berlaku khusus untuk Construction Detail itu. Di Production Simulation, Doff Priority milik mesin sendiri (Machine Assignments) tetap didahulukan; operator memakai Task Priority produk kalau semua mesinnya menghasilkan nilai yang sama, selain itu memakai milik setup.</p>
@@ -136,6 +137,14 @@
         <li><strong>KPI Ringkasan</strong>: Menghitung total volume produksi (Ton Produced) serta rata-rata terbobot (Weighted Average) Fr/T, Def/T, dan Dies/T menggunakan metode SumProduct: <code>Σ (Rate × TonProduced) ÷ Total TonProduced</code>.</li>
         <li><strong>Pencarian &amp; Filter</strong>: Memfilter baris berdasarkan Area, Machine Type Group (SAP), McGroup, dan Construction, serta pencarian teks bebas kombinasi Group_Product_Info.</li>
         <li><strong>Export CSV &amp; Info DAX</strong>: Tombol <span class="ui">Export CSV</span> mengunduh seluruh baris yang tersaring ke berkas spreadsheet. Tombol <span class="ui">DAX &amp; Flow Info</span> menampilkan arsitektur integrasi dan evaluasi query DAX aktif.</li>
+      </ul>
+
+      <h3>MES_ActualOutput</h3>
+      <p>Menampilkan data output aktual dan produktivitas mesin yang ditarik langsung dari Power BI Semantic Model melalui Cloud Flow Power Automate <code>MES_ActualOutput</code>.</p>
+      <ul>
+        <li><strong>KPI Ringkasan Shift</strong>: Melacak Total Produced (KG), Ton Produced, Quality A (KG), Reject (KG &amp; %), Doffed Spools, Effective Hours, Scheduled Hours, Overall Equipment Effectiveness (OEE % = <code>(EffectiveHours ÷ 60) ÷ ScheduledHours × 100</code>), Fracture/Ton (FR / T), Defect/Ton (DEF / T), dan Dies/Ton (DIES / T = <code>(DiesCount + HeadDiesCount) ÷ TonProduced</code>).</li>
+        <li><strong>Parameter Shift</strong>: Memfilter dan mengevaluasi data shift berdasarkan Nama Plant, Tanggal Produksi (H-1), Shift (1, 2, 3), Area, Group, dan Machine Type.</li>
+        <li><strong>Query DAX &amp; Export CSV</strong>: Menampilkan template query DAX resmi yang dieksekusi ke Power BI serta mengunduh berkas data aktual ke CSV.</li>
       </ul>
 
       <h3>WL_Activities</h3>
