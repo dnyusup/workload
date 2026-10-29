@@ -437,7 +437,7 @@ export function ProductionSimulationPage() {
       .then(({ catalog }) => {
         if (!cancelled) setFreqCatalog(catalog);
       })
-      .catch((err) => console.warn('WL_Frequency catalog background load:', err));
+      .catch((err) => console.warn('MES_Frequency catalog background load:', err));
     return () => {
       cancelled = true;
     };
@@ -454,7 +454,7 @@ export function ProductionSimulationPage() {
       .then(({ catalog }) => {
         if (!cancelled) setFreqCatalog(catalog);
       })
-      .catch((err) => console.warn('WL_Frequency catalog load for setup:', err));
+      .catch((err) => console.warn('MES_Frequency catalog load for setup:', err));
     return () => {
       cancelled = true;
     };
@@ -2007,7 +2007,7 @@ function ProductionSetupEditor({
               variant="secondary"
               onClick={() => setMesImportOpen(true)}
               disabled={importProgress !== null}
-              title="Import active machine Construction Details from Power BI MES (WL_ActualOutput)"
+              title="Import active machine Construction Details from Power BI MES (MES_ActualOutput)"
             >
               ⚡ Import from MES
             </Button>

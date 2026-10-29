@@ -336,7 +336,7 @@ export function FrequencyManager() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `WL_Frequency_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.download = `MES_Frequency_${new Date().toISOString().slice(0, 10)}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -355,8 +355,8 @@ export function FrequencyManager() {
   return (
     <div className="frequency-manager">
       <Card
-        title="WL_Frequency"
-        subtitle="Power BI Semantic Model data (MES Data) via Power Automate Flow (WL_Frequency)"
+        title="MES_Frequency"
+        subtitle="Power BI Semantic Model data (MES Data) via Power Automate Flow (MES_Frequency)"
         actions={
           <div className="data-manager-actions">
             <Button variant="ghost" onClick={() => void fetchData({ forceRefresh: true })} disabled={loading} title="Run flow again to fetch latest data">

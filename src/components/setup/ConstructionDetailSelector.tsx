@@ -56,7 +56,7 @@ export function ConstructionDetailSelector({
         if (!cancelled) setFreqCatalog(catalog);
       })
       .catch((err) => {
-        console.warn('Background load of WL_Frequency catalog:', err);
+        console.warn('Background load of MES_Frequency catalog:', err);
       });
     return () => {
       cancelled = true;

@@ -219,7 +219,7 @@ FILTER(
             )}
             <SettingRow
               label="Default Fr / Ton Fallback"
-              tooltip="Fallback Fracture/Ton rate if product specification has no frequency in WL_Products or WL_Frequency (0 = no fallback)."
+              tooltip="Fallback Fracture/Ton rate if product specification has no frequency in WL_Products or MES_Frequency (0 = no fallback)."
             >
               <NumberInput
                 value={draft.defaultFracturePerTon}
@@ -229,7 +229,7 @@ FILTER(
             </SettingRow>
             <SettingRow
               label="Default Def / Ton Fallback"
-              tooltip="Fallback Defect/Ton rate if not found in WL_Products or WL_Frequency."
+              tooltip="Fallback Defect/Ton rate if not found in WL_Products or MES_Frequency."
             >
               <NumberInput
                 value={draft.defaultDefectPerTon}
@@ -239,7 +239,7 @@ FILTER(
             </SettingRow>
             <SettingRow
               label="Default Dies / Ton Fallback"
-              tooltip="Fallback Dies/Ton rate if not found in WL_Products or WL_Frequency."
+              tooltip="Fallback Dies/Ton rate if not found in WL_Products or MES_Frequency."
             >
               <NumberInput
                 value={draft.defaultDiesPerTon}

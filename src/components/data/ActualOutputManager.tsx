@@ -409,7 +409,7 @@ export function ActualOutputManager() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `WL_ActualOutput_${plant}_${date}_Shift${shift}.csv`;
+    link.download = `MES_ActualOutput_${plant}_${date}_Shift${shift}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -430,8 +430,8 @@ export function ActualOutputManager() {
   return (
     <div className="actual-output-manager">
       <Card
-        title="WL_ActualOutput"
-        subtitle="Power BI Semantic Model data (Actual Output & Productivity) via Power Automate Flow (WL_ActualOutput)"
+        title="MES_ActualOutput"
+        subtitle="Power BI Semantic Model data (Actual Output & Productivity) via Power Automate Flow (MES_ActualOutput)"
         actions={
           <div className="data-manager-actions">
             <Button
@@ -904,10 +904,10 @@ export function ActualOutputManager() {
                   Power BI Integration
                 </span>
                 <h3 style={{ margin: '4px 0 2px', fontSize: '1.2rem', color: '#f8fafc', fontWeight: 600 }}>
-                  WL_ActualOutput DAX & Flow Integration
+                  MES_ActualOutput DAX & Flow Integration
                 </h3>
                 <p style={{ margin: 0, fontSize: '0.82rem', color: '#94a3b8' }}>
-                  Architecture and DAX query details connecting Semantic Model to WL_ActualOutput
+                  Architecture and DAX query details connecting Semantic Model to MES_ActualOutput
                 </p>
               </div>
               <button

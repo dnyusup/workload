@@ -214,7 +214,7 @@ export function BatchSimulationDialog({
                     <strong className="batch-freq-card-title">Historical (MES Data)</strong>
                   </div>
                   <p className="batch-freq-card-body">
-                    Fetches actual historical data from MES Data (Power BI Semantic Model) via WL_Frequency flow using relations:
+                    Fetches actual historical data from MES Data (Power BI Semantic Model) via MES_Frequency flow using relations:
                     <br />
                     <code>Mach = McGroup</code>, <code>Product = Construction</code>, <code>LayLength = LayLength</code>, <code>TensileGroup = TensileStrength</code>.
                     <br />

@@ -40,7 +40,7 @@
 }
 
 .sidebar-expanded {
-  width: 210px;
+  width: 220px;
 }
 
 .sidebar-toggle {
@@ -50,13 +50,40 @@
   border-bottom: 1px solid #1e293b;
   color: #94a3b8;
   cursor: pointer;
-  padding: 16px 0;
-  font-size: 1rem;
+  padding: 14px 0;
+  font-size: 0.95rem;
   width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease;
 }
 
 .sidebar-toggle:hover {
   color: #e2e8f0;
+}
+
+.sidebar-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.sidebar-group-label {
+  font-size: 0.64rem;
+  font-weight: 700;
+  color: #64748b;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 10px 10px 4px;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.sidebar-group-divider {
+  height: 1px;
+  background: #1e293b;
+  margin: 6px 4px;
 }
 
 .sidebar-nav {

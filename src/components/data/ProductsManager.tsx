@@ -523,7 +523,7 @@ export function ProductsManager({
             variant="ghost"
             onClick={() => void fetchFreqCatalog(true)}
             disabled={loadingFreqCatalog}
-            title="Refresh historical frequency (MES Data) from Power BI Semantic Model via flow WL_Frequency"
+            title="Refresh historical frequency (MES Data) from Power BI Semantic Model via flow MES_Frequency"
           >
             {loadingFreqCatalog ? 'Loading MES Data…' : `MES Data (${freqCatalog ? freqCatalog.size : '…'})`}
           </Button>
@@ -692,7 +692,7 @@ export function ProductsManager({
                               return (
                                 <span
                                   className="products-hist-badge"
-                                  title={`Dari WL_Frequency: Fr/T=${item.fracturePerTon ?? '—'}, Dies/T=${item.diesPerTon ?? '—'}, Def/T=${item.defectPerTon ?? '—'} (TonProduced: ${item.tonProduced?.toLocaleString() ?? 0})`}
+                                  title={`Dari MES_Frequency: Fr/T=${item.fracturePerTon ?? '—'}, Dies/T=${item.diesPerTon ?? '—'}, Def/T=${item.defectPerTon ?? '—'} (TonProduced: ${item.tonProduced?.toLocaleString() ?? 0})`}
                                 >
                                   {val}
                                 </span>
