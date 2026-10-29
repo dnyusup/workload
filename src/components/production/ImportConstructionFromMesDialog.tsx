@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ProductionMachineAssignment, ProductionSetup } from '../../types';
-import type { Mpp_wl_productses } from '../../generated/models/Mpp_wl_productsesModel';
+import type { Mpp_wl_productses, Mpp_wl_productsesBase } from '../../generated/models/Mpp_wl_productsesModel';
+import { Mpp_wl_productsesService } from '../../generated/services/Mpp_wl_productsesService';
 import { Mpp_wl_activitiesService } from '../../generated/services/Mpp_wl_activitiesService';
 import { fetchAllPages } from '../../lib/dataversePaging';
 import { loadActualOutputData, type ActualOutputRecord } from '../../lib/actualOutputCatalog';
@@ -12,7 +13,11 @@ import {
   isWwdConstruction,
   extractWwdBaseConstruction,
   saveWwdSpec,
+  getWwdSpec,
+  synthesizeWwdSpec,
+  findMatchingActivityConstruction,
 } from '../../lib/wwdSpecStore';
+import { loadFrequencyCatalog, lookupHistoricalFrequency } from '../../lib/frequencyCatalog';
 import { Button } from '../ui/Button';
 import { DateInput } from '../ui/Field';
 
@@ -90,11 +95,14 @@ export function ImportConstructionFromMesDialog({
 
   // Analysis result state
   const [matchedItems, setMatchedItems] = useState<MatchedItem[]>([]);
+  const [wwdMesItems, setWwdMesItems] = useState<MatchedItem[]>([]);
   const [unmatchedCatalog, setUnmatchedCatalog] = useState<UnmatchedCatalogItem[]>([]);
   const [noActivity, setNoActivity] = useState<NoActivityItem[]>([]);
-  const [activeTab, setActiveTab] = useState<'matched' | 'unmatched' | 'noActivity'>('matched');
+  const [activeTab, setActiveTab] = useState<'matched' | 'wwd' | 'unmatched' | 'noActivity'>('matched');
   const [filterSearch, setFilterSearch] = useState('');
   const [copied, setCopied] = useState(false);
+  const [savingWwd, setSavingWwd] = useState(false);
+  const [wwdSaveSuccess, setWwdSaveSuccess] = useState<string | null>(null);
 
   // Initialize Plant from Setting Default Values
   useEffect(() => {
@@ -200,7 +208,8 @@ export function ImportConstructionFromMesDialog({
         }
       }
 
-      const matched: MatchedItem[] = [];
+      const matchedCatalogItems: MatchedItem[] = [];
+      const wwdMesList: MatchedItem[] = [];
       const missingCatalog: UnmatchedCatalogItem[] = [];
       const noAct: NoActivityItem[] = [];
 
@@ -217,12 +226,34 @@ export function ImportConstructionFromMesDialog({
 
           const isWwd = isWwdRecord(rec) || isWwdConstruction(mesCode);
 
-          if (isWwd) {
-            // WWD Validation: bypass WL_Products, validate against WL_Activities based on base construction
-            const baseConstruction = extractWwdBaseConstruction(mesCode);
-            const isValidInActivities = activityConstructionSet.has(baseConstruction.toLowerCase());
+          // 1. Check if construction detail code is ALREADY registered in WL_Products catalog
+          const matchedProd =
+            productByExact.get(mesCode.toLowerCase()) ??
+            productByNormalized.get(normalizeKey(mesCode));
 
-            if (isValidInActivities) {
+          if (matchedProd) {
+            // Already registered in WL_Products!
+            const willChange = currentId !== matchedProd.mpp_wl_productsid;
+            matchedCatalogItems.push({
+              machineId: machine.id,
+              machineLabel: mLabel,
+              currentLabel,
+              currentId,
+              mesConstruction: mesCode,
+              product: matchedProd,
+              isWwd,
+              baseConstruction: matchedProd.mpp_constructioncode ?? undefined,
+              volumeKG: vol,
+              willChange,
+            });
+          } else if (isWwd) {
+            // Dynamic WWD specification from MES Actual Output!
+            // Validate base construction against WL_Activities using flexible variant matching
+            const rawBaseConstruction = extractWwdBaseConstruction(mesCode);
+            const matchedActKey = findMatchingActivityConstruction(rawBaseConstruction, activityConstructionSet);
+
+            if (matchedActKey) {
+              const canonicalBase = matchedActKey;
               const speed = typeof rec.standardSpeed === 'number' ? rec.standardSpeed : Number(rec.standardSpeed) || 0;
               const length = typeof rec.standardLength === 'number' ? rec.standardLength : Number(rec.standardLength) || 0;
               const diam = parseFloat(rec.construction);
@@ -234,7 +265,7 @@ export function ImportConstructionFromMesDialog({
 
               saveWwdSpec({
                 constructionDetail: mesCode,
-                baseConstruction,
+                baseConstruction: canonicalBase,
                 standardSpeed: speed,
                 standardLength: length,
                 linearDensity: density,
@@ -247,14 +278,14 @@ export function ImportConstructionFromMesDialog({
               });
 
               const willChange = currentLabel !== mesCode;
-              matched.push({
+              wwdMesList.push({
                 machineId: machine.id,
                 machineLabel: mLabel,
                 currentLabel,
                 currentId,
                 mesConstruction: mesCode,
                 isWwd: true,
-                baseConstruction,
+                baseConstruction: canonicalBase,
                 volumeKG: vol,
                 willChange,
               });
@@ -267,44 +298,25 @@ export function ImportConstructionFromMesDialog({
                 currentId,
                 mesConstruction: mesCode,
                 isWwd: true,
-                baseConstruction,
+                baseConstruction: rawBaseConstruction,
                 volumeKG: vol,
                 willChange,
-                reason: `WWD Base Construction "${baseConstruction}" not found in WL_Activities`,
+                reason: `WWD Base Construction "${rawBaseConstruction}" not found in WL_Activities`,
               });
             }
           } else {
-            // Standard validation against WL_Products for non-WWD machines
-            const matchedProd =
-              productByExact.get(mesCode.toLowerCase()) ??
-              productByNormalized.get(normalizeKey(mesCode));
-
-            if (matchedProd) {
-              const willChange = currentId !== matchedProd.mpp_wl_productsid;
-              matched.push({
-                machineId: machine.id,
-                machineLabel: mLabel,
-                currentLabel,
-                currentId,
-                mesConstruction: mesCode,
-                product: matchedProd,
-                volumeKG: vol,
-                willChange,
-              });
-            } else {
-              // Found in MES, but code is missing in WL_Products catalog -> will unassign
-              const willChange = Boolean(currentId);
-              missingCatalog.push({
-                machineId: machine.id,
-                machineLabel: mLabel,
-                currentLabel,
-                currentId,
-                mesConstruction: mesCode,
-                volumeKG: vol,
-                willChange,
-                reason: 'ConstructionDetail code not registered in WL_Products',
-              });
-            }
+            // Non-WWD machine not found in WL_Products catalog -> will unassign & log
+            const willChange = Boolean(currentId);
+            missingCatalog.push({
+              machineId: machine.id,
+              machineLabel: mLabel,
+              currentLabel,
+              currentId,
+              mesConstruction: mesCode,
+              volumeKG: vol,
+              willChange,
+              reason: 'ConstructionDetail code not registered in WL_Products',
+            });
           }
         } else {
           // No MES activity on this shift -> will unassign
@@ -319,13 +331,16 @@ export function ImportConstructionFromMesDialog({
         }
       }
 
-      setMatchedItems(matched);
+      setMatchedItems(matchedCatalogItems);
+      setWwdMesItems(wwdMesList);
       setUnmatchedCatalog(missingCatalog);
       setNoActivity(noAct);
 
-      // Default active tab to missingCatalog if any exists so user is alerted to missing codes
+      // Default active tab: missing if any, else WWD if any, else matched
       if (missingCatalog.length > 0) {
         setActiveTab('unmatched');
+      } else if (wwdMesList.length > 0) {
+        setActiveTab('wwd');
       } else {
         setActiveTab('matched');
       }
@@ -346,25 +361,24 @@ export function ImportConstructionFromMesDialog({
   // Step 2: Apply assignments (matched products assigned, idle/missing unassigned)
   const totalChangedMachines = useMemo(() => {
     const c1 = matchedItems.filter((m) => m.willChange).length;
+    const cWwd = wwdMesItems.filter((m) => m.willChange).length;
     const c2 = unmatchedCatalog.filter((m) => m.willChange).length;
     const c3 = noActivity.filter((m) => m.willChange).length;
-    return c1 + c2 + c3;
-  }, [matchedItems, unmatchedCatalog, noActivity]);
+    return c1 + cWwd + c2 + c3;
+  }, [matchedItems, wwdMesItems, unmatchedCatalog, noActivity]);
 
   const handleApplyImport = async () => {
     setLoading(true);
     setError(null);
     setStage('saving');
 
-    // Build the complete target patch map for all layout machines:
-    // 1. Matched machines -> assign to product GUID or WWD construction code
-    // 2. Unmatched in catalog / No MES data -> unassign (undefined / null)
     const patchByMachineId = new Map<string, Partial<ProductionMachineAssignment>>();
     const changesToPersist: { machineId: string; patch: Partial<ProductionMachineAssignment> }[] = [];
 
+    // 1. Matched in Catalog
     for (const item of matchedItems) {
-      const targetId = item.isWwd ? item.mesConstruction : item.product!.mpp_wl_productsid;
-      const targetLabel = item.isWwd ? item.mesConstruction : item.product!.mpp_constructiondetailcode;
+      const targetId = item.product!.mpp_wl_productsid;
+      const targetLabel = item.product!.mpp_constructiondetailcode;
       patchByMachineId.set(item.machineId, {
         constructionDetailId: targetId,
         constructionDetailLabel: targetLabel,
@@ -380,6 +394,26 @@ export function ImportConstructionFromMesDialog({
       }
     }
 
+    // 2. WWD from MES Output
+    for (const item of wwdMesItems) {
+      const targetId = item.product ? item.product.mpp_wl_productsid : item.mesConstruction;
+      const targetLabel = item.mesConstruction;
+      patchByMachineId.set(item.machineId, {
+        constructionDetailId: targetId,
+        constructionDetailLabel: targetLabel,
+      });
+      if (item.willChange) {
+        changesToPersist.push({
+          machineId: item.machineId,
+          patch: {
+            constructionDetailId: targetId,
+            constructionDetailLabel: targetLabel,
+          },
+        });
+      }
+    }
+
+    // 3. Unmatched in catalog / invalid -> unassign
     for (const item of unmatchedCatalog) {
       patchByMachineId.set(item.machineId, {
         constructionDetailId: undefined,
@@ -396,6 +430,7 @@ export function ImportConstructionFromMesDialog({
       }
     }
 
+    // 4. No MES data -> unassign
     for (const item of noActivity) {
       patchByMachineId.set(item.machineId, {
         constructionDetailId: undefined,
@@ -436,8 +471,9 @@ export function ImportConstructionFromMesDialog({
       }
 
       setStage('complete');
+      const assignedCount = matchedItems.length + wwdMesItems.length;
       const unassignedCount = unmatchedCatalog.filter((m) => m.willChange).length + noActivity.filter((m) => m.willChange).length;
-      const successMsg = `Successfully imported MES Construction: ${matchedItems.length} machine(s) assigned${unassignedCount > 0 ? `, ${unassignedCount} machine(s) unassigned (no active catalog product)` : ''}.`;
+      const successMsg = `Successfully imported MES Construction: ${assignedCount} machine(s) assigned${unassignedCount > 0 ? `, ${unassignedCount} machine(s) unassigned (no active catalog product)` : ''}.`;
       onSuccess(successMsg);
       onClose();
     } catch (err) {
@@ -448,6 +484,119 @@ export function ImportConstructionFromMesDialog({
       setLoading(false);
       setStatusText(null);
       setSaveProgress(null);
+    }
+  };
+
+  // Step 3: Save WWD constructions dynamically derived from MES to WL_Products
+  const handleSaveWwdToProducts = async () => {
+    if (wwdMesItems.length === 0 || savingWwd) return;
+    setSavingWwd(true);
+    setWwdSaveSuccess(null);
+    setError(null);
+
+    try {
+      const defaults = await loadDefaultValuesOrBuiltIn();
+      const defaultPoWeight = defaults.defaultWwdPoLength1 || 480;
+
+      // Load historical frequency catalog
+      const { catalog: freqCatalog } = await loadFrequencyCatalog({ plant: plant.trim() });
+
+      // Determine unique unregistered WWD constructions
+      const existingProductCodes = new Set(
+        products.map((p) => (p.mpp_constructiondetailcode ?? '').trim().toLowerCase()).filter(Boolean),
+      );
+
+      const uniqueWwdByCode = new Map<string, MatchedItem>();
+      for (const item of wwdMesItems) {
+        const codeKey = item.mesConstruction.trim().toLowerCase();
+        if (!existingProductCodes.has(codeKey) && !uniqueWwdByCode.has(codeKey) && !item.product) {
+          uniqueWwdByCode.set(codeKey, item);
+        }
+      }
+
+      if (uniqueWwdByCode.size === 0) {
+        setWwdSaveSuccess('All WWD constructions are already registered in WL_Products!');
+        setSavingWwd(false);
+        return;
+      }
+
+      let createdCount = 0;
+      const newlyCreated: Mpp_wl_productses[] = [];
+
+      for (const [_, item] of uniqueWwdByCode.entries()) {
+        const spec = getWwdSpec(item.mesConstruction) ?? synthesizeWwdSpec(item.mesConstruction);
+        const baseConst = item.baseConstruction || spec.baseConstruction;
+
+        // Lookup historical frequency from WL_Frequency (using mach='WWD', product=construction/diameter)
+        const productPart = baseConst.split('-')[1] ?? '';
+        let freqItem = lookupHistoricalFrequency(freqCatalog, 'WWD', productPart, spec.layLength, spec.tensileStrength);
+        if (!freqItem && productPart.startsWith('1X')) {
+          freqItem = lookupHistoricalFrequency(freqCatalog, 'WWD', productPart.slice(2), spec.layLength, spec.tensileStrength);
+        } else if (!freqItem && !productPart.startsWith('1X')) {
+          freqItem = lookupHistoricalFrequency(freqCatalog, 'WWD', '1X' + productPart, spec.layLength, spec.tensileStrength);
+        }
+
+        const fractureRate = freqItem?.fracturePerTon ?? spec.fracturePerTon ?? defaults.defaultFracturePerTon ?? 0;
+        const diesRate = freqItem?.diesPerTon ?? spec.diesPerTon ?? defaults.defaultDiesPerTon ?? 0;
+        const defectRate = freqItem?.defectPerTon ?? spec.defectPerTon ?? defaults.defaultDefectPerTon ?? 0;
+
+        const payload: Omit<Mpp_wl_productsesBase, 'mpp_wl_productsid'> = {
+          mpp_constructiondetailcode: item.mesConstruction,
+          mpp_constructioncode: baseConst,
+          mpp_area: 'WW',
+          mpp_speed: String(spec.standardSpeed || 0),
+          mpp_spoollength: spec.standardLength || 0,
+          mpp_lineardensity: String(spec.linearDensity || 0),
+          mpp_laylength: spec.layLength || 0,
+          mpp_spooltype: spec.spoolType || 'BS40',
+          mpp_tensilegroup: spec.tensileStrength || '',
+          mpp_polength1: defaultPoWeight,
+          mpp_polength2: 0,
+          mpp_polength3: 0,
+          mpp_numberoffibers: 1,
+          mpp_fractureperton: String(fractureRate),
+          mpp_dieston: String(diesRate),
+          mpp_defectston: String(defectRate),
+          mpp_taskpriority: 'quickest',
+          mpp_doffpriority: 'No',
+          mpp_minremaintaskfordoffpriority: 5,
+          statecode: 0,
+        };
+
+        const result = await Mpp_wl_productsesService.create(payload);
+        if (result.success && result.data) {
+          createdCount++;
+          newlyCreated.push(result.data);
+        } else {
+          console.warn(`Failed to create WL_Products record for ${item.mesConstruction}:`, result.error);
+        }
+      }
+
+      if (createdCount > 0) {
+        const createdMap = new Map<string, Mpp_wl_productses>();
+        for (const p of newlyCreated) {
+          if (p.mpp_constructiondetailcode) {
+            createdMap.set(p.mpp_constructiondetailcode.trim().toLowerCase(), p);
+          }
+        }
+
+        // Attach created product to matching WWD items
+        setWwdMesItems((prev) =>
+          prev.map((item) => {
+            const p = createdMap.get(item.mesConstruction.trim().toLowerCase());
+            return p ? { ...item, product: p } : item;
+          }),
+        );
+
+        setWwdSaveSuccess(`✅ Successfully registered ${createdCount} WWD construction(s) into WL_Products with frequencies from WL_Frequency!`);
+      } else {
+        setError('Failed to create new WWD products in Dataverse.');
+      }
+    } catch (err) {
+      console.error('Error saving WWD to WL_Products:', err);
+      setError(err instanceof Error ? err.message : 'Failed to save WWD products.');
+    } finally {
+      setSavingWwd(false);
     }
   };
 
@@ -475,6 +624,10 @@ export function ImportConstructionFromMesDialog({
     return new Set(unmatchedCatalog.map((u) => u.mesConstruction)).size;
   }, [unmatchedCatalog]);
 
+  const uniqueUnregisteredWwdCount = useMemo(() => {
+    return new Set(wwdMesItems.filter((m) => !m.product).map((m) => m.mesConstruction)).size;
+  }, [wwdMesItems]);
+
   const progressPercent = saveProgress
     ? Math.min(100, Math.round((saveProgress.done / saveProgress.total) * 100))
     : stage === 'querying'
@@ -496,6 +649,17 @@ export function ImportConstructionFromMesDialog({
         m.mesConstruction.toLowerCase().includes(query),
     );
   }, [matchedItems, query]);
+
+  const filteredWwd = useMemo(() => {
+    if (!query) return wwdMesItems;
+    return wwdMesItems.filter(
+      (m) =>
+        m.machineLabel.toLowerCase().includes(query) ||
+        m.currentLabel.toLowerCase().includes(query) ||
+        m.mesConstruction.toLowerCase().includes(query) ||
+        (m.baseConstruction && m.baseConstruction.toLowerCase().includes(query)),
+    );
+  }, [wwdMesItems, query]);
 
   const filteredUnmatched = useMemo(() => {
     if (!query) return unmatchedCatalog;
@@ -764,11 +928,11 @@ export function ImportConstructionFromMesDialog({
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(4, 1fr)',
-                  gap: '10px',
+                  gridTemplateColumns: 'repeat(5, 1fr)',
+                  gap: '8px',
                 }}
               >
-                {/* Matched */}
+                {/* 1. Matched in Catalog */}
                 <div
                   onClick={() => setActiveTab('matched')}
                   style={{
@@ -786,10 +950,33 @@ export function ImportConstructionFromMesDialog({
                   <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#f0fdf4', margin: '2px 0' }}>
                     {matchedItems.length}
                   </div>
-                  <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Assign to MES product</span>
+                  <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Assign catalog product</span>
                 </div>
 
-                {/* Missing in Catalog */}
+                {/* 2. WWD (MES Output) - Positioned right after Matched in Catalog */}
+                <div
+                  onClick={() => setActiveTab('wwd')}
+                  style={{
+                    background: activeTab === 'wwd' ? 'rgba(56, 189, 248, 0.15)' : '#0b1120',
+                    border: `1px solid ${activeTab === 'wwd' ? '#38bdf8' : wwdMesItems.length > 0 ? '#0284c7' : '#1e293b'}`,
+                    borderRadius: '8px',
+                    padding: '10px 12px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                  }}
+                >
+                  <span style={{ fontSize: '0.72rem', color: '#7dd3fc', fontWeight: 600, display: 'block' }}>
+                    ⚡ WWD (MES Output)
+                  </span>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#f0f9ff', margin: '2px 0' }}>
+                    {wwdMesItems.length}
+                  </div>
+                  <span style={{ fontSize: '0.7rem', color: wwdMesItems.length > 0 ? '#38bdf8' : '#94a3b8' }}>
+                    {uniqueUnregisteredWwdCount > 0 ? `${uniqueUnregisteredWwdCount} can save to catalog` : 'Ready to assign'}
+                  </span>
+                </div>
+
+                {/* 3. Missing in Catalog */}
                 <div
                   onClick={() => setActiveTab('unmatched')}
                   style={{
@@ -802,7 +989,7 @@ export function ImportConstructionFromMesDialog({
                   }}
                 >
                   <span style={{ fontSize: '0.72rem', color: '#fca5a5', fontWeight: 600, display: 'block' }}>
-                    ⚠️ Missing in WL_Products
+                    ⚠️ Missing in Catalog
                   </span>
                   <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#fef2f2', margin: '2px 0' }}>
                     {unmatchedCatalog.length}
@@ -812,7 +999,7 @@ export function ImportConstructionFromMesDialog({
                   </span>
                 </div>
 
-                {/* No Activity */}
+                {/* 4. No Activity */}
                 <div
                   onClick={() => setActiveTab('noActivity')}
                   style={{
@@ -833,7 +1020,7 @@ export function ImportConstructionFromMesDialog({
                   <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Will set to unassigned</span>
                 </div>
 
-                {/* Total Layout Machines */}
+                {/* 5. Total Layout Machines */}
                 <div
                   style={{
                     background: '#0b1120',
@@ -897,7 +1084,23 @@ export function ImportConstructionFromMesDialog({
                       cursor: 'pointer',
                     }}
                   >
-                    ✅ Ready to Assign ({matchedItems.length})
+                    ✅ Catalog Matched ({matchedItems.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('wwd')}
+                    style={{
+                      background: activeTab === 'wwd' ? '#1e293b' : 'transparent',
+                      border: 'none',
+                      color: activeTab === 'wwd' ? '#38bdf8' : wwdMesItems.length > 0 ? '#7dd3fc' : '#94a3b8',
+                      fontWeight: 600,
+                      fontSize: '0.82rem',
+                      padding: '6px 12px',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    ⚡ WWD from MES ({wwdMesItems.length})
                   </button>
                   <button
                     type="button"
@@ -1054,6 +1257,160 @@ export function ImportConstructionFromMesDialog({
                       🎉 All machines active in MES have matching codes in <code>WL_Products</code> or <code>WL_Activities</code>!
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* TAB WWD FROM MES (DYNAMIC OUTPUT) */}
+              {activeTab === 'wwd' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {/* Action Banner */}
+                  <div
+                    style={{
+                      background: 'rgba(56, 189, 248, 0.08)',
+                      border: '1px solid rgba(56, 189, 248, 0.25)',
+                      borderRadius: '8px',
+                      padding: '12px 14px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: '12px',
+                    }}
+                  >
+                    <div style={{ fontSize: '0.8rem', color: '#bae6fd', lineHeight: 1.4 }}>
+                      <strong style={{ color: '#38bdf8', fontSize: '0.85rem' }}>
+                        ⚡ Dynamic WWD Specifications (From MES Output)
+                      </strong>
+                      <br />
+                      These <strong>{wwdMesItems.length}</strong> WWD machines have construction specifications dynamically built from MES Actual Output (validated against <code>WL_Activities</code>).
+                      You can assign them directly to your setup, or permanently register these WWD constructions into <code>WL_Products</code> with rates from <code>WL_Frequency</code>.
+                    </div>
+                    <Button
+                      variant="primary"
+                      onClick={() => void handleSaveWwdToProducts()}
+                      disabled={savingWwd || uniqueUnregisteredWwdCount === 0}
+                      style={{
+                        whiteSpace: 'nowrap',
+                        fontSize: '0.78rem',
+                        padding: '7px 14px',
+                        background:
+                          uniqueUnregisteredWwdCount === 0
+                            ? '#1e293b'
+                            : 'linear-gradient(135deg, #0284c7, #2563eb)',
+                        borderColor: uniqueUnregisteredWwdCount === 0 ? '#334155' : '#38bdf8',
+                        color: uniqueUnregisteredWwdCount === 0 ? '#94a3b8' : '#ffffff',
+                      }}
+                    >
+                      {savingWwd
+                        ? '⏳ Saving to WL_Products…'
+                        : uniqueUnregisteredWwdCount === 0
+                        ? '✅ All Saved to WL_Products'
+                        : `💾 Save to WL_Products (${uniqueUnregisteredWwdCount} codes)`}
+                    </Button>
+                  </div>
+
+                  {wwdSaveSuccess && (
+                    <div
+                      style={{
+                        background: 'rgba(34, 197, 94, 0.1)',
+                        border: '1px solid rgba(34, 197, 94, 0.3)',
+                        borderRadius: '6px',
+                        padding: '8px 12px',
+                        fontSize: '0.78rem',
+                        color: '#86efac',
+                      }}
+                    >
+                      {wwdSaveSuccess}
+                    </div>
+                  )}
+
+                  {/* Table of WWD machines */}
+                  <div
+                    style={{
+                      maxHeight: '280px',
+                      overflowY: 'auto',
+                      border: '1px solid #1e293b',
+                      borderRadius: '6px',
+                      background: '#0b1120',
+                    }}
+                  >
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                      <thead>
+                        <tr style={{ background: '#1e293b', color: '#94a3b8', textAlign: 'left' }}>
+                          <th style={{ padding: '8px 10px' }}>Machine</th>
+                          <th style={{ padding: '8px 10px' }}>Current Construction</th>
+                          <th style={{ padding: '8px 10px' }}>MES Output Construction</th>
+                          <th style={{ padding: '8px 10px' }}>WL_Activities Base</th>
+                          <th style={{ padding: '8px 10px', textAlign: 'right' }}>Output Volume</th>
+                          <th style={{ padding: '8px 10px' }}>Catalog Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredWwd.length > 0 ? (
+                          filteredWwd.map((item) => (
+                            <tr key={item.machineId} style={{ borderBottom: '1px solid #1e293b' }}>
+                              <td style={{ padding: '8px 10px', fontWeight: 600, color: '#f8fafc' }}>
+                                {item.machineLabel}
+                              </td>
+                              <td style={{ padding: '8px 10px', color: '#94a3b8' }}>
+                                {item.currentLabel}
+                              </td>
+                              <td
+                                style={{
+                                  padding: '8px 10px',
+                                  color: '#38bdf8',
+                                  fontWeight: 600,
+                                  fontFamily: 'monospace',
+                                }}
+                              >
+                                {item.mesConstruction}
+                              </td>
+                              <td style={{ padding: '8px 10px', color: '#a5f3fc', fontFamily: 'monospace' }}>
+                                {item.baseConstruction ?? '—'}
+                              </td>
+                              <td style={{ padding: '8px 10px', textAlign: 'right', color: '#cbd5e1' }}>
+                                {Math.round(item.volumeKG).toLocaleString()} kg
+                              </td>
+                              <td style={{ padding: '8px 10px' }}>
+                                {item.product ? (
+                                  <span
+                                    style={{
+                                      background: 'rgba(34, 197, 94, 0.15)',
+                                      color: '#4ade80',
+                                      padding: '2px 8px',
+                                      borderRadius: '4px',
+                                      fontSize: '0.72rem',
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    Registered in WL_Products
+                                  </span>
+                                ) : (
+                                  <span
+                                    style={{
+                                      background: 'rgba(56, 189, 248, 0.15)',
+                                      color: '#38bdf8',
+                                      padding: '2px 8px',
+                                      borderRadius: '4px',
+                                      fontSize: '0.72rem',
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    ⚡ MES Output (Dynamic)
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan={6} style={{ padding: '20px', textAlign: 'center', color: '#94a3b8' }}>
+                              No WWD machines found from MES for this shift.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
 

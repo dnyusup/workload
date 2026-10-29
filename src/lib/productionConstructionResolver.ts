@@ -6,7 +6,7 @@ import { buildActivitiesFromRows, mapProductToSpec, productOperatorSettings, typ
 import { activityCycleLength, deriveMachineSpec, ensureCoreActivities, syncAutoActivityValues } from './calculations';
 import { fetchAllPages } from './dataversePaging';
 import { resolveEffectiveFrequencies, type HistoricalFrequencyMap } from './frequencyCatalog';
-import { isWwdConstruction, getWwdSpec, synthesizeWwdSpec } from './wwdSpecStore';
+import { isWwdConstruction, getWwdSpec, synthesizeWwdSpec, findMatchingActivityConstruction } from './wwdSpecStore';
 import { loadDefaultValuesOrBuiltIn } from './defaultValuesStore';
 
 export interface ResolvedConstruction {
@@ -100,7 +100,7 @@ export async function resolveConstructions(
           fracturePerTon: wwdSpec.fracturePerTon ?? defaults.defaultFracturePerTon ?? 0,
           diesPerTon: wwdSpec.diesPerTon ?? defaults.defaultDiesPerTon ?? 0,
           defectsPerTon: wwdSpec.defectPerTon ?? defaults.defaultDefectPerTon ?? 0,
-          poLength1: defaults.defaultWwdPoLength1 ?? 5000,
+          poLength1: defaults.defaultWwdPoLength1 ?? 480,
           poLength2: 0,
           poLength3: 0,
         };
@@ -133,8 +133,11 @@ export async function resolveConstructions(
         const baseConstruction = wwdSpec.baseConstruction;
 
         let activityRows: Mpp_wl_activities[] = [];
-        if (baseConstruction) {
-          if (!activitiesLoadFailed) activityRows = activitiesByConstruction.get(constructionKey(baseConstruction)) ?? [];
+        if (baseConstruction && !activitiesLoadFailed) {
+          const matchedAct = findMatchingActivityConstruction(baseConstruction, activitiesByConstruction);
+          if (matchedAct) {
+            activityRows = activitiesByConstruction.get(constructionKey(matchedAct)) ?? [];
+          }
         }
 
         if (activityRows.length === 0) {

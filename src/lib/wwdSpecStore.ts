@@ -184,3 +184,91 @@ export function getWwdSpec(code: string | undefined): WwdSpecData | null {
 
   return null;
 }
+
+/**
+ * Robustly matches a WWD base construction against a Set or Map of activity construction keys.
+ * Handles common variants such as '1X0.32' vs '0.32', presence/absence of 'WWD-' prefix, and spacing/case differences.
+ */
+export function findMatchingActivityConstruction(
+  baseConstruction: string,
+  activitySetOrMap: Set<string> | Map<string, any>,
+): string | null {
+  if (!baseConstruction) return null;
+
+  const hasKey = (key: string): boolean => {
+    const k = key.trim().toLowerCase();
+    if (activitySetOrMap instanceof Set) {
+      return activitySetOrMap.has(k);
+    }
+    return activitySetOrMap.has(k);
+  };
+
+  const getCanonicalKey = (key: string): string => {
+    const k = key.trim().toLowerCase();
+    if (activitySetOrMap instanceof Map) {
+      for (const mapKey of activitySetOrMap.keys()) {
+        if (mapKey.trim().toLowerCase() === k) return mapKey;
+      }
+    } else if (activitySetOrMap instanceof Set) {
+      for (const item of activitySetOrMap) {
+        if (item.trim().toLowerCase() === k) return item;
+      }
+    }
+    return key;
+  };
+
+  // Generate sensible search variants
+  const variants: string[] = [baseConstruction.trim()];
+
+  // Variant: 1X removal (e.g. WWD-1X0.32-0-HT-BS60 -> WWD-0.32-0-HT-BS60)
+  variants.push(baseConstruction.replace(/-1[xX]/i, '-'));
+  variants.push(baseConstruction.replace(/^WWD-1[xX]/i, 'WWD-'));
+
+  // Variant: 1X addition (e.g. WWD-0.32-0-HT-BS60 -> WWD-1X0.32-0-HT-BS60)
+  const parts = baseConstruction.trim().split('-');
+  if (parts.length >= 2 && !/^1[xX]/i.test(parts[1])) {
+    const with1X = [...parts];
+    with1X[1] = '1X' + with1X[1];
+    variants.push(with1X.join('-'));
+  }
+
+  // Variant: without 'WWD-' prefix
+  const withoutWwd = baseConstruction.replace(/^WWD-/i, '');
+  variants.push(withoutWwd);
+  variants.push(withoutWwd.replace(/^1[xX]/i, ''));
+  if (parts.length >= 2 && !/^1[xX]/i.test(parts[1])) {
+    variants.push('1X' + withoutWwd);
+  }
+
+  // Variant: with 'WWD-' prefix if missing
+  if (!/^WWD-/i.test(baseConstruction)) {
+    variants.push('WWD-' + baseConstruction);
+  }
+
+  for (const v of variants) {
+    if (hasKey(v)) {
+      return getCanonicalKey(v);
+    }
+  }
+
+  // Fuzzy fallback: alphanumeric comparison ignoring '1x'
+  const simplify = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/^wwd-?/, '')
+      .replace(/1x/g, '')
+      .replace(/[^a-z0-9]/g, '');
+
+  const targetSimplified = simplify(baseConstruction);
+  if (targetSimplified) {
+    const allKeys =
+      activitySetOrMap instanceof Map ? Array.from(activitySetOrMap.keys()) : Array.from(activitySetOrMap);
+    for (const key of allKeys) {
+      if (simplify(key) === targetSimplified) {
+        return key;
+      }
+    }
+  }
+
+  return null;
+}

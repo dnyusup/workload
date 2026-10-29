@@ -249,8 +249,8 @@ FILTER(
               />
             </SettingRow>
             <SettingRow
-              label="Default WWD PO Length 1 (m)"
-              tooltip="Default Pay-Off Length 1 (meters) specifically used for Area WW / WWD machines imported from MES Actual Output (where PO Length is not present in MES)."
+              label="Default WWD PO Length 1 (kg)"
+              tooltip="Default Pay-Off Weight 1 (kg) specifically used for Area WW / WWD machines imported from MES Actual Output (where PO Weight is not present in MES). In Area WW, Pay-Off is weight-based (kilograms)."
             >
               <NumberInput
                 value={draft.defaultWwdPoLength1}
