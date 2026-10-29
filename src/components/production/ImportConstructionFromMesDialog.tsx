@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ProductionMachineAssignment, ProductionSetup } from '../../types';
 import type { Mpp_wl_productses } from '../../generated/models/Mpp_wl_productsesModel';
@@ -16,6 +16,29 @@ interface ImportConstructionFromMesDialogProps {
   onSuccess: (message: string) => void;
 }
 
+interface MatchedItem {
+  machineId: string;
+  machineLabel: string;
+  currentLabel: string;
+  mesConstruction: string;
+  product: Mpp_wl_productses;
+  volumeKG: number;
+}
+
+interface UnmatchedCatalogItem {
+  machineId: string;
+  machineLabel: string;
+  currentLabel: string;
+  mesConstruction: string;
+  volumeKG: number;
+}
+
+interface NoActivityItem {
+  machineId: string;
+  machineLabel: string;
+  currentLabel: string;
+}
+
 function getYesterdayIso(): string {
   const now = new Date();
   now.setDate(now.getDate() - 1);
@@ -26,7 +49,7 @@ function getYesterdayIso(): string {
 }
 
 function normalizeKey(str: string): string {
-  return str.trim().toLowerCase().replace(/\s+/g, '');
+  return str.trim().toLowerCase().replace(/[\s\-_]/g, '');
 }
 
 export function ImportConstructionFromMesDialog({
@@ -40,11 +63,19 @@ export function ImportConstructionFromMesDialog({
   const [date, setDate] = useState(getYesterdayIso);
   const [shift, setShift] = useState(1);
 
+  const [stage, setStage] = useState<'params' | 'querying' | 'processing' | 'preview' | 'saving' | 'complete'>('params');
   const [loading, setLoading] = useState(false);
   const [statusText, setStatusText] = useState<string | null>(null);
-  const [stage, setStage] = useState<'idle' | 'querying' | 'processing' | 'saving' | 'complete'>('idle');
   const [saveProgress, setSaveProgress] = useState<{ done: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Analysis result state
+  const [matchedItems, setMatchedItems] = useState<MatchedItem[]>([]);
+  const [unmatchedCatalog, setUnmatchedCatalog] = useState<UnmatchedCatalogItem[]>([]);
+  const [noActivity, setNoActivity] = useState<NoActivityItem[]>([]);
+  const [activeTab, setActiveTab] = useState<'matched' | 'unmatched' | 'noActivity'>('matched');
+  const [filterSearch, setFilterSearch] = useState('');
+  const [copied, setCopied] = useState(false);
 
   // Initialize Plant from Setting Default Values
   useEffect(() => {
@@ -62,27 +93,50 @@ export function ImportConstructionFromMesDialog({
   // Escape key handler
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !loading) {
+      if (e.key === 'Escape' && !loading && stage !== 'saving') {
         onClose();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [loading, onClose]);
+  }, [loading, stage, onClose]);
 
-  const handleStartImport = async () => {
+  // Lookup map for current setup assignments
+  const assignmentByMachineId = useMemo(() => {
+    const map = new Map<string, ProductionMachineAssignment>();
+    for (const a of setup.assignments) {
+      map.set(a.machineId, a);
+    }
+    return map;
+  }, [setup.assignments]);
+
+  // Lookup map for products catalog
+  const { productByExact, productByNormalized } = useMemo(() => {
+    const exact = new Map<string, Mpp_wl_productses>();
+    const norm = new Map<string, Mpp_wl_productses>();
+    for (const p of products) {
+      if (p.mpp_constructiondetailcode) {
+        const raw = p.mpp_constructiondetailcode.trim();
+        exact.set(raw.toLowerCase(), p);
+        norm.set(normalizeKey(raw), p);
+      }
+    }
+    return { productByExact: exact, productByNormalized: norm };
+  }, [products]);
+
+  // Step 1: Query Power BI & Analyze Matching
+  const handleFetchAndAnalyze = async () => {
     if (!plant.trim() || !date) {
-      setError('Please provide valid Plant Name and Date.');
+      setError('Mohon masukkan nama Plant dan Tanggal yang valid.');
       return;
     }
 
     setLoading(true);
     setError(null);
     setStage('querying');
-    setStatusText(`Querying actual production output from Power BI (Plant: ${plant}, Date: ${date}, Shift ${shift})…`);
+    setStatusText(`Menghubungi Power BI Semantic Model (Plant: ${plant}, Date: ${date}, Shift: ${shift})…`);
 
     try {
-      // Step 1: Query Power BI via Power Automate flow WL_ActualOutput
       const { records } = await loadActualOutputData(
         { plant: plant.trim(), date, shift: Number(shift) },
         true,
@@ -90,14 +144,14 @@ export function ImportConstructionFromMesDialog({
 
       if (!records || records.length === 0) {
         throw new Error(
-          `No records found in MES for Plant "${plant}", Date "${date}", Shift ${shift}. Please ensure data exists in Power BI Semantic Model for this shift.`,
+          `Tidak ditemukan data aktual di MES untuk Plant "${plant}", Tanggal "${date}", Shift ${shift}. Pastikan semantic model Power BI telah ter-refresh dan data tersedia.`,
         );
       }
 
-      // Step 2: Index records by machine name (highest volume wins if multiple)
       setStage('processing');
-      setStatusText(`Processing ${records.length.toLocaleString()} MES records & matching layout machines…`);
+      setStatusText(`Menganalisis ${records.length.toLocaleString()} record MES dan mencocokkan dengan ${setup.layout.length} mesin layout…`);
 
+      // Index records by machine name (highest volume wins if multiple)
       const recByMachine = new Map<string, ActualOutputRecord>();
       for (const rec of records) {
         const mach = rec.machineName?.trim().toLowerCase();
@@ -114,95 +168,207 @@ export function ImportConstructionFromMesDialog({
         }
       }
 
-      // Index WL_Products by normalized construction detail code
-      const productByCode = new Map<string, Mpp_wl_productses>();
-      for (const p of products) {
-        if (p.mpp_constructiondetailcode) {
-          productByCode.set(normalizeKey(p.mpp_constructiondetailcode), p);
-        }
-      }
-
-      // Match machines from current setup layout
-      const patchByMachineId = new Map<string, Partial<ProductionMachineAssignment>>();
-      let matchedInCatalogCount = 0;
-      let customLabelCount = 0;
-      let noMesDataCount = 0;
+      const matched: MatchedItem[] = [];
+      const missingCatalog: UnmatchedCatalogItem[] = [];
+      const noAct: NoActivityItem[] = [];
 
       for (const machine of setup.layout) {
-        const mLabel = machine.label?.trim().toLowerCase();
-        const rec = recByMachine.get(mLabel);
+        const mLabel = (machine.label || machine.id).trim();
+        const currentAssign = assignmentByMachineId.get(machine.id);
+        const currentLabel = currentAssign?.constructionDetailLabel || '—';
 
-        if (rec && rec.constructionDetail) {
-          const patch: Partial<ProductionMachineAssignment> = {};
-          const matchedProduct = productByCode.get(normalizeKey(rec.constructionDetail));
+        const rec = recByMachine.get(mLabel.toLowerCase());
+        if (rec && rec.constructionDetail?.trim()) {
+          const mesCode = rec.constructionDetail.trim();
+          const vol = rec.totalProducedKG ?? (rec.tonProduced ? rec.tonProduced * 1000 : 0);
 
-          if (matchedProduct) {
-            patch.constructionDetailId = matchedProduct.mpp_wl_productsid;
-            patch.constructionDetailLabel = matchedProduct.mpp_constructiondetailcode;
-            matchedInCatalogCount++;
+          const matchedProd =
+            productByExact.get(mesCode.toLowerCase()) ??
+            productByNormalized.get(normalizeKey(mesCode));
+
+          if (matchedProd) {
+            matched.push({
+              machineId: machine.id,
+              machineLabel: mLabel,
+              currentLabel,
+              mesConstruction: mesCode,
+              product: matchedProd,
+              volumeKG: vol,
+            });
           } else {
-            // Not in catalog, but keep exact MES ConstructionDetail label
-            patch.constructionDetailLabel = rec.constructionDetail;
-            customLabelCount++;
+            // Ada di MES tapi belum terdaftar di WL_Products
+            missingCatalog.push({
+              machineId: machine.id,
+              machineLabel: mLabel,
+              currentLabel,
+              mesConstruction: mesCode,
+              volumeKG: vol,
+            });
           }
-          patchByMachineId.set(machine.id, patch);
         } else {
-          noMesDataCount++;
+          // Tidak ada output aktual di MES untuk shift ini
+          noAct.push({
+            machineId: machine.id,
+            machineLabel: mLabel,
+            currentLabel,
+          });
         }
       }
+
+      setMatchedItems(matched);
+      setUnmatchedCatalog(missingCatalog);
+      setNoActivity(noAct);
+
+      // Default active tab to missingCatalog if any exists so user immediately sees the warning log
+      if (missingCatalog.length > 0) {
+        setActiveTab('unmatched');
+      } else {
+        setActiveTab('matched');
+      }
+
+      setStage('preview');
+      setLoading(false);
+      setStatusText(null);
+    } catch (err) {
+      console.error('Fetch MES error:', err);
+      const msg = err instanceof Error ? err.message : 'Gagal mengambil data dari Power BI MES.';
+      setError(msg);
+      setStage('params');
+      setLoading(false);
+      setStatusText(null);
+    }
+  };
+
+  // Step 2: Apply matched assignments to Dataverse & local state
+  const handleApplyImport = async () => {
+    if (matchedItems.length === 0) {
+      setError('Tidak ada mesin yang cocok dengan katalog WL_Products untuk di-import.');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setStage('saving');
+    setSaveProgress({ done: 0, total: matchedItems.length });
+    setStatusText(`Menyimpan perubahan Construction ke setup: 0 / ${matchedItems.length}…`);
+
+    try {
+      // Create pure construction-only patches
+      // Kolom lain (operator, group, doffPriority) TIDAK disertakan dalam patch sehingga tidak tersentuh!
+      const patchByMachineId = new Map<string, Partial<ProductionMachineAssignment>>();
+      for (const item of matchedItems) {
+        patchByMachineId.set(item.machineId, {
+          constructionDetailId: item.product.mpp_wl_productsid,
+          constructionDetailLabel: item.product.mpp_constructiondetailcode,
+        });
+      }
+
+      // Update local setup state:
+      // Menggabungkan patch HANYA pada constructionDetailId & constructionDetailLabel
+      // Semua property lainnya (...a) tetap utuh!
+      onLocalChange({
+        assignments: setup.assignments.map((a) =>
+          patchByMachineId.has(a.machineId)
+            ? { ...a, ...patchByMachineId.get(a.machineId) }
+            : a,
+        ),
+      });
 
       const changes = Array.from(patchByMachineId.entries()).map(([machineId, patch]) => ({
         machineId,
         patch,
       }));
 
-      if (changes.length === 0) {
-        throw new Error(
-          `None of the ${setup.layout.length} machines in layout "${setup.name || 'Setup'}" were found in MES output for ${date} Shift ${shift}.`,
-        );
-      }
-
-      // Step 3: Persist updates to Dataverse and local setup
-      setStage('saving');
-      setSaveProgress({ done: 0, total: changes.length });
-      setStatusText(`Saving construction assignments to setup: 0 / ${changes.length}…`);
-
-      // Apply locally first for immediate responsiveness
-      onLocalChange({
-        assignments: setup.assignments.map((a) =>
-          patchByMachineId.has(a.machineId) ? { ...a, ...patchByMachineId.get(a.machineId) } : a,
-        ),
-      });
-
+      // Update Dataverse
       await updateMachineAssignments(setup.id, changes, (done, total) => {
         setSaveProgress({ done, total });
-        setStatusText(`Saving construction assignments: ${done} / ${total} machines (${Math.round((done / total) * 100)}%)…`);
+        setStatusText(`Menyimpan Construction ke Dataverse: ${done} / ${total} mesin (${Math.round((done / total) * 100)}%)…`);
       });
 
       setStage('complete');
-      const successMsg = `Successfully imported Construction from MES for ${changes.length} machine(s) (${matchedInCatalogCount} matched with WL_Products catalog${customLabelCount > 0 ? `, ${customLabelCount} with raw MES codes` : ''}). ${noMesDataCount > 0 ? `${noMesDataCount} machine(s) had no MES activity.` : ''}`;
+      const skippedInfo =
+        unmatchedCatalog.length > 0
+          ? ` (${unmatchedCatalog.length} mesin dengan kode MES belum terdaftar di WL_Products dilewati agar tidak blank)`
+          : '';
+      const successMsg = `Berhasil meng-import Construction dari MES untuk ${matchedItems.length} mesin.${skippedInfo}`;
       onSuccess(successMsg);
       onClose();
     } catch (err) {
-      console.error('Import from MES error:', err);
-      const msg = err instanceof Error ? err.message : 'Failed to import Construction from MES.';
+      console.error('Save import error:', err);
+      const msg = err instanceof Error ? err.message : 'Gagal menyimpan perubahan ke Dataverse.';
       setError(msg);
-      setStage('idle');
+      setStage('preview');
       setLoading(false);
       setStatusText(null);
       setSaveProgress(null);
     }
   };
 
+  // Copy missing construction detail codes to clipboard
+  const handleCopyMissingCodes = async () => {
+    const uniqueCodes = Array.from(new Set(unmatchedCatalog.map((u) => u.mesConstruction))).sort();
+    if (uniqueCodes.length === 0) return;
+    try {
+      await navigator.clipboard.writeText(uniqueCodes.join('\n'));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      // Fallback if clipboard API is restricted
+      const textarea = document.createElement('textarea');
+      textarea.value = uniqueCodes.join('\n');
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    }
+  };
+
+  const uniqueMissingCodesCount = useMemo(() => {
+    return new Set(unmatchedCatalog.map((u) => u.mesConstruction)).size;
+  }, [unmatchedCatalog]);
+
   const progressPercent = saveProgress
     ? Math.min(100, Math.round((saveProgress.done / saveProgress.total) * 100))
     : stage === 'querying'
-    ? 25
+    ? 30
     : stage === 'processing'
-    ? 65
+    ? 75
     : stage === 'complete'
     ? 100
     : 0;
+
+  // Filtered lists for the active tab based on search query
+  const query = filterSearch.trim().toLowerCase();
+  const filteredMatched = useMemo(() => {
+    if (!query) return matchedItems;
+    return matchedItems.filter(
+      (m) =>
+        m.machineLabel.toLowerCase().includes(query) ||
+        m.currentLabel.toLowerCase().includes(query) ||
+        m.mesConstruction.toLowerCase().includes(query),
+    );
+  }, [matchedItems, query]);
+
+  const filteredUnmatched = useMemo(() => {
+    if (!query) return unmatchedCatalog;
+    return unmatchedCatalog.filter(
+      (m) =>
+        m.machineLabel.toLowerCase().includes(query) ||
+        m.currentLabel.toLowerCase().includes(query) ||
+        m.mesConstruction.toLowerCase().includes(query),
+    );
+  }, [unmatchedCatalog, query]);
+
+  const filteredNoAct = useMemo(() => {
+    if (!query) return noActivity;
+    return noActivity.filter(
+      (m) =>
+        m.machineLabel.toLowerCase().includes(query) ||
+        m.currentLabel.toLowerCase().includes(query),
+    );
+  }, [noActivity, query]);
 
   return createPortal(
     <div
@@ -219,7 +385,7 @@ export function ImportConstructionFromMesDialog({
         padding: '20px',
       }}
       onClick={() => {
-        if (!loading) onClose();
+        if (!loading && stage !== 'saving') onClose();
       }}
     >
       <div
@@ -230,7 +396,8 @@ export function ImportConstructionFromMesDialog({
         onClick={(e) => e.stopPropagation()}
         style={{
           width: '100%',
-          maxWidth: '560px',
+          maxWidth: '820px',
+          maxHeight: '90vh',
           background: '#0f172a',
           border: '1px solid #1e293b',
           borderRadius: '12px',
@@ -271,14 +438,14 @@ export function ImportConstructionFromMesDialog({
             type="button"
             className="modal-close"
             onClick={onClose}
-            disabled={loading}
+            disabled={loading || stage === 'saving'}
             title="Close dialog"
             style={{
               background: 'transparent',
               border: 'none',
               color: '#94a3b8',
               fontSize: '1.4rem',
-              cursor: loading ? 'not-allowed' : 'pointer',
+              cursor: loading || stage === 'saving' ? 'not-allowed' : 'pointer',
               padding: '4px 8px',
               borderRadius: '6px',
               lineHeight: 1,
@@ -289,22 +456,27 @@ export function ImportConstructionFromMesDialog({
         </div>
 
         {/* Body */}
-        <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <p style={{ margin: 0, fontSize: '0.85rem', color: '#94a3b8', lineHeight: 1.5 }}>
-            Pilih parameter produksi aktual dari <strong>MES / Power BI Semantic Model</strong> (
-            <code>WL_ActualOutput</code>). Aplikasi akan mencocokkan setiap mesin di layout dengan{' '}
-            <strong>ConstructionDetail</strong> yang berjalan pada shift tersebut.
-          </p>
-
+        <div
+          style={{
+            padding: '20px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '16px',
+            overflowY: 'auto',
+            flex: 1,
+          }}
+        >
+          {/* Parameter Filters Bar */}
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: '1fr 1.2fr 1fr',
+              gridTemplateColumns: '1fr 1.3fr 1fr auto',
               gap: '12px',
               background: '#0b1120',
-              padding: '14px',
+              padding: '12px 14px',
               borderRadius: '8px',
               border: '1px solid #1e293b',
+              alignItems: 'end',
             }}
           >
             {/* Plant */}
@@ -314,7 +486,7 @@ export function ImportConstructionFromMesDialog({
                 type="text"
                 value={plant}
                 onChange={(e) => setPlant(e.target.value)}
-                disabled={loading}
+                disabled={loading || stage === 'saving'}
                 style={{
                   background: '#1e293b',
                   border: '1px solid #334155',
@@ -337,7 +509,7 @@ export function ImportConstructionFromMesDialog({
               <DateInput
                 value={date}
                 onChange={(v) => setDate(v)}
-                disabled={loading}
+                disabled={loading || stage === 'saving'}
                 className="frequency-date-input"
               />
             </div>
@@ -348,7 +520,7 @@ export function ImportConstructionFromMesDialog({
               <select
                 value={shift}
                 onChange={(e) => setShift(Number(e.target.value))}
-                disabled={loading}
+                disabled={loading || stage === 'saving'}
                 style={{
                   background: '#1e293b',
                   border: '1px solid #334155',
@@ -365,25 +537,21 @@ export function ImportConstructionFromMesDialog({
                 <option value={3}>Shift 3</option>
               </select>
             </div>
-          </div>
 
-          {/* Target Layout Summary */}
-          <div
-            style={{
-              fontSize: '0.8rem',
-              color: '#64748b',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              padding: '0 4px',
-            }}
-          >
-            <span>
-              Target Setup: <strong style={{ color: '#cbd5e1' }}>{setup.name || 'Current Setup'}</strong>
-            </span>
-            <span>
-              Total Layout Machines: <strong style={{ color: '#38bdf8' }}>{setup.layout.length}</strong>
-            </span>
+            {/* Fetch Button if still in params or want to re-fetch */}
+            <div>
+              <Button
+                variant="primary"
+                onClick={() => void handleFetchAndAnalyze()}
+                disabled={loading || stage === 'saving' || !plant.trim() || !date}
+                title="Tarik data aktual dari Power BI dan lakukan pencocokan"
+                style={{ height: '36px', whiteSpace: 'nowrap' }}
+              >
+                {loading && (stage === 'querying' || stage === 'processing')
+                  ? 'Menganalisis…'
+                  : '🔍 Fetch & Match'}
+              </Button>
+            </div>
           </div>
 
           {/* Progress Bar Display */}
@@ -402,10 +570,10 @@ export function ImportConstructionFromMesDialog({
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: '0.84rem', color: '#38bdf8', fontWeight: 600 }}>
                   {stage === 'querying'
-                    ? '⚡ Step 1/2: Querying Power BI Semantic Model…'
+                    ? '⚡ Langkah 1/2: Menghubungi Power BI Semantic Model…'
                     : stage === 'processing'
-                    ? '🔍 Step 2/2: Matching Machines & Products…'
-                    : '💾 Step 2/2: Saving Machine Assignments…'}
+                    ? '🔍 Langkah 2/2: Mencocokkan Mesin & Katalog WL_Products…'
+                    : '💾 Menyimpan Perubahan Construction ke Dataverse…'}
                 </span>
                 <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
                   {saveProgress ? `${saveProgress.done} / ${saveProgress.total}` : `${progressPercent}%`}
@@ -452,9 +620,458 @@ export function ImportConstructionFromMesDialog({
               }}
             >
               <strong style={{ display: 'block', marginBottom: '2px', color: '#f87171' }}>
-                ⚠️ Import Error:
+                ⚠️ Terjadi Kendala:
               </strong>
               {error}
+            </div>
+          )}
+
+          {/* PREVIEW & LOG STAGE */}
+          {stage === 'preview' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {/* Summary Metric Cards */}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(4, 1fr)',
+                  gap: '10px',
+                }}
+              >
+                {/* Matched */}
+                <div
+                  onClick={() => setActiveTab('matched')}
+                  style={{
+                    background: activeTab === 'matched' ? 'rgba(34, 197, 94, 0.12)' : '#0b1120',
+                    border: `1px solid ${activeTab === 'matched' ? '#22c55e' : '#1e293b'}`,
+                    borderRadius: '8px',
+                    padding: '10px 12px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                  }}
+                >
+                  <span style={{ fontSize: '0.72rem', color: '#86efac', fontWeight: 600, display: 'block' }}>
+                    ✅ Cocok di Katalog
+                  </span>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#f0fdf4', margin: '2px 0' }}>
+                    {matchedItems.length}
+                  </div>
+                  <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Siap di-update</span>
+                </div>
+
+                {/* Missing in Catalog */}
+                <div
+                  onClick={() => setActiveTab('unmatched')}
+                  style={{
+                    background: activeTab === 'unmatched' ? 'rgba(239, 68, 68, 0.12)' : '#0b1120',
+                    border: `1px solid ${activeTab === 'unmatched' ? '#ef4444' : unmatchedCatalog.length > 0 ? '#b91c1c' : '#1e293b'}`,
+                    borderRadius: '8px',
+                    padding: '10px 12px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                  }}
+                >
+                  <span style={{ fontSize: '0.72rem', color: '#fca5a5', fontWeight: 600, display: 'block' }}>
+                    ⚠️ Belum di WL_Products
+                  </span>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#fef2f2', margin: '2px 0' }}>
+                    {unmatchedCatalog.length}
+                  </div>
+                  <span style={{ fontSize: '0.7rem', color: unmatchedCatalog.length > 0 ? '#f87171' : '#94a3b8' }}>
+                    {unmatchedCatalog.length > 0 ? 'Dilewati (Tidak blank)' : 'Semua terdaftar'}
+                  </span>
+                </div>
+
+                {/* No Activity */}
+                <div
+                  onClick={() => setActiveTab('noActivity')}
+                  style={{
+                    background: activeTab === 'noActivity' ? 'rgba(148, 163, 184, 0.12)' : '#0b1120',
+                    border: `1px solid ${activeTab === 'noActivity' ? '#94a3b8' : '#1e293b'}`,
+                    borderRadius: '8px',
+                    padding: '10px 12px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                  }}
+                >
+                  <span style={{ fontSize: '0.72rem', color: '#cbd5e1', fontWeight: 600, display: 'block' }}>
+                    ℹ️ Tanpa Aktivitas MES
+                  </span>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#f8fafc', margin: '2px 0' }}>
+                    {noActivity.length}
+                  </div>
+                  <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Mesin tidak berjalan</span>
+                </div>
+
+                {/* Total Layout Machines */}
+                <div
+                  style={{
+                    background: '#0b1120',
+                    border: '1px solid #1e293b',
+                    borderRadius: '8px',
+                    padding: '10px 12px',
+                  }}
+                >
+                  <span style={{ fontSize: '0.72rem', color: '#38bdf8', fontWeight: 600, display: 'block' }}>
+                    🏢 Total Mesin Layout
+                  </span>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#f0f9ff', margin: '2px 0' }}>
+                    {setup.layout.length}
+                  </div>
+                  <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{setup.name || 'Setup'}</span>
+                </div>
+              </div>
+
+              {/* Safety Assurance Notice */}
+              <div
+                style={{
+                  background: 'rgba(56, 189, 248, 0.08)',
+                  border: '1px solid rgba(56, 189, 248, 0.25)',
+                  borderRadius: '6px',
+                  padding: '8px 12px',
+                  fontSize: '0.76rem',
+                  color: '#bae6fd',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}
+              >
+                <span>🔒</span>
+                <span>
+                  <strong>Aman & Terisolasi:</strong> Proses import ini <u>hanya</u> meng-update kolom <strong>Construction</strong>. Data operator, group, doff priority, dan kolom penugasan lainnya <strong>tetap utuh 100%</strong> dan tidak terpengaruh sama sekali.
+                </span>
+              </div>
+
+              {/* Tabs Bar */}
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  borderBottom: '1px solid #1e293b',
+                  paddingBottom: '8px',
+                }}
+              >
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('matched')}
+                    style={{
+                      background: activeTab === 'matched' ? '#1e293b' : 'transparent',
+                      border: 'none',
+                      color: activeTab === 'matched' ? '#4ade80' : '#94a3b8',
+                      fontWeight: 600,
+                      fontSize: '0.82rem',
+                      padding: '6px 12px',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    ✅ Siap Di-update ({matchedItems.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('unmatched')}
+                    style={{
+                      background: activeTab === 'unmatched' ? '#1e293b' : 'transparent',
+                      border: 'none',
+                      color: activeTab === 'unmatched' ? '#f87171' : unmatchedCatalog.length > 0 ? '#fb7185' : '#94a3b8',
+                      fontWeight: 600,
+                      fontSize: '0.82rem',
+                      padding: '6px 12px',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    ⚠️ Gagal Lookup ({unmatchedCatalog.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('noActivity')}
+                    style={{
+                      background: activeTab === 'noActivity' ? '#1e293b' : 'transparent',
+                      border: 'none',
+                      color: activeTab === 'noActivity' ? '#e2e8f0' : '#94a3b8',
+                      fontWeight: 600,
+                      fontSize: '0.82rem',
+                      padding: '6px 12px',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    ℹ️ Tanpa Aktivitas MES ({noActivity.length})
+                  </button>
+                </div>
+
+                {/* Filter Search */}
+                <input
+                  type="text"
+                  value={filterSearch}
+                  onChange={(e) => setFilterSearch(e.target.value)}
+                  placeholder="Cari mesin / produk…"
+                  style={{
+                    background: '#1e293b',
+                    border: '1px solid #334155',
+                    color: '#f8fafc',
+                    borderRadius: '6px',
+                    padding: '4px 10px',
+                    fontSize: '0.78rem',
+                    width: '180px',
+                    outline: 'none',
+                  }}
+                />
+              </div>
+
+              {/* TAB 1: UNMATCHED / FAILED LOOKUP LOG */}
+              {activeTab === 'unmatched' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {unmatchedCatalog.length > 0 ? (
+                    <>
+                      <div
+                        style={{
+                          background: 'rgba(239, 68, 68, 0.08)',
+                          border: '1px solid rgba(239, 68, 68, 0.25)',
+                          borderRadius: '8px',
+                          padding: '10px 14px',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          gap: '12px',
+                        }}
+                      >
+                        <div style={{ fontSize: '0.8rem', color: '#fca5a5', lineHeight: 1.4 }}>
+                          <strong>⚠️ Mengapa data tidak otomatis diisi?</strong>
+                          <br />
+                          Kode ConstructionDetail dari MES berikut <strong>belum terdaftar</strong> di katalog master <code>WL_Products</code>. Agar simulasi tidak error dan <u>data di tabel Machine Assignment tidak tiba-tiba blank</u>, mesin-mesin ini <strong>dilewati (skipped)</strong> dan assignment yang lama tetap dipertahankan.
+                        </div>
+                        <Button
+                          variant="secondary"
+                          onClick={() => void handleCopyMissingCodes()}
+                          style={{
+                            whiteSpace: 'nowrap',
+                            fontSize: '0.78rem',
+                            padding: '6px 12px',
+                            background: '#1e293b',
+                            borderColor: '#475569',
+                          }}
+                        >
+                          {copied ? '✅ Berhasil Dicopy!' : `📋 Copy ${uniqueMissingCodesCount} Kode Missing`}
+                        </Button>
+                      </div>
+
+                      <div
+                        style={{
+                          maxHeight: '260px',
+                          overflowY: 'auto',
+                          border: '1px solid #1e293b',
+                          borderRadius: '6px',
+                          background: '#0b1120',
+                        }}
+                      >
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                          <thead>
+                            <tr style={{ background: '#1e293b', color: '#94a3b8', textAlign: 'left' }}>
+                              <th style={{ padding: '8px 10px' }}>Mesin</th>
+                              <th style={{ padding: '8px 10px' }}>Current Setup Construction</th>
+                              <th style={{ padding: '8px 10px' }}>MES Actual ConstructionDetail</th>
+                              <th style={{ padding: '8px 10px' }}>Tindakan Sistem</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filteredUnmatched.map((item) => (
+                              <tr key={item.machineId} style={{ borderBottom: '1px solid #1e293b' }}>
+                                <td style={{ padding: '8px 10px', fontWeight: 600, color: '#f8fafc' }}>
+                                  {item.machineLabel}
+                                </td>
+                                <td style={{ padding: '8px 10px', color: '#cbd5e1' }}>
+                                  {item.currentLabel}
+                                </td>
+                                <td style={{ padding: '8px 10px', color: '#fca5a5', fontFamily: 'monospace' }}>
+                                  {item.mesConstruction}
+                                </td>
+                                <td style={{ padding: '8px 10px' }}>
+                                  <span
+                                    style={{
+                                      background: 'rgba(245, 158, 11, 0.15)',
+                                      color: '#fbbf24',
+                                      padding: '2px 8px',
+                                      borderRadius: '4px',
+                                      fontSize: '0.72rem',
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    🛡️ Dilewati (Tetap: {item.currentLabel})
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  ) : (
+                    <div
+                      style={{
+                        padding: '24px',
+                        textAlign: 'center',
+                        color: '#4ade80',
+                        fontSize: '0.85rem',
+                        background: 'rgba(34, 197, 94, 0.05)',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(34, 197, 94, 0.2)',
+                      }}
+                    >
+                      🎉 Semua mesin yang berjalan di MES memiliki kode yang cocok di katalog <code>WL_Products</code>! Tidak ada mesin yang gagal lookup.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* TAB 2: MATCHED & READY TO UPDATE */}
+              {activeTab === 'matched' && (
+                <div
+                  style={{
+                    maxHeight: '300px',
+                    overflowY: 'auto',
+                    border: '1px solid #1e293b',
+                    borderRadius: '6px',
+                    background: '#0b1120',
+                  }}
+                >
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                    <thead>
+                      <tr style={{ background: '#1e293b', color: '#94a3b8', textAlign: 'left' }}>
+                        <th style={{ padding: '8px 10px' }}>Mesin</th>
+                        <th style={{ padding: '8px 10px' }}>Current Construction</th>
+                        <th style={{ padding: '8px 10px' }}>New Construction (MES)</th>
+                        <th style={{ padding: '8px 10px', textAlign: 'right' }}>Output KG</th>
+                        <th style={{ padding: '8px 10px' }}>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredMatched.length > 0 ? (
+                        filteredMatched.map((item) => {
+                          const isSame =
+                            item.currentLabel.trim().toLowerCase() ===
+                            (item.product.mpp_constructiondetailcode ?? '').trim().toLowerCase();
+                          return (
+                            <tr key={item.machineId} style={{ borderBottom: '1px solid #1e293b' }}>
+                              <td style={{ padding: '8px 10px', fontWeight: 600, color: '#f8fafc' }}>
+                                {item.machineLabel}
+                              </td>
+                              <td style={{ padding: '8px 10px', color: '#94a3b8' }}>
+                                {item.currentLabel}
+                              </td>
+                              <td
+                                style={{
+                                  padding: '8px 10px',
+                                  color: '#38bdf8',
+                                  fontWeight: 600,
+                                  fontFamily: 'monospace',
+                                }}
+                              >
+                                {item.product.mpp_constructiondetailcode}
+                              </td>
+                              <td style={{ padding: '8px 10px', textAlign: 'right', color: '#cbd5e1' }}>
+                                {Math.round(item.volumeKG).toLocaleString()} kg
+                              </td>
+                              <td style={{ padding: '8px 10px' }}>
+                                {isSame ? (
+                                  <span
+                                    style={{
+                                      background: 'rgba(148, 163, 184, 0.15)',
+                                      color: '#94a3b8',
+                                      padding: '2px 8px',
+                                      borderRadius: '4px',
+                                      fontSize: '0.72rem',
+                                    }}
+                                  >
+                                    Sudah Sesuai
+                                  </span>
+                                ) : (
+                                  <span
+                                    style={{
+                                      background: 'rgba(34, 197, 94, 0.15)',
+                                      color: '#4ade80',
+                                      padding: '2px 8px',
+                                      borderRadius: '4px',
+                                      fontSize: '0.72rem',
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    Akan Di-update
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      ) : (
+                        <tr>
+                          <td colSpan={5} style={{ padding: '20px', textAlign: 'center', color: '#94a3b8' }}>
+                            Tidak ada data mesin yang cocok.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* TAB 3: NO ACTIVITY IN MES */}
+              {activeTab === 'noActivity' && (
+                <div
+                  style={{
+                    maxHeight: '300px',
+                    overflowY: 'auto',
+                    border: '1px solid #1e293b',
+                    borderRadius: '6px',
+                    background: '#0b1120',
+                  }}
+                >
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                    <thead>
+                      <tr style={{ background: '#1e293b', color: '#94a3b8', textAlign: 'left' }}>
+                        <th style={{ padding: '8px 10px' }}>Mesin</th>
+                        <th style={{ padding: '8px 10px' }}>Current Setup Construction</th>
+                        <th style={{ padding: '8px 10px' }}>Status Penanganan</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredNoAct.length > 0 ? (
+                        filteredNoAct.map((item) => (
+                          <tr key={item.machineId} style={{ borderBottom: '1px solid #1e293b' }}>
+                            <td style={{ padding: '8px 10px', fontWeight: 600, color: '#f8fafc' }}>
+                              {item.machineLabel}
+                            </td>
+                            <td style={{ padding: '8px 10px', color: '#cbd5e1' }}>
+                              {item.currentLabel}
+                            </td>
+                            <td style={{ padding: '8px 10px' }}>
+                              <span
+                                style={{
+                                  background: 'rgba(148, 163, 184, 0.15)',
+                                  color: '#cbd5e1',
+                                  padding: '2px 8px',
+                                  borderRadius: '4px',
+                                  fontSize: '0.72rem',
+                                }}
+                              >
+                                Dipertahankan (Tidak ada data MES)
+                              </span>
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={3} style={{ padding: '20px', textAlign: 'center', color: '#94a3b8' }}>
+                            Semua mesin di layout memiliki aktivitas di MES.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -466,20 +1083,61 @@ export function ImportConstructionFromMesDialog({
             borderTop: '1px solid #1e293b',
             background: '#0b1120',
             display: 'flex',
-            justifyContent: 'flex-end',
-            gap: '10px',
+            justifyContent: 'space-between',
+            alignItems: 'center',
           }}
         >
-          <Button variant="secondary" onClick={onClose} disabled={loading}>
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            onClick={() => void handleStartImport()}
-            disabled={loading || !plant.trim() || !date}
-          >
-            {loading ? 'Importing…' : '⚡ Import & Apply from MES'}
-          </Button>
+          <div>
+            {stage === 'preview' && (
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setStage('params');
+                  setMatchedItems([]);
+                  setUnmatchedCatalog([]);
+                  setNoActivity([]);
+                }}
+                disabled={loading}
+                style={{ fontSize: '0.8rem' }}
+              >
+                ← Ganti Filter Tanggal / Shift
+              </Button>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <Button
+              variant="secondary"
+              onClick={onClose}
+              disabled={loading}
+            >
+              Batal
+            </Button>
+
+            {stage === 'saving' ? (
+              <Button variant="primary" disabled style={{ fontWeight: 600 }}>
+                Menyimpan…
+              </Button>
+            ) : stage === 'preview' ? (
+              <Button
+                variant="primary"
+                onClick={() => void handleApplyImport()}
+                disabled={loading || matchedItems.length === 0}
+                style={{ fontWeight: 600 }}
+              >
+                {`💾 Terapkan (${matchedItems.length} Mesin) ke Setup`}
+              </Button>
+            ) : (
+              <Button
+                variant="primary"
+                onClick={() => void handleFetchAndAnalyze()}
+                disabled={loading || !plant.trim() || !date}
+                style={{ fontWeight: 600 }}
+              >
+                {loading ? 'Mengambil Data…' : '🔍 Fetch & Match Data MES'}
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     </div>,

@@ -446,7 +446,10 @@ export async function updateMachineAssignments(
       if (!rowId) return;
       const fields: Record<string, string | number | null> = {};
       if ('constructionDetailId' in patch) fields.mpp_constructiondetailid = patch.constructionDetailId ?? null;
-      const legacy = legacyRows?.get(machineId);
+      const touchesOperators =
+        'assignedOperatorIds' in patch ||
+        TASK_OPERATOR_COLUMNS.some(([field]) => field in patch);
+      const legacy = touchesOperators ? legacyRows?.get(machineId) : undefined;
       if (legacy) {
         // Clear what the old planning type made the app ignore (see legacyPlanningTypeRows).
         fields.mpp_planningtype = null;
