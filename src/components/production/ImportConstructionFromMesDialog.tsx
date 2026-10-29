@@ -931,7 +931,7 @@ export function ImportConstructionFromMesDialog({
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(5, 1fr)',
+                  gridTemplateColumns: wwdMesItems.length > 0 ? 'repeat(5, 1fr)' : 'repeat(4, 1fr)',
                   gap: '8px',
                 }}
               >
@@ -956,28 +956,30 @@ export function ImportConstructionFromMesDialog({
                   <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Assign catalog product</span>
                 </div>
 
-                {/* 2. WWD (MES Output) - Positioned right after Matched in Catalog */}
-                <div
-                  onClick={() => setActiveTab('wwd')}
-                  style={{
-                    background: activeTab === 'wwd' ? 'rgba(56, 189, 248, 0.15)' : '#0b1120',
-                    border: `1px solid ${activeTab === 'wwd' ? '#38bdf8' : wwdMesItems.length > 0 ? '#0284c7' : '#1e293b'}`,
-                    borderRadius: '8px',
-                    padding: '10px 12px',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease',
-                  }}
-                >
-                  <span style={{ fontSize: '0.72rem', color: '#7dd3fc', fontWeight: 600, display: 'block' }}>
-                    ⚡ WWD (MES Output)
-                  </span>
-                  <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#f0f9ff', margin: '2px 0' }}>
-                    {wwdMesItems.length}
+                {/* 2. WWD (MES Output) - Only shown if there are dynamic WWD items from MES */}
+                {wwdMesItems.length > 0 && (
+                  <div
+                    onClick={() => setActiveTab('wwd')}
+                    style={{
+                      background: activeTab === 'wwd' ? 'rgba(56, 189, 248, 0.15)' : '#0b1120',
+                      border: `1px solid ${activeTab === 'wwd' ? '#38bdf8' : '#0284c7'}`,
+                      borderRadius: '8px',
+                      padding: '10px 12px',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                    }}
+                  >
+                    <span style={{ fontSize: '0.72rem', color: '#7dd3fc', fontWeight: 600, display: 'block' }}>
+                      ⚡ WWD (MES Output)
+                    </span>
+                    <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#f0f9ff', margin: '2px 0' }}>
+                      {wwdMesItems.length}
+                    </div>
+                    <span style={{ fontSize: '0.7rem', color: '#38bdf8' }}>
+                      {uniqueUnregisteredWwdCount > 0 ? `${uniqueUnregisteredWwdCount} can save to catalog` : 'Ready to assign'}
+                    </span>
                   </div>
-                  <span style={{ fontSize: '0.7rem', color: wwdMesItems.length > 0 ? '#38bdf8' : '#94a3b8' }}>
-                    {uniqueUnregisteredWwdCount > 0 ? `${uniqueUnregisteredWwdCount} can save to catalog` : 'Ready to assign'}
-                  </span>
-                </div>
+                )}
 
                 {/* 3. Missing in Catalog */}
                 <div
@@ -1089,22 +1091,24 @@ export function ImportConstructionFromMesDialog({
                   >
                     ✅ Catalog Matched ({matchedItems.length})
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('wwd')}
-                    style={{
-                      background: activeTab === 'wwd' ? '#1e293b' : 'transparent',
-                      border: 'none',
-                      color: activeTab === 'wwd' ? '#38bdf8' : wwdMesItems.length > 0 ? '#7dd3fc' : '#94a3b8',
-                      fontWeight: 600,
-                      fontSize: '0.82rem',
-                      padding: '6px 12px',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    ⚡ WWD from MES ({wwdMesItems.length})
-                  </button>
+                  {wwdMesItems.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('wwd')}
+                      style={{
+                        background: activeTab === 'wwd' ? '#1e293b' : 'transparent',
+                        border: 'none',
+                        color: activeTab === 'wwd' ? '#38bdf8' : '#7dd3fc',
+                        fontWeight: 600,
+                        fontSize: '0.82rem',
+                        padding: '6px 12px',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      ⚡ WWD from MES ({wwdMesItems.length})
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => setActiveTab('unmatched')}
@@ -1264,7 +1268,7 @@ export function ImportConstructionFromMesDialog({
               )}
 
               {/* TAB WWD FROM MES (DYNAMIC OUTPUT) */}
-              {activeTab === 'wwd' && (
+              {activeTab === 'wwd' && wwdMesItems.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   {/* Action Banner */}
                   <div
