@@ -25,6 +25,7 @@ type SortKey =
   | 'spoolType'
   | 'standardSpeed'
   | 'linerDensity'
+  | 'numberOfWires'
   | 'constructionDetail'
   | 'totalProducedKG'
   | 'tonProduced'
@@ -72,6 +73,7 @@ SUMMARIZECOLUMNS(
     DimProduct[StandardLength],
     DimWIPOrder[StandardSpeed],
     DimProduct[LinerDensity],
+    DimProduct[NumberOfWires],
 
     -- 2. FILTER PLANT, TANGGAL & SHIFT (Sama seperti WL_Frequency):
     TREATAS({"@{triggerBody()['text']}"}, DimPlantRegion[PlantName]),
@@ -735,6 +737,9 @@ export function ActualOutputManager() {
                     <th className="table-sortable-header numeric-col" onClick={() => toggleSort('linerDensity')}>
                       Density {sortIndicator('linerDensity')}
                     </th>
+                    <th className="table-sortable-header numeric-col" onClick={() => toggleSort('numberOfWires')}>
+                      Wires {sortIndicator('numberOfWires')}
+                    </th>
                     <th className="table-sortable-header" onClick={() => toggleSort('constructionDetail')}>
                       ConstructionDetail {sortIndicator('constructionDetail')}
                     </th>
@@ -799,6 +804,7 @@ export function ActualOutputManager() {
                       <td>{row.spoolType || '-'}</td>
                       <td>{row.standardSpeed || '-'}</td>
                       <td className="numeric-col">{row.linerDensity !== null ? row.linerDensity : '-'}</td>
+                      <td className="numeric-col">{row.numberOfWires !== null ? row.numberOfWires : '-'}</td>
                       <td>
                         <code className="frequency-code-tag" title={row.constructionDetail}>
                           {row.constructionDetail || '-'}

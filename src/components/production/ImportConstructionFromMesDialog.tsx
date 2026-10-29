@@ -38,6 +38,7 @@ interface MatchedItem {
   product?: Mpp_wl_productses;
   isWwd?: boolean;
   baseConstruction?: string;
+  numberOfWires?: number | null;
   volumeKG: number;
   willChange: boolean;
 }
@@ -272,6 +273,7 @@ export function ImportConstructionFromMesDialog({
                 layLength: Number(rec.layLength) || 0,
                 tensileStrength: rec.tensileStrength || '',
                 spoolType: rec.spoolType || 'BS40',
+                numberOfWires: rec.numberOfWires ?? 1,
                 fracturePerTon: rec.fracturePerTon ?? 0,
                 diesPerTon: rec.diesPerTon ?? 0,
                 defectPerTon: rec.defectPerTon ?? 0,
@@ -286,6 +288,7 @@ export function ImportConstructionFromMesDialog({
                 mesConstruction: mesCode,
                 isWwd: true,
                 baseConstruction: canonicalBase,
+                numberOfWires: rec.numberOfWires ?? 1,
                 volumeKG: vol,
                 willChange,
               });
@@ -525,24 +528,24 @@ export function ImportConstructionFromMesDialog({
 
       for (const [_, item] of uniqueWwdByCode.entries()) {
         const spec = getWwdSpec(item.mesConstruction) ?? synthesizeWwdSpec(item.mesConstruction);
-        const baseConst = item.baseConstruction || spec.baseConstruction;
+        const baseConst = (item.baseConstruction || spec.baseConstruction).toUpperCase();
 
-        // Lookup historical frequency from WL_Frequency (using mach='WWD', product=construction/diameter)
-        const productPart = baseConst.split('-')[1] ?? '';
-        let freqItem = lookupHistoricalFrequency(freqCatalog, 'WWD', productPart, spec.layLength, spec.tensileStrength);
-        if (!freqItem && productPart.startsWith('1X')) {
-          freqItem = lookupHistoricalFrequency(freqCatalog, 'WWD', productPart.slice(2), spec.layLength, spec.tensileStrength);
-        } else if (!freqItem && !productPart.startsWith('1X')) {
-          freqItem = lookupHistoricalFrequency(freqCatalog, 'WWD', '1X' + productPart, spec.layLength, spec.tensileStrength);
-        }
+        // Product spec is the 2nd segment in base construction e.g. '0,280' from 'WWD-0,280-0-ST-WS44-DUAL'
+        const baseParts = baseConst.split('-');
+        const productSpec = baseParts[1] ?? '';
+
+        // Strict historical frequency lookup: mach='WWD', product=productSpec (no fuzzy aliasing 1X vs non-1X!)
+        const freqItem = lookupHistoricalFrequency(freqCatalog, 'WWD', productSpec, spec.layLength, spec.tensileStrength);
 
         const fractureRate = freqItem?.fracturePerTon ?? spec.fracturePerTon ?? defaults.defaultFracturePerTon ?? 0;
         const diesRate = freqItem?.diesPerTon ?? spec.diesPerTon ?? defaults.defaultDiesPerTon ?? 0;
         const defectRate = freqItem?.defectPerTon ?? spec.defectPerTon ?? defaults.defaultDefectPerTon ?? 0;
 
         const payload: Omit<Mpp_wl_productsesBase, 'mpp_wl_productsid'> = {
-          mpp_constructiondetailcode: item.mesConstruction,
+          mpp_machinecode: 'WWD',
+          mpp_productspecification: productSpec,
           mpp_constructioncode: baseConst,
+          mpp_constructiondetailcode: item.mesConstruction,
           mpp_area: 'WW',
           mpp_speed: String(spec.standardSpeed || 0),
           mpp_spoollength: spec.standardLength || 0,
@@ -551,15 +554,15 @@ export function ImportConstructionFromMesDialog({
           mpp_spooltype: spec.spoolType || 'BS40',
           mpp_tensilegroup: spec.tensileStrength || '',
           mpp_polength1: defaultPoWeight,
-          mpp_polength2: 0,
-          mpp_polength3: 0,
-          mpp_numberoffibers: 1,
+          mpp_polength2: null as any,
+          mpp_polength3: null as any,
+          mpp_numberoffibers: spec.numberOfWires ?? item.numberOfWires ?? 1,
           mpp_fractureperton: String(fractureRate),
           mpp_dieston: String(diesRate),
           mpp_defectston: String(defectRate),
-          mpp_taskpriority: 'quickest',
-          mpp_doffpriority: 'No',
-          mpp_minremaintaskfordoffpriority: 5,
+          mpp_taskpriority: null as any,
+          mpp_doffpriority: null as any,
+          mpp_minremaintaskfordoffpriority: null as any,
           statecode: 0,
         };
 
@@ -1340,6 +1343,7 @@ export function ImportConstructionFromMesDialog({
                           <th style={{ padding: '8px 10px' }}>Current Construction</th>
                           <th style={{ padding: '8px 10px' }}>MES Output Construction</th>
                           <th style={{ padding: '8px 10px' }}>WL_Activities Base</th>
+                          <th style={{ padding: '8px 10px', textAlign: 'center' }}>Wires</th>
                           <th style={{ padding: '8px 10px', textAlign: 'right' }}>Output Volume</th>
                           <th style={{ padding: '8px 10px' }}>Catalog Status</th>
                         </tr>
@@ -1366,6 +1370,9 @@ export function ImportConstructionFromMesDialog({
                               </td>
                               <td style={{ padding: '8px 10px', color: '#a5f3fc', fontFamily: 'monospace' }}>
                                 {item.baseConstruction ?? '—'}
+                              </td>
+                              <td style={{ padding: '8px 10px', textAlign: 'center', color: '#f8fafc' }}>
+                                {item.numberOfWires ?? 1}
                               </td>
                               <td style={{ padding: '8px 10px', textAlign: 'right', color: '#cbd5e1' }}>
                                 {Math.round(item.volumeKG).toLocaleString()} kg

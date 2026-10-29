@@ -93,7 +93,7 @@ export async function resolveConstructions(
         let spec: MachineSpecInput = {
           area: 'WW',
           layLength: wwdSpec.layLength ?? 0,
-          noOfWires: 1,
+          noOfWires: wwdSpec.numberOfWires ?? 1,
           speed: wwdSpec.standardSpeed,
           spoolLength: wwdSpec.standardLength,
           linearDensity: wwdSpec.linearDensity,
@@ -178,7 +178,7 @@ export async function resolveConstructions(
             layLength: String(wwdSpec.layLength ?? 0),
             spoolLength: String(wwdSpec.standardLength ?? 0),
             speed: String(wwdSpec.standardSpeed ?? 0),
-            numberOfWires: '1',
+            numberOfWires: wwdSpec.numberOfWires != null ? String(wwdSpec.numberOfWires) : '1',
           },
           spec,
           activities,

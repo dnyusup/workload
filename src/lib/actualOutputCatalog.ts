@@ -23,6 +23,7 @@ export interface ActualOutputRecord {
   standardLength: number | string;
   standardSpeed: number | string;
   linerDensity: number | null;
+  numberOfWires: number | null;
   constructionDetail: string;
 
   // Aggregations
@@ -82,6 +83,7 @@ SUMMARIZECOLUMNS(
     DimProduct[StandardLength],
     DimWIPOrder[StandardSpeed],
     DimProduct[LinerDensity],
+    DimProduct[NumberOfWires],
 
     -- 2. FILTER PLANT, DATE & SHIFT:
     TREATAS({"${plant}"}, DimPlantRegion[PlantName]),
@@ -197,6 +199,20 @@ export function parseActualOutputRows(rawItems: any[]): ActualOutputRecord[] {
     const linerDensityRaw = getField(raw, 'DimProduct[LinerDensity]', '[DimProduct].[LinerDensity]', 'LinerDensity', 'LinearDensity');
     const linerDensity = cleanFloat(linerDensityRaw, 4);
 
+    const numberOfWiresRaw = getField(
+      raw,
+      'DimProduct[NumberOfWires]',
+      '[DimProduct].[NumberOfWires]',
+      'NumberOfWires',
+      'DimProduct[NumberOfWire]',
+      '[DimProduct].[NumberOfWire]',
+      'NumberOfWire',
+      'noOfWires',
+      'NoOfWires',
+      'mpp_numberoffibers',
+    );
+    const numberOfWires = parseNumber(numberOfWiresRaw);
+
     let constructionDetail = String(getField(raw, 'ConstructionDetail', '[ConstructionDetail]') ?? '').trim();
     if (!constructionDetail && group && construction) {
       const prefix =
@@ -280,6 +296,7 @@ export function parseActualOutputRows(rawItems: any[]): ActualOutputRecord[] {
       standardLength,
       standardSpeed,
       linerDensity,
+      numberOfWires,
       constructionDetail,
       doffedSpoolCount,
       doffedRejectSpoolCount,

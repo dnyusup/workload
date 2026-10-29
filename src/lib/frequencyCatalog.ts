@@ -201,10 +201,14 @@ export function cleanFloat(value: any, precision = 4): number | null {
 export function normalizeFrequencyKeyPart(val: any): string {
   if (val === null || val === undefined) return '';
   const str = String(val).trim().toLowerCase();
-  const num = parseFloat(str.replace(/,/g, ''));
-  if (Number.isFinite(num)) {
-    // Normalisasi angka float agar 14 dan 14.000000000000002 menjadi "14"
-    return String(Number(num.toFixed(4)));
+  // Only normalize values that are purely decimal numbers with a dot (e.g. "14.000000000000002" -> "14")
+  // Do NOT parse strings that are cord/product specifications like "1x0.32" (parseFloat gives 1)
+  // or comma decimals like "0,280" (which stripped comma to 280)!
+  if (/^-?\d+\.\d+$/.test(str)) {
+    const num = parseFloat(str);
+    if (Number.isFinite(num)) {
+      return String(Number(num.toFixed(4)));
+    }
   }
   return str;
 }
@@ -534,7 +538,9 @@ export async function loadFrequencyCatalog(
 }
 
 /**
- * Mencari historical frequency berdasarkan spesifikasi produk
+ * Mencari historical frequency berdasarkan spesifikasi produk.
+ * Menjaga ketat spesifikasi produk (1X0.32, 0.32, dan 0,320 adalah produk berbeda).
+ * Mendukung variasi tanda desimal koma vs titik (0,280 <-> 0.280) serta LayLength blank <-> 0 untuk WWD.
  */
 export function lookupHistoricalFrequency(
   catalog: HistoricalFrequencyMap | null | undefined,
@@ -544,8 +550,46 @@ export function lookupHistoricalFrequency(
   tensileGroup: string | undefined | null,
 ): HistoricalFrequencyItem | null {
   if (!catalog) return null;
+
+  // 1. Direct lookup
   const key = buildFrequencyLookupKey(mach, product, layLength, tensileGroup);
-  return catalog.get(key) ?? null;
+  const direct = catalog.get(key);
+  if (direct) return direct;
+
+  // 2. Check alternative LayLength representation:
+  // For WWD or zero-lay machines, DimProduct[LayLength] in Power BI MES is often BLANK/NULL (""),
+  // whereas in WL_Products it is stored as 0 ("0").
+  const normLay = normalizeFrequencyKeyPart(layLength);
+  const altLay = normLay === '0' || normLay === '' ? (normLay === '0' ? '' : '0') : null;
+  if (altLay !== null) {
+    const keyAltLay = buildFrequencyLookupKey(mach, product, altLay, tensileGroup);
+    const matchAltLay = catalog.get(keyAltLay);
+    if (matchAltLay) return matchAltLay;
+  }
+
+  // 3. Check comma <-> dot decimal separator in product spec (e.g. "0,280" vs "0.280")
+  // Strictly preserves product identity (e.g. 1X0.32, 0.32, and 0,320 are strictly separate)
+  const prodStr = String(product ?? '').trim();
+  let altProduct: string | null = null;
+  if (prodStr.includes(',')) {
+    altProduct = prodStr.replace(/,/g, '.');
+  } else if (prodStr.includes('.')) {
+    altProduct = prodStr.replace(/\./g, ',');
+  }
+
+  if (altProduct) {
+    const keyAltProd = buildFrequencyLookupKey(mach, altProduct, layLength, tensileGroup);
+    const matchAltProd = catalog.get(keyAltProd);
+    if (matchAltProd) return matchAltProd;
+
+    if (altLay !== null) {
+      const keyBoth = buildFrequencyLookupKey(mach, altProduct, altLay, tensileGroup);
+      const matchBoth = catalog.get(keyBoth);
+      if (matchBoth) return matchBoth;
+    }
+  }
+
+  return null;
 }
 
 export interface EffectiveFrequencyResult {
