@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import type { Mpp_wl_productses } from '../../generated/models/Mpp_wl_productsesModel';
 import type { AppConfig, FrequencyMode } from '../../types';
 import { runBatchSimulation, type BatchLogEntry } from '../../lib/batchSimulation';
-import { loadDefaultValuesOrBuiltIn } from '../../lib/defaultValuesStore';
+import { loadDefaultValuesOrBuiltIn, type DefaultValues } from '../../lib/defaultValuesStore';
 import { Button } from '../ui/Button';
 
 type StatusFilter = 'all' | BatchLogEntry['status'];
@@ -50,6 +50,7 @@ export function BatchSimulationDialog({
   const [entries, setEntries] = useState<(BatchLogEntry | undefined)[]>(() => new Array(products.length).fill(undefined));
   const [phase, setPhase] = useState<'confirm' | 'running' | 'done' | 'error'>('confirm');
   const [frequencyMode, setFrequencyMode] = useState<FrequencyMode>('manual');
+  const [defaultValues, setDefaultValues] = useState<DefaultValues | null>(null);
   const [fatalError, setFatalError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [filter, setFilter] = useState<StatusFilter>('all');
@@ -59,6 +60,7 @@ export function BatchSimulationDialog({
 
   useEffect(() => {
     void loadDefaultValuesOrBuiltIn().then((defaults) => {
+      setDefaultValues(defaults);
       if (defaults.frequencyMode) setFrequencyMode(defaults.frequencyMode);
     });
   }, []);
@@ -223,6 +225,35 @@ export function BatchSimulationDialog({
                     </span>
                   </p>
                 </label>
+              </div>
+
+              <div
+                style={{
+                  marginTop: '16px',
+                  padding: '10px 14px',
+                  borderRadius: '8px',
+                  background: 'rgba(15, 23, 42, 0.6)',
+                  border: '1px solid #1e293b',
+                  fontSize: '0.82rem',
+                  color: '#cbd5e1',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}
+              >
+                <span>⚙️</span>
+                <span>
+                  <strong>Optimize Setting (Default Values):</strong>{' '}
+                  {defaultValues?.manOcc100Percent ? (
+                    <span style={{ color: '#4ade80', fontWeight: 600 }}>
+                      Man Occ 100% Aktif (jumlah mesin disesuaikan agar Man Occ mencapai 100%)
+                    </span>
+                  ) : (
+                    <span style={{ color: '#94a3b8' }}>
+                      Prosedur Standar (Step-Up Below: {defaultValues?.optimizeStepUpBelow ?? 89}%)
+                    </span>
+                  )}
+                </span>
               </div>
             </div>
 
