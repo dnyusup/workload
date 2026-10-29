@@ -24,6 +24,7 @@ type SortKey =
   | 'tensileStrength'
   | 'spoolType'
   | 'standardSpeed'
+  | 'linerDensity'
   | 'constructionDetail'
   | 'totalProducedKG'
   | 'tonProduced'
@@ -70,6 +71,7 @@ SUMMARIZECOLUMNS(
     DimProduct[SpoolType],
     DimProduct[StandardLength],
     DimWIPOrder[StandardSpeed],
+    DimProduct[LinerDensity],
 
     -- 2. FILTER PLANT, TANGGAL & SHIFT (Sama seperti WL_Frequency):
     TREATAS({"@{triggerBody()['text']}"}, DimPlantRegion[PlantName]),
@@ -99,9 +101,17 @@ SUMMARIZECOLUMNS(
 ),
 
     "ConstructionDetail", 
-        McGroup[Group] & "-" & 
+        IF(
+			(OR(McGroup[Group] = "BFM",McGroup[Group] = "KT")),
+			DimWIPOrder[SAPMachineTypeGroup],
+			IF(
+				McGroup[Group] = "SP",
+				"HENX",
+				McGroup[Group]
+			)
+		) & "-" & 
         DimProduct[Construction] & "-" & 
-        DimProduct[LayLength] & "-" & 
+        If(ISBLANK(DimProduct[LayLength]),0,DimProduct[LayLength]) & "-" & 
         DimProduct[TensileStrength] & "-" &
         IF(
             LEFT(DimProduct[SpoolType], 2) = "BS",
@@ -722,6 +732,9 @@ export function ActualOutputManager() {
                     <th className="table-sortable-header" onClick={() => toggleSort('standardSpeed')}>
                       Speed {sortIndicator('standardSpeed')}
                     </th>
+                    <th className="table-sortable-header numeric-col" onClick={() => toggleSort('linerDensity')}>
+                      Density {sortIndicator('linerDensity')}
+                    </th>
                     <th className="table-sortable-header" onClick={() => toggleSort('constructionDetail')}>
                       ConstructionDetail {sortIndicator('constructionDetail')}
                     </th>
@@ -785,6 +798,7 @@ export function ActualOutputManager() {
                       <td>{row.tensileStrength || '-'}</td>
                       <td>{row.spoolType || '-'}</td>
                       <td>{row.standardSpeed || '-'}</td>
+                      <td className="numeric-col">{row.linerDensity !== null ? row.linerDensity : '-'}</td>
                       <td>
                         <code className="frequency-code-tag" title={row.constructionDetail}>
                           {row.constructionDetail || '-'}

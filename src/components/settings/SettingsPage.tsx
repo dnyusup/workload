@@ -81,7 +81,8 @@ function DefaultValuesCard() {
     | 'minRemainForDoffPriority'
     | 'defaultFracturePerTon'
     | 'defaultDefectPerTon'
-    | 'defaultDiesPerTon';
+    | 'defaultDiesPerTon'
+    | 'defaultWwdPoLength1';
   const setNumber = (key: NumberKey, value: number) => set(key, Number.isFinite(value) ? value : 0);
 
   const computedRange = useMemo(() => {
@@ -245,6 +246,16 @@ FILTER(
                 value={draft.defaultDiesPerTon}
                 min={0}
                 onChange={(v) => setNumber('defaultDiesPerTon', v)}
+              />
+            </SettingRow>
+            <SettingRow
+              label="Default WWD PO Length 1 (m)"
+              tooltip="Default Pay-Off Length 1 (meters) specifically used for Area WW / WWD machines imported from MES Actual Output (where PO Length is not present in MES)."
+            >
+              <NumberInput
+                value={draft.defaultWwdPoLength1}
+                min={0}
+                onChange={(v) => setNumber('defaultWwdPoLength1', v)}
               />
             </SettingRow>
           </SettingGroup>

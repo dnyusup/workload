@@ -1,4 +1,5 @@
 import { WL_ActualOutputService } from '../generated/services/WL_ActualOutputService';
+import { saveWwdSpecsFromActualOutput } from './wwdSpecStore';
 
 export interface ActualOutputRecord {
   id: string;
@@ -21,6 +22,7 @@ export interface ActualOutputRecord {
   spoolType: string;
   standardLength: number | string;
   standardSpeed: number | string;
+  linerDensity: number | null;
   constructionDetail: string;
 
   // Aggregations
@@ -79,10 +81,14 @@ SUMMARIZECOLUMNS(
     DimProduct[SpoolType],
     DimProduct[StandardLength],
     DimWIPOrder[StandardSpeed],
+    DimProduct[LinerDensity],
 
     -- 2. FILTER PLANT, DATE & SHIFT:
     TREATAS({"${plant}"}, DimPlantRegion[PlantName]),
-    TREATAS({DATE(${date.replace(/-/g, ', ')})}, DimDate[Date]),
+    FILTER(
+        ALL(DimDate[Date]), 
+        DimDate[Date] = DATEVALUE("${date}")
+    ),
     TREATAS({${shift}}, DimShift[DaySequenceNo]),
 
     -- 3. NILAI AGREGASI
@@ -105,9 +111,17 @@ SUMMARIZECOLUMNS(
 ),
 
     "ConstructionDetail", 
-        McGroup[Group] & "-" & 
+        IF(
+			(OR(McGroup[Group] = "BFM",McGroup[Group] = "KT")),
+			DimWIPOrder[SAPMachineTypeGroup],
+			IF(
+				McGroup[Group] = "SP",
+				"HENX",
+				McGroup[Group]
+			)
+		) & "-" & 
         DimProduct[Construction] & "-" & 
-        DimProduct[LayLength] & "-" & 
+        If(ISBLANK(DimProduct[LayLength]),0,DimProduct[LayLength]) & "-" & 
         DimProduct[TensileStrength] & "-" &
         IF(
             LEFT(DimProduct[SpoolType], 2) = "BS",
@@ -144,7 +158,7 @@ function cleanFloat(val: any, decimals = 2): number | null {
 }
 
 export function parseActualOutputRows(rawItems: any[]): ActualOutputRecord[] {
-  return rawItems.map((raw, index) => {
+  const records = rawItems.map((raw, index) => {
     const plantName = String(getField(raw, 'DimPlantRegion[PlantName]', '[DimPlantRegion].[PlantName]', 'PlantName') ?? '').trim();
     const date = String(getField(raw, 'DimDate[Date]', '[DimDate].[Date]', 'Date') ?? '').trim();
     const shift = parseNumber(getField(raw, 'DimShift[DaySequenceNo]', '[DimShift].[DaySequenceNo]', 'DaySequenceNo', 'Shift')) ?? 1;
@@ -180,10 +194,20 @@ export function parseActualOutputRows(rawItems: any[]): ActualOutputRecord[] {
     const standardSpeedClean = cleanFloat(standardSpeedRaw, 1);
     const standardSpeed = standardSpeedClean !== null ? standardSpeedClean : String(standardSpeedRaw ?? '').trim();
 
+    const linerDensityRaw = getField(raw, 'DimProduct[LinerDensity]', '[DimProduct].[LinerDensity]', 'LinerDensity', 'LinearDensity');
+    const linerDensity = cleanFloat(linerDensityRaw, 4);
+
     let constructionDetail = String(getField(raw, 'ConstructionDetail', '[ConstructionDetail]') ?? '').trim();
     if (!constructionDetail && group && construction) {
+      const prefix =
+        group === 'BFM' || group === 'KT'
+          ? sapMachineTypeGroup || group
+          : group === 'SP'
+          ? 'HENX'
+          : group;
+      const lay = layLength === '' || layLength === null || layLength === undefined ? 0 : layLength;
       const spoolNorm = spoolType.startsWith('BS') ? spoolType.slice(0, 4) : spoolType;
-      constructionDetail = `${group}-${construction}-${layLength}-${tensileStrength}-${spoolNorm}-${standardLength}-${standardSpeed}`;
+      constructionDetail = `${prefix}-${construction}-${lay}-${tensileStrength}-${spoolNorm}-${standardLength}-${standardSpeed}`;
     }
 
     const doffedSpoolCount = parseNumber(getField(raw, 'DoffedSpoolCount', '[DoffedSpoolCount]'));
@@ -255,6 +279,7 @@ export function parseActualOutputRows(rawItems: any[]): ActualOutputRecord[] {
       spoolType,
       standardLength,
       standardSpeed,
+      linerDensity,
       constructionDetail,
       doffedSpoolCount,
       doffedRejectSpoolCount,
@@ -278,6 +303,8 @@ export function parseActualOutputRows(rawItems: any[]): ActualOutputRecord[] {
       raw,
     };
   });
+  saveWwdSpecsFromActualOutput(records);
+  return records;
 }
 
 const cacheMap = new Map<string, ActualOutputRecord[]>();

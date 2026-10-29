@@ -49,6 +49,8 @@ export interface DefaultValues {
   defaultDefectPerTon: number;
   /** Default fallback rate for Dies/Ton if not found in product or WL_Frequency */
   defaultDiesPerTon: number;
+  /** Default PO length 1 (meters) specifically for Area WW / WWD machines imported from MES Actual Output */
+  defaultWwdPoLength1: number;
 }
 
 /** Used for any parameter WL_DefaultValues has no (valid) row for yet. */
@@ -75,6 +77,7 @@ export const BUILT_IN_DEFAULTS: DefaultValues = {
   defaultFracturePerTon: 0,
   defaultDefectPerTon: 0,
   defaultDiesPerTon: 0,
+  defaultWwdPoLength1: 5000,
 };
 
 /** WL_DefaultValues.mpp_parameters name for each setting (matched case-insensitively). */
@@ -101,6 +104,7 @@ const PARAMETER_NAMES: Record<keyof DefaultValues, string> = {
   defaultFracturePerTon: 'DefaultFracturePerTon',
   defaultDefectPerTon: 'DefaultDefectPerTon',
   defaultDiesPerTon: 'DefaultDiesPerTon',
+  defaultWwdPoLength1: 'DefaultWwdPoLength1',
 };
 
 const KEYS = Object.keys(PARAMETER_NAMES) as (keyof DefaultValues)[];

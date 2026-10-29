@@ -75,7 +75,9 @@ function machineRowToAssignment(row: Mpp_wl_productionsetupmachineses, construct
   return {
     machineId: row.mpp_machineid,
     constructionDetailId: row.mpp_constructiondetailid ?? undefined,
-    constructionDetailLabel: row.mpp_constructiondetailid ? constructionLabelById.get(row.mpp_constructiondetailid) : undefined,
+    constructionDetailLabel: row.mpp_constructiondetailid
+      ? constructionLabelById.get(row.mpp_constructiondetailid) ?? row.mpp_constructiondetailid
+      : undefined,
     ...taskOperators,
     groupName: row.mpp_groupname?.trim() || undefined,
     assignedOperatorIds: legacy === 'DedicatedMachines' ? undefined : parseAssignedOperators(row.mpp_assignedopr),

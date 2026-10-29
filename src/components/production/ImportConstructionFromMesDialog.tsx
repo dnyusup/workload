@@ -2,9 +2,17 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ProductionMachineAssignment, ProductionSetup } from '../../types';
 import type { Mpp_wl_productses } from '../../generated/models/Mpp_wl_productsesModel';
+import { Mpp_wl_activitiesService } from '../../generated/services/Mpp_wl_activitiesService';
+import { fetchAllPages } from '../../lib/dataversePaging';
 import { loadActualOutputData, type ActualOutputRecord } from '../../lib/actualOutputCatalog';
 import { updateMachineAssignments } from '../../lib/productionSetupsStore';
 import { loadDefaultValuesOrBuiltIn } from '../../lib/defaultValuesStore';
+import {
+  isWwdRecord,
+  isWwdConstruction,
+  extractWwdBaseConstruction,
+  saveWwdSpec,
+} from '../../lib/wwdSpecStore';
 import { Button } from '../ui/Button';
 import { DateInput } from '../ui/Field';
 
@@ -22,7 +30,9 @@ interface MatchedItem {
   currentLabel: string;
   currentId?: string;
   mesConstruction: string;
-  product: Mpp_wl_productses;
+  product?: Mpp_wl_productses;
+  isWwd?: boolean;
+  baseConstruction?: string;
   volumeKG: number;
   willChange: boolean;
 }
@@ -33,8 +43,11 @@ interface UnmatchedCatalogItem {
   currentLabel: string;
   currentId?: string;
   mesConstruction: string;
+  isWwd?: boolean;
+  baseConstruction?: string;
   volumeKG: number;
   willChange: boolean;
+  reason?: string;
 }
 
 interface NoActivityItem {
@@ -157,6 +170,19 @@ export function ImportConstructionFromMesDialog({
       setStage('processing');
       setStatusText(`Processing ${records.length.toLocaleString()} MES records & matching ${setup.layout.length} layout machines…`);
 
+      // Load WL_Activities to validate WWD base constructions
+      let activityConstructionSet = new Set<string>();
+      try {
+        const actRows = await fetchAllPages(Mpp_wl_activitiesService.getAll, {
+          select: ['mpp_constructiontype'],
+        });
+        activityConstructionSet = new Set(
+          actRows.map((r) => (r.mpp_constructiontype ?? '').trim().toLowerCase()).filter(Boolean),
+        );
+      } catch (actErr) {
+        console.warn('Failed to load WL_Activities for WWD validation:', actErr);
+      }
+
       // Index records by machine name (highest volume wins if multiple)
       const recByMachine = new Map<string, ActualOutputRecord>();
       for (const rec of records) {
@@ -189,34 +215,96 @@ export function ImportConstructionFromMesDialog({
           const mesCode = rec.constructionDetail.trim();
           const vol = rec.totalProducedKG ?? (rec.tonProduced ? rec.tonProduced * 1000 : 0);
 
-          const matchedProd =
-            productByExact.get(mesCode.toLowerCase()) ??
-            productByNormalized.get(normalizeKey(mesCode));
+          const isWwd = isWwdRecord(rec) || isWwdConstruction(mesCode);
 
-          if (matchedProd) {
-            const willChange = currentId !== matchedProd.mpp_wl_productsid;
-            matched.push({
-              machineId: machine.id,
-              machineLabel: mLabel,
-              currentLabel,
-              currentId,
-              mesConstruction: mesCode,
-              product: matchedProd,
-              volumeKG: vol,
-              willChange,
-            });
+          if (isWwd) {
+            // WWD Validation: bypass WL_Products, validate against WL_Activities based on base construction
+            const baseConstruction = extractWwdBaseConstruction(mesCode);
+            const isValidInActivities = activityConstructionSet.has(baseConstruction.toLowerCase());
+
+            if (isValidInActivities) {
+              const speed = typeof rec.standardSpeed === 'number' ? rec.standardSpeed : Number(rec.standardSpeed) || 0;
+              const length = typeof rec.standardLength === 'number' ? rec.standardLength : Number(rec.standardLength) || 0;
+              const diam = parseFloat(rec.construction);
+              const density =
+                rec.linerDensity ??
+                (Number.isFinite(diam) && diam > 0
+                  ? Number(((Math.PI / 4) * Math.pow(diam, 2) * 7.85).toFixed(4))
+                  : 0);
+
+              saveWwdSpec({
+                constructionDetail: mesCode,
+                baseConstruction,
+                standardSpeed: speed,
+                standardLength: length,
+                linearDensity: density,
+                layLength: Number(rec.layLength) || 0,
+                tensileStrength: rec.tensileStrength || '',
+                spoolType: rec.spoolType || 'BS40',
+                fracturePerTon: rec.fracturePerTon ?? 0,
+                diesPerTon: rec.diesPerTon ?? 0,
+                defectPerTon: rec.defectPerTon ?? 0,
+              });
+
+              const willChange = currentLabel !== mesCode;
+              matched.push({
+                machineId: machine.id,
+                machineLabel: mLabel,
+                currentLabel,
+                currentId,
+                mesConstruction: mesCode,
+                isWwd: true,
+                baseConstruction,
+                volumeKG: vol,
+                willChange,
+              });
+            } else {
+              const willChange = Boolean(currentId);
+              missingCatalog.push({
+                machineId: machine.id,
+                machineLabel: mLabel,
+                currentLabel,
+                currentId,
+                mesConstruction: mesCode,
+                isWwd: true,
+                baseConstruction,
+                volumeKG: vol,
+                willChange,
+                reason: `WWD Base Construction "${baseConstruction}" not found in WL_Activities`,
+              });
+            }
           } else {
-            // Found in MES, but code is missing in WL_Products catalog -> will unassign
-            const willChange = Boolean(currentId);
-            missingCatalog.push({
-              machineId: machine.id,
-              machineLabel: mLabel,
-              currentLabel,
-              currentId,
-              mesConstruction: mesCode,
-              volumeKG: vol,
-              willChange,
-            });
+            // Standard validation against WL_Products for non-WWD machines
+            const matchedProd =
+              productByExact.get(mesCode.toLowerCase()) ??
+              productByNormalized.get(normalizeKey(mesCode));
+
+            if (matchedProd) {
+              const willChange = currentId !== matchedProd.mpp_wl_productsid;
+              matched.push({
+                machineId: machine.id,
+                machineLabel: mLabel,
+                currentLabel,
+                currentId,
+                mesConstruction: mesCode,
+                product: matchedProd,
+                volumeKG: vol,
+                willChange,
+              });
+            } else {
+              // Found in MES, but code is missing in WL_Products catalog -> will unassign
+              const willChange = Boolean(currentId);
+              missingCatalog.push({
+                machineId: machine.id,
+                machineLabel: mLabel,
+                currentLabel,
+                currentId,
+                mesConstruction: mesCode,
+                volumeKG: vol,
+                willChange,
+                reason: 'ConstructionDetail code not registered in WL_Products',
+              });
+            }
           }
         } else {
           // No MES activity on this shift -> will unassign
@@ -269,22 +357,24 @@ export function ImportConstructionFromMesDialog({
     setStage('saving');
 
     // Build the complete target patch map for all layout machines:
-    // 1. Matched machines -> assign to product GUID
+    // 1. Matched machines -> assign to product GUID or WWD construction code
     // 2. Unmatched in catalog / No MES data -> unassign (undefined / null)
     const patchByMachineId = new Map<string, Partial<ProductionMachineAssignment>>();
     const changesToPersist: { machineId: string; patch: Partial<ProductionMachineAssignment> }[] = [];
 
     for (const item of matchedItems) {
+      const targetId = item.isWwd ? item.mesConstruction : item.product!.mpp_wl_productsid;
+      const targetLabel = item.isWwd ? item.mesConstruction : item.product!.mpp_constructiondetailcode;
       patchByMachineId.set(item.machineId, {
-        constructionDetailId: item.product.mpp_wl_productsid,
-        constructionDetailLabel: item.product.mpp_constructiondetailcode,
+        constructionDetailId: targetId,
+        constructionDetailLabel: targetLabel,
       });
       if (item.willChange) {
         changesToPersist.push({
           machineId: item.machineId,
           patch: {
-            constructionDetailId: item.product.mpp_wl_productsid,
-            constructionDetailLabel: item.product.mpp_constructiondetailcode,
+            constructionDetailId: targetId,
+            constructionDetailLabel: targetLabel,
           },
         });
       }
@@ -940,7 +1030,7 @@ export function ImportConstructionFromMesDialog({
                                       fontWeight: 600,
                                     }}
                                   >
-                                    Unassign (Not in WL_Products)
+                                    {item.reason ?? 'Unassign (Not in WL_Products)'}
                                   </span>
                                 </td>
                               </tr>
@@ -961,7 +1051,7 @@ export function ImportConstructionFromMesDialog({
                         border: '1px solid rgba(34, 197, 94, 0.2)',
                       }}
                     >
-                      🎉 All machines active in MES have matching codes in <code>WL_Products</code>!
+                      🎉 All machines active in MES have matching codes in <code>WL_Products</code> or <code>WL_Activities</code>!
                     </div>
                   )}
                 </div>
@@ -1008,7 +1098,23 @@ export function ImportConstructionFromMesDialog({
                                   fontFamily: 'monospace',
                                 }}
                               >
-                                {item.product.mpp_constructiondetailcode}
+                                {item.product?.mpp_constructiondetailcode ?? item.mesConstruction}
+                                {item.isWwd && (
+                                  <span
+                                    style={{
+                                      marginLeft: '6px',
+                                      background: 'rgba(56, 189, 248, 0.15)',
+                                      color: '#38bdf8',
+                                      padding: '1px 6px',
+                                      borderRadius: '4px',
+                                      fontSize: '0.68rem',
+                                      fontWeight: 600,
+                                    }}
+                                    title={`WWD validated via WL_Activities base: ${item.baseConstruction}`}
+                                  >
+                                    WWD (WL_Activities)
+                                  </span>
+                                )}
                               </td>
                               <td style={{ padding: '8px 10px', textAlign: 'right', color: '#cbd5e1' }}>
                                 {Math.round(item.volumeKG).toLocaleString()} kg

@@ -6,6 +6,8 @@ import { buildActivitiesFromRows, mapProductToSpec, productOperatorSettings, typ
 import { activityCycleLength, deriveMachineSpec, ensureCoreActivities, syncAutoActivityValues } from './calculations';
 import { fetchAllPages } from './dataversePaging';
 import { resolveEffectiveFrequencies, type HistoricalFrequencyMap } from './frequencyCatalog';
+import { isWwdConstruction, getWwdSpec, synthesizeWwdSpec } from './wwdSpecStore';
+import { loadDefaultValuesOrBuiltIn } from './defaultValuesStore';
 
 export interface ResolvedConstruction {
   productId: string;
@@ -63,6 +65,7 @@ export async function resolveConstructions(
   const productById = new Map(products.map((p) => [p.mpp_wl_productsid, p]));
   const activitiesByConstruction = new Map<string, Mpp_wl_activities[]>();
   let activitiesLoadFailed = false;
+  const defaults = await loadDefaultValuesOrBuiltIn();
   try {
     const rows = await fetchAllPages(Mpp_wl_activitiesService.getAll);
     for (const row of rows) {
@@ -80,6 +83,109 @@ export async function resolveConstructions(
   for (const productId of productIds) {
     const product = productById.get(productId);
     if (!product) {
+      if (isWwdConstruction(productId)) {
+        const wwdSpec = getWwdSpec(productId) ?? synthesizeWwdSpec(productId, {
+          fracture: defaults.defaultFracturePerTon,
+          dies: defaults.defaultDiesPerTon,
+          defect: defaults.defaultDefectPerTon,
+        });
+
+        let spec: MachineSpecInput = {
+          area: 'WW',
+          layLength: wwdSpec.layLength ?? 0,
+          noOfWires: 1,
+          speed: wwdSpec.standardSpeed,
+          spoolLength: wwdSpec.standardLength,
+          linearDensity: wwdSpec.linearDensity,
+          fracturePerTon: wwdSpec.fracturePerTon ?? defaults.defaultFracturePerTon ?? 0,
+          diesPerTon: wwdSpec.diesPerTon ?? defaults.defaultDiesPerTon ?? 0,
+          defectsPerTon: wwdSpec.defectPerTon ?? defaults.defaultDefectPerTon ?? 0,
+          poLength1: defaults.defaultWwdPoLength1 ?? 5000,
+          poLength2: 0,
+          poLength3: 0,
+        };
+
+        if (frequencyMode === 'historical' && frequencyCatalog) {
+          const effective = resolveEffectiveFrequencies({
+            manual: {
+              fracturePerTon: spec.fracturePerTon,
+              diesPerTon: spec.diesPerTon,
+              defectsPerTon: spec.defectsPerTon,
+            },
+            lookupParams: {
+              mach: 'WWD',
+              product: wwdSpec.baseConstruction.split('-')[1] ?? '',
+              layLength: wwdSpec.layLength,
+              tensileGroup: wwdSpec.tensileStrength,
+            },
+            mode: frequencyMode,
+            catalog: frequencyCatalog,
+          });
+          spec = {
+            ...spec,
+            fracturePerTon: effective.fracturePerTon,
+            diesPerTon: effective.diesPerTon,
+            defectsPerTon: effective.defectsPerTon,
+          };
+        }
+
+        const derived = deriveMachineSpec(spec);
+        const baseConstruction = wwdSpec.baseConstruction;
+
+        let activityRows: Mpp_wl_activities[] = [];
+        if (baseConstruction) {
+          if (!activitiesLoadFailed) activityRows = activitiesByConstruction.get(constructionKey(baseConstruction)) ?? [];
+        }
+
+        if (activityRows.length === 0) {
+          errors.push(`WWD Base Construction "${baseConstruction}" has no activities in WL_Activities.`);
+        }
+
+        const mockProduct = {
+          mpp_area: 'WW',
+          mpp_polength1: spec.poLength1,
+          mpp_polength2: 0,
+          mpp_polength3: 0,
+          mpp_spoollength: spec.spoolLength,
+          mpp_dieston: String(spec.diesPerTon),
+          mpp_defectston: String(spec.defectsPerTon),
+        };
+
+        const built = buildActivitiesFromRows(activityRows, mockProduct as any, derived.spoolWeight, spec.fracturePerTon);
+        const activities = syncAutoActivityValues(
+          ensureCoreActivities(built.activities, derived.spoolWeight, spec.fracturePerTon),
+          spec,
+        );
+        built.errors.forEach((e) => errors.push(`${productId}: ${e}`));
+
+        const cycleLengths = Object.fromEntries(activities.map((a) => [a.key, activityCycleLength(a)]));
+
+        resolved.set(productId, {
+          productId,
+          label: productId,
+          spoolType: wwdSpec.spoolType,
+          attributes: {
+            constructionDetail: productId,
+            construction: baseConstruction,
+            area: 'WW',
+            machineCode: 'WWD',
+            product: baseConstruction.split('-')[1] ?? '',
+            tensileGroup: wwdSpec.tensileStrength,
+            spoolType: wwdSpec.spoolType,
+            layLength: String(wwdSpec.layLength ?? 0),
+            spoolLength: String(wwdSpec.standardLength ?? 0),
+            speed: String(wwdSpec.standardSpeed ?? 0),
+            numberOfWires: '1',
+          },
+          spec,
+          activities,
+          runtimePerSpool: derived.runtimePerSpool > 0 ? derived.runtimePerSpool : 1,
+          cycleLengths,
+          operatorSettings: {},
+        });
+        continue;
+      }
+
       errors.push(`Construction Detail (id ${productId}) not found in WL_Products.`);
       continue;
     }
