@@ -323,6 +323,12 @@ FILTER(
           </SettingGroup>
           <SettingGroup title="Forecast & Optimize">
             <SettingRow
+              label="Man Occ 100%"
+              tooltip="Yes: Optimize Man Occupation adjusts #machine assigned to ensure Man Occupation reaches 100% (adds 1 more machine if Man Occ < 100%, even if Ideal Demand exceeds 100%). Also impacts Theoretical Operator Required in Production Setup. No: standard optimization procedure."
+            >
+              <Toggle checked={draft.manOcc100Percent} onChange={(v) => set('manOcc100Percent', v)} ariaLabel="Man Occ 100%" />
+            </SettingRow>
+            <SettingRow
               label="Use Waiting Model"
               tooltip="Yes: forecasts estimate machines waiting because they need the operator at the same time, with the Waiting Model below (Admins can change it per setup). No: no waiting model anywhere — forecasts and Optimize work as None (machines only wait for the backlog), and the Waiting Model field and its calculation are hidden in the Work Load Simulator and Production Setup."
             >
@@ -347,6 +353,8 @@ FILTER(
               <NumberInput
                 value={draft.optimizeStepUpBelow}
                 min={0}
+                disabled={draft.manOcc100Percent}
+                title={draft.manOcc100Percent ? 'Not used while Man Occ 100% is Yes' : undefined}
                 onChange={(v) => set('optimizeStepUpBelow', Number.isFinite(v) ? Math.min(100, Math.max(0, v)) : 0)}
               />
             </SettingRow>

@@ -339,7 +339,12 @@ export function ProductionSimulationPage() {
       // Values can also switch the waiting model off altogether (forecast as None, field hidden).
       .then(async (setup) => {
         const defaults = await loadDefaultValuesOrBuiltIn();
-        return { ...setup, useWaitingModel: defaults.useWaitingModel, ...(isAdmin ? {} : { waitingModel: defaults.waitingModel }) };
+        return {
+          ...setup,
+          useWaitingModel: defaults.useWaitingModel,
+          manOcc100Percent: defaults.manOcc100Percent,
+          ...(isAdmin ? {} : { waitingModel: defaults.waitingModel }),
+        };
       })
       .then((setup) => {
         if (!cancelled) setSelectedSetup(setup);

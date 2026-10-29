@@ -137,7 +137,7 @@ Sumber: [`src/lib/singleOperatorUtilization.ts`](../src/lib/singleOperatorUtiliz
 | 13 | Ideal demand % | `Planned / Available × 100` |
 | 14 | **Forecast Man Occupation %** | `min(100, Busy / Available × 100)` |
 | 15 | Expected finished spools | `ExpectedSpools × N × scale` |
-| 16 | **Optimize (#Assigned Machines)** | Jumlah mesin **terbesar** (1…jumlah layout) yang forecast waiting-nya ≤ 0 |
+| 16 | **Optimize (#Assigned Machines)** | Jumlah mesin **terbesar** yang forecast waiting-nya ≤ 0. Jika opsi `Man Occ 100%` aktif (true) dan Man Occ < 100%, ditambah 1 mesin agar Man Occ mencapai 100% (meski Ideal Demand > 100%). Jika tidak, mengikuti ambang `Optimize Step-Up Below (%)`. |
 
 Jarak = jarak Euclidean pixel ÷ `pixelsPerMeter`.
 

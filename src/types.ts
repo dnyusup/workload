@@ -58,6 +58,9 @@ export interface OperatorConfig {
   /** Setting → Default Values "Use Waiting Model": false = no waiting model at all — the forecast
    * works as None and the model isn't shown. undefined = on. */
   useWaitingModel?: boolean;
+  /** Setting → Default Values "Man Occ 100%": true = adjustment #machine assigned must reach 100%
+   * Man Occupation (adds 1 more machine if Man Occ < 100%, even if Ideal Demand > 100%). */
+  manOcc100Percent?: boolean;
   /** Optimize takes one more machine when its count leaves Forecast Man Occupation below this (%),
    * 0 = off; from Default Values. undefined = the built-in default. */
   optimizeStepUpBelow?: number;
@@ -499,6 +502,9 @@ export interface ProductionSetup {
   /** Not stored with the setup: Setting → Default Values "Use Waiting Model" when it was loaded.
    * false = forecast as None and hide the model. undefined = on. */
   useWaitingModel?: boolean;
+  /** Not stored with the setup: Setting → Default Values "Man Occ 100%" when it was loaded.
+   * true = adjustment #machine assigned must reach 100% Man Occ. */
+  manOcc100Percent?: boolean;
   /** 'manual' = from WL_Products; 'historical' = from WL_Frequency (falls back to WL_Products if missing). */
   frequencyMode?: FrequencyMode;
   frequencyStartDate?: string;

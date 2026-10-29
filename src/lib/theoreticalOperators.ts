@@ -61,6 +61,7 @@ export interface SetupOperatorSettings {
   minRemainForDoffPriority: number;
   waitingModel: ProductionSetup['waitingModel'];
   useWaitingModel?: boolean;
+  manOcc100Percent?: boolean;
   frequencyMode?: FrequencyMode;
   frequencyStartDate?: string;
   frequencyEndDate?: string;
@@ -80,6 +81,7 @@ export function setupOperatorSettings(setup: ProductionSetup): SetupOperatorSett
     minRemainForDoffPriority: setup.minRemainForDoffPriority,
     waitingModel: setup.waitingModel,
     useWaitingModel: setup.useWaitingModel,
+    manOcc100Percent: setup.manOcc100Percent,
     frequencyMode: setup.frequencyMode ?? 'manual',
     frequencyStartDate: setup.frequencyStartDate,
     frequencyEndDate: setup.frequencyEndDate,
@@ -129,6 +131,7 @@ export function optimizeConfigFor(
       minRemainForDoffPriority: own.minRemainForDoffPriority ?? settings.minRemainForDoffPriority,
       waitingModel: settings.waitingModel,
       useWaitingModel: settings.useWaitingModel,
+      manOcc100Percent: settings.manOcc100Percent ?? inputs.defaults.manOcc100Percent,
     },
     movement: { ...built.movement, walkingSpeed: settings.walkingSpeed },
     rpcPercent: settings.rpc,

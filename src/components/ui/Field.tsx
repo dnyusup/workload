@@ -57,22 +57,28 @@ export function NumberInput({
   onChange,
   step = 'any',
   readOnly = false,
+  disabled = false,
   min,
+  title,
 }: {
   value: number;
   onChange?: (v: number) => void;
   step?: number | 'any';
   readOnly?: boolean;
+  disabled?: boolean;
   min?: number;
+  title?: string;
 }) {
   return (
     <input
       type="number"
-      className={`input ${readOnly ? 'input-readonly' : ''}`}
+      className={`input ${readOnly || disabled ? 'input-readonly' : ''}`}
       value={Number.isFinite(value) ? value : 0}
       step={step}
       min={min}
       readOnly={readOnly}
+      disabled={disabled}
+      title={title}
       onChange={(e) => onChange?.(parseFloat(e.target.value))}
     />
   );

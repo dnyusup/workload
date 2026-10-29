@@ -636,6 +636,14 @@ export function recommendedMachineCountForForecast(config: AppConfig): number {
     }
   }
 
+  if (config.operator.manOcc100Percent) {
+    if (recommended > 0 && recommendedOccupation < 99.99 && recommended < MAX_RECOMMENDED_MACHINES) {
+      return recommended + 1;
+    }
+    if (recommended === 0) return 1;
+    return recommended;
+  }
+
   const stepUpBelow = config.operator.optimizeStepUpBelow ?? DEFAULT_OPTIMIZE_STEP_UP_BELOW;
   if (recommended > 0 && stepUpBelow > 0 && recommendedOccupation < stepUpBelow && recommended < MAX_RECOMMENDED_MACHINES) {
     return recommended + 1;

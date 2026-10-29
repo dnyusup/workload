@@ -275,6 +275,7 @@ export async function createProductionSetup(
     minRemainForDoffPriority: defaults.minRemainForDoffPriority,
     waitingModel: defaults.waitingModel,
     useWaitingModel: defaults.useWaitingModel,
+    manOcc100Percent: defaults.manOcc100Percent,
     frequencyMode: defaults.frequencyMode ?? 'manual',
     frequencyStartDate: defaultDates.startDate,
     frequencyEndDate: defaultDates.endDate,

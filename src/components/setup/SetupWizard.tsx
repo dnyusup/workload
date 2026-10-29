@@ -51,12 +51,14 @@ export function SetupWizard({ onStart }: { onStart: () => void }) {
   // for a setup kept in the browser from before they changed.
   useEffect(() => {
     let cancelled = false;
-    void loadDefaultValuesOrBuiltIn().then(({ optimizeStepUpBelow, useWaitingModel }) => {
+    void loadDefaultValuesOrBuiltIn().then(({ optimizeStepUpBelow, useWaitingModel, manOcc100Percent }) => {
       if (cancelled) return;
       setConfig((prev) =>
-        prev.operator.optimizeStepUpBelow === optimizeStepUpBelow && (prev.operator.useWaitingModel ?? true) === useWaitingModel
+        prev.operator.optimizeStepUpBelow === optimizeStepUpBelow &&
+        (prev.operator.useWaitingModel ?? true) === useWaitingModel &&
+        (prev.operator.manOcc100Percent ?? false) === manOcc100Percent
           ? prev
-          : { ...prev, operator: { ...prev.operator, optimizeStepUpBelow, useWaitingModel } },
+          : { ...prev, operator: { ...prev.operator, optimizeStepUpBelow, useWaitingModel, manOcc100Percent } },
       );
     });
     return () => {

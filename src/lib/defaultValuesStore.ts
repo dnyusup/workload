@@ -28,6 +28,8 @@ export interface DefaultValues {
   doffPriority: boolean;
   minRemainForDoffPriority: number;
   waitingModel: WaitingModel;
+  /** Setting → Default Values "Man Occ 100%": true = adjustment #machine assigned must reach 100% Man Occ. */
+  manOcc100Percent: boolean;
   /** Off: no waiting model anywhere — forecasts work as None and the model isn't shown. */
   useWaitingModel: boolean;
   /** Optimize adds one machine when Forecast Man Occupation stays below this (%); 0 = off. */
@@ -66,6 +68,7 @@ export const BUILT_IN_DEFAULTS: DefaultValues = {
   doffPriority: false,
   minRemainForDoffPriority: 5,
   waitingModel: DEFAULT_WAITING_MODEL,
+  manOcc100Percent: false,
   useWaitingModel: true,
   optimizeStepUpBelow: DEFAULT_OPTIMIZE_STEP_UP_BELOW,
 
@@ -93,6 +96,7 @@ const PARAMETER_NAMES: Record<keyof DefaultValues, string> = {
   doffPriority: 'DoffPriority',
   minRemainForDoffPriority: 'MinRemainTaskForDoffPriority',
   waitingModel: 'WaitingModel',
+  manOcc100Percent: 'ManOcc100Percent',
   useWaitingModel: 'UseWaitingModel',
   optimizeStepUpBelow: 'OptimizeStepUpBelow',
 
@@ -121,7 +125,7 @@ function rowsByKey(rows: Mpp_wl_defaultvalues[]): Map<keyof DefaultValues, Mpp_w
 
 function parseValue<K extends keyof DefaultValues>(key: K, raw: string | undefined): DefaultValues[K] | undefined {
   const text = (raw ?? '').trim();
-  if (key === 'doffPriority' || key === 'useWaitingModel') {
+  if (key === 'doffPriority' || key === 'useWaitingModel' || key === 'manOcc100Percent') {
     const flag = text.toLowerCase();
     return (flag === 'yes' ? true : flag === 'no' ? false : undefined) as DefaultValues[K] | undefined;
   }
@@ -177,7 +181,7 @@ export async function loadDefaultValuesOrBuiltIn(): Promise<DefaultValues> {
 }
 
 function formatValue(key: keyof DefaultValues, value: DefaultValues[keyof DefaultValues]): string {
-  if (key === 'doffPriority' || key === 'useWaitingModel') return value ? 'Yes' : 'No';
+  if (key === 'doffPriority' || key === 'useWaitingModel' || key === 'manOcc100Percent') return value ? 'Yes' : 'No';
   if (key === 'waitingModel') return formatWaitingModel(value as DefaultValues['waitingModel']);
   return String(value);
 }
