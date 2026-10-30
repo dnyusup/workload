@@ -221,119 +221,45 @@ export function getDynamicSpec(code: string | undefined): DynamicSpecData | null
 export const getWwdSpec = getDynamicSpec;
 
 /**
- * Matches a base construction against a Set or Map of activity construction keys.
- * Directly uses the Area column (e.g. Area BU for BOS, Area WW for WWD),
- * matching against machine code prefix, area prefix, or pure product specification.
+ * Matches a base construction against WL_Activities construction keys (mpp_constructiontype).
+ * Matches strictly and directly (case-insensitive & trimmed).
+ * Also supports the WW <-> WWD alias for Area WW.
  */
 export function findMatchingActivityConstruction(
   baseConstruction: string,
   activitySetOrMap: Set<string> | Map<string, any>,
-  area?: string,
+  _area?: string,
 ): string | null {
   if (!baseConstruction) return null;
 
-  const hasKey = (key: string): boolean => {
-    const k = key.trim().toLowerCase();
-    return activitySetOrMap.has(k);
-  };
+  const raw = baseConstruction.trim();
+  const rawLower = raw.toLowerCase();
 
-  const getCanonicalKey = (key: string): string => {
-    const k = key.trim().toLowerCase();
+  // Helper to find exact canonical key from Map or Set
+  const getCanonicalKey = (targetLower: string): string | null => {
     if (activitySetOrMap instanceof Map) {
       for (const mapKey of activitySetOrMap.keys()) {
-        if (mapKey.trim().toLowerCase() === k) return mapKey;
+        if (mapKey.trim().toLowerCase() === targetLower) return mapKey;
       }
     } else if (activitySetOrMap instanceof Set) {
       for (const item of activitySetOrMap) {
-        if (item.trim().toLowerCase() === k) return item;
+        if (item.trim().toLowerCase() === targetLower) return item;
       }
     }
-    return key;
+    return null;
   };
 
-  const raw = baseConstruction.trim();
-  const parts = raw.split('-');
-  const machCode = parts[0]?.toUpperCase() ?? '';
-  const areaCode = (area || '').trim().toUpperCase();
+  // 1. Direct match: Base Construction persis sama dengan mpp_constructiontype (case-insensitive & trim)
+  const directMatch = getCanonicalKey(rawLower);
+  if (directMatch) return directMatch;
 
-  // Prefixes to test:
-  // 1. The code's own machine prefix (e.g. 'BOS' or 'WWD')
-  // 2. The Area column from the record (e.g. 'BU' or 'WW')
-  // 3. WWD <-> WW alias (since historically WWD has area WW)
-  // 4. No prefix (pure body)
-  const prefixes: string[] = [];
-  if (machCode) prefixes.push(machCode);
-  if (areaCode && !prefixes.includes(areaCode)) prefixes.push(areaCode);
-  if (areaCode === 'WW' && !prefixes.includes('WWD')) prefixes.push('WWD');
-  if (machCode === 'WWD' && !prefixes.includes('WW')) prefixes.push('WW');
-  if (areaCode === 'SP' && !prefixes.includes('HENX')) prefixes.push('HENX');
-  if (machCode === 'HENX' && !prefixes.includes('SP')) prefixes.push('SP');
-  prefixes.push('');
-
-  // Bodies to test:
-  // - full body after prefix: e.g. '2+2X0.23-13-HT-BS40'
-  // - without spool type: e.g. '2+2X0.23-13-HT'
-  // - product spec only: e.g. '2+2X0.23'
-  const bodies: string[] = [];
-  if (parts.length > 1) {
-    const fullBody = parts.slice(1).join('-');
-    bodies.push(fullBody);
-    if (parts.length > 2) {
-      const withoutSpool = parts.slice(1, -1).join('-');
-      if (!bodies.includes(withoutSpool)) bodies.push(withoutSpool);
-    }
-    const productSpec = parts[1];
-    if (productSpec && !bodies.includes(productSpec)) bodies.push(productSpec);
-  } else {
-    bodies.push(raw);
-  }
-
-  // Generate candidates with dot and comma variants
-  const variants: string[] = [raw];
-
-  for (const pfx of prefixes) {
-    for (const b of bodies) {
-      const candidate = pfx ? `${pfx}-${b}` : b;
-      if (!variants.includes(candidate)) variants.push(candidate);
-
-      if (candidate.includes('.')) {
-        const withComma = candidate.replace(/\./g, ',');
-        if (!variants.includes(withComma)) variants.push(withComma);
-      }
-      if (candidate.includes(',')) {
-        const withDot = candidate.replace(/,/g, '.');
-        if (!variants.includes(withDot)) variants.push(withDot);
-      }
-    }
-  }
-
-  // 1. Direct check
-  for (const v of variants) {
-    if (hasKey(v)) {
-      return getCanonicalKey(v);
-    }
-  }
-
-  // 2. Normalized check (ignoring punctuation, spaces, case, dot vs comma)
-  const normStr = (str: string) => str.toLowerCase().replace(/[\s\-_]/g, '').replace(/,/g, '.');
-
-  const existingKeys: string[] = [];
-  if (activitySetOrMap instanceof Map) {
-    for (const k of activitySetOrMap.keys()) existingKeys.push(k);
-  } else if (activitySetOrMap instanceof Set) {
-    for (const k of activitySetOrMap) existingKeys.push(k);
-  }
-
-  const existingNormMap = new Map<string, string>();
-  for (const ek of existingKeys) {
-    existingNormMap.set(normStr(ek), ek);
-  }
-
-  for (const v of variants) {
-    const nv = normStr(v);
-    if (existingNormMap.has(nv)) {
-      return existingNormMap.get(nv)!;
-    }
+  // 2. WW <-> WWD alias (karena area WW sebelumnya dinamai WWD)
+  if (/^WWD-/i.test(raw)) {
+    const wwMatch = getCanonicalKey(raw.replace(/^WWD-/i, 'WW-').toLowerCase());
+    if (wwMatch) return wwMatch;
+  } else if (/^WW-/i.test(raw)) {
+    const wwdMatch = getCanonicalKey(raw.replace(/^WW-/i, 'WWD-').toLowerCase());
+    if (wwdMatch) return wwdMatch;
   }
 
   return null;
