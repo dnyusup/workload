@@ -1,5 +1,5 @@
 import { WL_ActualOutputService } from '../generated/services/WL_ActualOutputService';
-import { saveWwdSpecsFromActualOutput } from './wwdSpecStore';
+import { saveDynamicSpecsFromActualOutput } from './dynamicSpecStore';
 
 export interface ActualOutputRecord {
   id: string;
@@ -320,7 +320,7 @@ export function parseActualOutputRows(rawItems: any[]): ActualOutputRecord[] {
       raw,
     };
   });
-  saveWwdSpecsFromActualOutput(records);
+  saveDynamicSpecsFromActualOutput(records);
   return records;
 }
 

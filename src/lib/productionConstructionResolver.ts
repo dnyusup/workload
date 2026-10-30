@@ -6,7 +6,7 @@ import { buildActivitiesFromRows, mapProductToSpec, productOperatorSettings, typ
 import { activityCycleLength, deriveMachineSpec, ensureCoreActivities, syncAutoActivityValues } from './calculations';
 import { fetchAllPages } from './dataversePaging';
 import { resolveEffectiveFrequencies, type HistoricalFrequencyMap } from './frequencyCatalog';
-import { isWwdConstruction, getWwdSpec, synthesizeWwdSpec, findMatchingActivityConstruction } from './wwdSpecStore';
+import { isWwdConstruction, getDynamicSpec, synthesizeDynamicSpec, findMatchingActivityConstruction } from './dynamicSpecStore';
 import { loadDefaultValuesOrBuiltIn } from './defaultValuesStore';
 
 export type FrequencyRemark = 'Historical' | 'Manual (Fallback)' | 'Manual';
@@ -86,15 +86,20 @@ export async function resolveConstructions(
   for (const productId of productIds) {
     const product = productById.get(productId);
     if (!product) {
-      if (isWwdConstruction(productId)) {
-        const wwdSpec = getWwdSpec(productId) ?? synthesizeWwdSpec(productId, {
+      const dynamicSpec = getDynamicSpec(productId);
+      if (dynamicSpec || isWwdConstruction(productId) || productId.includes('-')) {
+        const wwdSpec = dynamicSpec ?? synthesizeDynamicSpec(productId, {
           fracture: defaults.defaultFracturePerTon,
           dies: defaults.defaultDiesPerTon,
           defect: defaults.defaultDefectPerTon,
         });
 
+        const upperId = productId.toUpperCase();
+        const area = (wwdSpec.area || (upperId.startsWith('BU') ? 'BU' : (upperId.startsWith('CB') ? 'CB' : (upperId.startsWith('SP') || upperId.startsWith('HENX') ? 'SP' : 'WW')))).toUpperCase();
+        const isAreaNoPo = ['BU', 'CB', 'SP'].includes(area);
+
         let spec: MachineSpecInput = {
-          area: 'WW',
+          area,
           layLength: wwdSpec.layLength ?? 0,
           noOfWires: wwdSpec.numberOfWires ?? 1,
           speed: wwdSpec.standardSpeed,
@@ -103,13 +108,18 @@ export async function resolveConstructions(
           fracturePerTon: wwdSpec.fracturePerTon ?? defaults.defaultFracturePerTon ?? 0,
           diesPerTon: wwdSpec.diesPerTon ?? defaults.defaultDiesPerTon ?? 0,
           defectsPerTon: wwdSpec.defectPerTon ?? defaults.defaultDefectPerTon ?? 0,
-          poLength1: defaults.defaultWwdPoLength1 ?? 480,
+          poLength1: isAreaNoPo ? 0 : (defaults.defaultWwdPoLength1 ?? 480),
           poLength2: 0,
           poLength3: 0,
         };
 
+        if (isAreaNoPo) {
+          errors.push(`Warning: Dynamic Construction "${productId}" (Area ${area}) has null/blank PO Length 1. Please configure PO Length in WL_Products.`);
+        }
+
         let frequencyRemark: FrequencyRemark = frequencyMode === 'historical' ? 'Manual (Fallback)' : 'Manual';
         if (frequencyMode === 'historical' && frequencyCatalog) {
+          const machCode = area === 'WW' ? 'WWD' : (wwdSpec.machineCode || wwdSpec.baseConstruction.split('-')[0] || area);
           const effective = resolveEffectiveFrequencies({
             manual: {
               fracturePerTon: spec.fracturePerTon,
@@ -117,7 +127,7 @@ export async function resolveConstructions(
               defectsPerTon: spec.defectsPerTon,
             },
             lookupParams: {
-              mach: 'WWD',
+              mach: machCode,
               product: wwdSpec.baseConstruction.split('-')[1] ?? '',
               layLength: wwdSpec.layLength,
               tensileGroup: wwdSpec.tensileStrength,
@@ -199,6 +209,10 @@ export async function resolveConstructions(
       continue;
     }
     let spec = mapProductToSpec(product);
+    const prodArea = (product.mpp_area || '').trim().toUpperCase();
+    if (['BU', 'CB', 'SP'].includes(prodArea) && (product.mpp_polength1 == null || Number(product.mpp_polength1) === 0)) {
+      errors.push(`Warning: ${product.mpp_constructiondetailcode} (Area ${product.mpp_area}) has null/blank PO Length 1 in WL_Products. Please configure PO Length in WL_Products.`);
+    }
     let frequencyRemark: FrequencyRemark = frequencyMode === 'historical' ? 'Manual (Fallback)' : 'Manual';
     if (frequencyMode === 'historical' && frequencyCatalog) {
       const effective = resolveEffectiveFrequencies({

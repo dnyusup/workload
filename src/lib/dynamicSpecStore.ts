@@ -1,8 +1,11 @@
 import type { ActualOutputRecord } from './actualOutputCatalog';
 
-export interface WwdSpecData {
+export interface DynamicSpecData {
   constructionDetail: string;
   baseConstruction: string;
+  area?: string;
+  machineCode?: string;
+  product?: string;
   standardSpeed: number;
   standardLength: number;
   linearDensity: number;
@@ -15,37 +18,40 @@ export interface WwdSpecData {
   defectPerTon?: number | null;
 }
 
-const STORAGE_KEY = 'wl_wwd_specs_catalog';
+export type WwdSpecData = DynamicSpecData;
+
+const STORAGE_KEY = 'wl_dynamic_specs_catalog';
+const LEGACY_STORAGE_KEY = 'wl_wwd_specs_catalog';
 
 // In-memory cache
-const cache = new Map<string, WwdSpecData>();
+const cache = new Map<string, DynamicSpecData>();
 
 function loadFromStorage(): void {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
     if (!raw) return;
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed === 'object') {
       for (const [k, v] of Object.entries(parsed)) {
         if (v && typeof v === 'object') {
-          cache.set(k.toLowerCase(), v as WwdSpecData);
+          cache.set(k.toLowerCase(), v as DynamicSpecData);
         }
       }
     }
   } catch (e) {
-    console.warn('[wwdSpecStore] Failed to load specs from localStorage:', e);
+    console.warn('[dynamicSpecStore] Failed to load specs from localStorage:', e);
   }
 }
 
 function persistToStorage(): void {
   try {
-    const obj: Record<string, WwdSpecData> = {};
+    const obj: Record<string, DynamicSpecData> = {};
     for (const [k, v] of cache.entries()) {
       obj[k] = v;
     }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(obj));
   } catch (e) {
-    console.warn('[wwdSpecStore] Failed to save specs to localStorage:', e);
+    console.warn('[dynamicSpecStore] Failed to save specs to localStorage:', e);
   }
 }
 
@@ -76,7 +82,7 @@ export function isWwdConstruction(code: string | undefined): boolean {
  * (strips only the last 2 numeric segments: standardLength and standardSpeed).
  * Retains feature extensions like DUAL, TRIPLE, etc. Always uppercase.
  */
-export function extractWwdBaseConstruction(fullCode: string): string {
+export function extractBaseConstruction(fullCode: string): string {
   const parts = fullCode.trim().split('-');
   if (parts.length > 2) {
     return parts.slice(0, parts.length - 2).join('-').toUpperCase();
@@ -84,20 +90,22 @@ export function extractWwdBaseConstruction(fullCode: string): string {
   return fullCode.trim().toUpperCase();
 }
 
+export const extractWwdBaseConstruction = extractBaseConstruction;
+
 /**
- * Parses and synthesizes a WwdSpecData from a 7-segment ConstructionDetail code
+ * Parses and synthesizes a DynamicSpecData from a 7-segment ConstructionDetail code
  * with mathematical fallback for linear density if not cached.
  */
-export function synthesizeWwdSpec(
+export function synthesizeDynamicSpec(
   code: string,
   fallbackRates: { fracture?: number; dies?: number; defect?: number } = {},
-): WwdSpecData {
+): DynamicSpecData {
   const existing = cache.get(code.trim().toLowerCase());
   if (existing) return existing;
 
   const parts = code.trim().split('-');
-  const baseConstruction = extractWwdBaseConstruction(code);
-
+  const baseConstruction = extractBaseConstruction(code);
+  const machCode = parts[0] ?? '';
   const construction = parts[1] ?? '';
   const layLength = Number(parts[2]) || 0;
   const tensileStrength = parts[3] ?? '';
@@ -114,9 +122,17 @@ export function synthesizeWwdSpec(
     linearDensity = Number((areaMm2 * 7.85).toFixed(4));
   }
 
-  const spec: WwdSpecData = {
+  const upperMach = machCode.toUpperCase();
+  const area = upperMach.startsWith('WWD') || upperMach.startsWith('WW')
+    ? 'WW'
+    : (upperMach.startsWith('BU') ? 'BU' : (upperMach.startsWith('CB') ? 'CB' : (upperMach.startsWith('SP') || upperMach.startsWith('HENX') ? 'SP' : upperMach)));
+
+  const spec: DynamicSpecData = {
     constructionDetail: code.trim(),
     baseConstruction,
+    area,
+    machineCode: machCode,
+    product: construction,
     standardSpeed,
     standardLength,
     linearDensity,
@@ -129,22 +145,26 @@ export function synthesizeWwdSpec(
     defectPerTon: fallbackRates.defect ?? 0,
   };
 
-  saveWwdSpec(spec);
+  saveDynamicSpec(spec);
   return spec;
 }
 
-export function saveWwdSpec(spec: WwdSpecData): void {
+export const synthesizeWwdSpec = synthesizeDynamicSpec;
+
+export function saveDynamicSpec(spec: DynamicSpecData): void {
   if (!spec.constructionDetail) return;
   cache.set(spec.constructionDetail.trim().toLowerCase(), spec);
   persistToStorage();
 }
 
-export function saveWwdSpecsFromActualOutput(records: ActualOutputRecord[]): void {
+export const saveWwdSpec = saveDynamicSpec;
+
+export function saveDynamicSpecsFromActualOutput(records: ActualOutputRecord[]): void {
   let changed = false;
   for (const rec of records) {
-    if (!isWwdRecord(rec) || !rec.constructionDetail) continue;
+    if (!rec.constructionDetail) continue;
 
-    const baseConstruction = extractWwdBaseConstruction(rec.constructionDetail);
+    const baseConstruction = extractBaseConstruction(rec.constructionDetail);
     const speed = typeof rec.standardSpeed === 'number' ? rec.standardSpeed : Number(rec.standardSpeed) || 0;
     const length = typeof rec.standardLength === 'number' ? rec.standardLength : Number(rec.standardLength) || 0;
 
@@ -154,10 +174,19 @@ export function saveWwdSpecsFromActualOutput(records: ActualOutputRecord[]): voi
       : 0;
 
     const density = rec.linerDensity ?? calculatedDensity;
+    const machCode = rec.group || rec.sapMachineTypeGroup || rec.constructionDetail.split('-')[0] || '';
+    const upperMach = machCode.toUpperCase();
+    const recArea = (rec.area || '').trim().toUpperCase() ||
+      (upperMach.startsWith('WWD') || upperMach.startsWith('WW')
+        ? 'WW'
+        : (upperMach.startsWith('BU') ? 'BU' : (upperMach.startsWith('CB') ? 'CB' : (upperMach.startsWith('SP') || upperMach.startsWith('HENX') ? 'SP' : upperMach))));
 
-    const spec: WwdSpecData = {
+    const spec: DynamicSpecData = {
       constructionDetail: rec.constructionDetail.trim(),
       baseConstruction,
+      area: recArea,
+      machineCode: machCode,
+      product: rec.construction || rec.constructionDetail.split('-')[1] || '',
       standardSpeed: speed,
       standardLength: length,
       linearDensity: density,
@@ -178,23 +207,27 @@ export function saveWwdSpecsFromActualOutput(records: ActualOutputRecord[]): voi
   }
 }
 
-export function getWwdSpec(code: string | undefined): WwdSpecData | null {
+export const saveWwdSpecsFromActualOutput = saveDynamicSpecsFromActualOutput;
+
+export function getDynamicSpec(code: string | undefined): DynamicSpecData | null {
   if (!code) return null;
   const key = code.trim().toLowerCase();
   const direct = cache.get(key);
   if (direct) return direct;
 
-  if (isWwdConstruction(code)) {
-    return synthesizeWwdSpec(code);
+  if (isWwdConstruction(code) || code.includes('-')) {
+    return synthesizeDynamicSpec(code);
   }
 
   return null;
 }
 
+export const getWwdSpec = getDynamicSpec;
+
 /**
- * Matches a WWD base construction against a Set or Map of activity construction keys.
+ * Matches a base construction against a Set or Map of activity construction keys.
  * Strictly respects product specifications (e.g. 1X0.32, 0.32, and 0,320 are strictly distinct).
- * Only handles case-insensitivity and presence/absence of 'WWD-' prefix.
+ * Handles case-insensitivity, presence/absence of 'WWD-' prefix, and 'SP-' <-> 'HENX-'.
  */
 export function findMatchingActivityConstruction(
   baseConstruction: string,
@@ -233,6 +266,20 @@ export function findMatchingActivityConstruction(
   } else {
     // Variant: with 'WWD-' prefix
     variants.push('WWD-' + raw);
+  }
+
+  // Variant: SP <-> HENX
+  if (/^HENX-/i.test(raw)) {
+    variants.push(raw.replace(/^HENX-/i, 'SP-'));
+  } else if (/^SP-/i.test(raw)) {
+    variants.push(raw.replace(/^SP-/i, 'HENX-'));
+  }
+
+  // Variant: without machine code prefix (e.g. '1X0.32-14-HT-BS40')
+  const dashIndex = raw.indexOf('-');
+  if (dashIndex > 0) {
+    const withoutPrefix = raw.slice(dashIndex + 1);
+    variants.push(withoutPrefix);
   }
 
   for (const v of variants) {
