@@ -7,7 +7,7 @@ import { Mpp_wl_activitiesService } from '../../generated/services/Mpp_wl_activi
 import { fetchAllPages } from '../../lib/dataversePaging';
 import { loadActualOutputData, type ActualOutputRecord } from '../../lib/actualOutputCatalog';
 import { updateMachineAssignments } from '../../lib/productionSetupsStore';
-import { loadDefaultValuesOrBuiltIn } from '../../lib/defaultValuesStore';
+import { loadDefaultValuesOrBuiltIn, getDefaultPoLengthForArea } from '../../lib/defaultValuesStore';
 import {
   isWwdRecord,
   isWwdConstruction,
@@ -245,8 +245,7 @@ export function ImportConstructionFromMesDialog({
             // Already registered in WL_Products!
             const willChange = currentId !== matchedProd.mpp_wl_productsid;
             const prodArea = (matchedProd.mpp_area || '').trim().toUpperCase();
-            const isAreaPoRequired = ['BU', 'CB', 'SP'].includes(prodArea);
-            const isPoLengthMissing = isAreaPoRequired && (matchedProd.mpp_polength1 == null || Number(matchedProd.mpp_polength1) === 0);
+            const isPoLengthMissing = matchedProd.mpp_polength1 == null || Number(matchedProd.mpp_polength1) === 0;
 
             matchedCatalogItems.push({
               machineId: machine.id,
@@ -554,17 +553,8 @@ export function ImportConstructionFromMesDialog({
         const defectRate = freqItem?.defectPerTon ?? spec.defectPerTon ?? defaults.defaultDefectPerTon ?? 0;
 
         // Default PO Length 1 per Area from Settings:
-        // Area WW uses kg (default 480 kg); BU, CB, and SP use meters (null unless configured in Setting -> Default Values)
-        let poLength1: number | null = null;
-        if (itemArea === 'WW') {
-          poLength1 = defaults.defaultWwdPoLength1 || 480;
-        } else if (itemArea === 'BU') {
-          poLength1 = defaults.defaultBuPoLength1 ?? null;
-        } else if (itemArea === 'CB') {
-          poLength1 = defaults.defaultCbPoLength1 ?? null;
-        } else if (itemArea === 'SP') {
-          poLength1 = defaults.defaultSpPoLength1 ?? null;
-        }
+        // Area WW, BA, CA, IS, IP use kg; BU, CB, SP, CH, CR use meters
+        const poLength1 = getDefaultPoLengthForArea(defaults, itemArea);
 
         const payload: Omit<Mpp_wl_productsesBase, 'mpp_wl_productsid'> = {
           mpp_machinecode: machCode,
@@ -616,10 +606,10 @@ export function ImportConstructionFromMesDialog({
           }),
         );
 
-        const noPoCreatedCount = newlyCreated.filter((p) => ['BU', 'CB', 'SP'].includes((p.mpp_area || '').toUpperCase())).length;
+        const noPoCreatedCount = newlyCreated.filter((p) => p.mpp_polength1 == null || Number(p.mpp_polength1) === 0).length;
         let successMsg = `✅ Successfully registered ${createdCount} construction(s) into WL_Products with frequencies from WL_Frequency!`;
         if (noPoCreatedCount > 0) {
-          successMsg += `\n⚠️ REMINDER: ${noPoCreatedCount} construction(s) in Area BU, CB, or SP have PO Length 1 left blank (null). Please configure PO Length manually in WL_Products (Products Master) before running production simulation.`;
+          successMsg += `\n⚠️ REMINDER: ${noPoCreatedCount} construction(s) have PO Length 1 left blank (null). Please configure PO Length manually in WL_Products (Products Master) before running production simulation.`;
         }
         setWwdSaveSuccess(successMsg);
       } else {
@@ -1483,7 +1473,7 @@ export function ImportConstructionFromMesDialog({
                         lineHeight: 1.45,
                       }}
                     >
-                      <strong>⚠️ Warning: {matchedMissingPoCount} matched machine(s) in Area BU, CB, or SP have null/blank PO Length 1 in WL_Products!</strong>
+                      <strong>⚠️ Warning: {matchedMissingPoCount} matched machine(s) have null/blank PO Length 1 in WL_Products!</strong>
                       <br />
                       Please configure PO Length manually in <strong>WL_Products</strong> (Products Master) for accurate production simulation and theoretical operator calculations.
                     </div>

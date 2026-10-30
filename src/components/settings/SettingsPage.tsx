@@ -259,6 +259,50 @@ FILTER(
               />
             </SettingRow>
             <SettingRow
+              label="Default BA PO Length 1 (kg)"
+              tooltip="Default Pay-Off Weight 1 (kg) for Area BA. In Area BA, Pay-Off is weight-based (kilograms). Leave blank/null for no default value."
+            >
+              <OptionalNumberInput
+                value={draft.defaultBaPoLength1}
+                min={0}
+                placeholder="null (blank)"
+                onChange={(v) => set('defaultBaPoLength1', v)}
+              />
+            </SettingRow>
+            <SettingRow
+              label="Default CA PO Length 1 (kg)"
+              tooltip="Default Pay-Off Weight 1 (kg) for Area CA. In Area CA, Pay-Off is weight-based (kilograms). Leave blank/null for no default value."
+            >
+              <OptionalNumberInput
+                value={draft.defaultCaPoLength1}
+                min={0}
+                placeholder="null (blank)"
+                onChange={(v) => set('defaultCaPoLength1', v)}
+              />
+            </SettingRow>
+            <SettingRow
+              label="Default IS PO Length 1 (kg)"
+              tooltip="Default Pay-Off Weight 1 (kg) for Area IS. In Area IS, Pay-Off is weight-based (kilograms). Leave blank/null for no default value."
+            >
+              <OptionalNumberInput
+                value={draft.defaultIsPoLength1}
+                min={0}
+                placeholder="null (blank)"
+                onChange={(v) => set('defaultIsPoLength1', v)}
+              />
+            </SettingRow>
+            <SettingRow
+              label="Default IP PO Length 1 (kg)"
+              tooltip="Default Pay-Off Weight 1 (kg) for Area IP. In Area IP, Pay-Off is weight-based (kilograms). Leave blank/null for no default value."
+            >
+              <OptionalNumberInput
+                value={draft.defaultIpPoLength1}
+                min={0}
+                placeholder="null (blank)"
+                onChange={(v) => set('defaultIpPoLength1', v)}
+              />
+            </SettingRow>
+            <SettingRow
               label="Default BU PO Length 1 (m)"
               tooltip="Default Pay-Off Length 1 (meters) for Area BU. Leave blank/null if no default value is desired (requires manual setup in WL_Products)."
             >
@@ -289,6 +333,28 @@ FILTER(
                 min={0}
                 placeholder="null (blank)"
                 onChange={(v) => set('defaultSpPoLength1', v)}
+              />
+            </SettingRow>
+            <SettingRow
+              label="Default CH PO Length 1 (m)"
+              tooltip="Default Pay-Off Length 1 (meters) for Area CH. Leave blank/null if no default value is desired (requires manual setup in WL_Products)."
+            >
+              <OptionalNumberInput
+                value={draft.defaultChPoLength1}
+                min={0}
+                placeholder="null (blank)"
+                onChange={(v) => set('defaultChPoLength1', v)}
+              />
+            </SettingRow>
+            <SettingRow
+              label="Default CR PO Length 1 (m)"
+              tooltip="Default Pay-Off Length 1 (meters) for Area CR. Leave blank/null if no default value is desired (requires manual setup in WL_Products)."
+            >
+              <OptionalNumberInput
+                value={draft.defaultCrPoLength1}
+                min={0}
+                placeholder="null (blank)"
+                onChange={(v) => set('defaultCrPoLength1', v)}
               />
             </SettingRow>
           </SettingGroup>

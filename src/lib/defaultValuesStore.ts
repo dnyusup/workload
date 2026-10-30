@@ -59,6 +59,18 @@ export interface DefaultValues {
   defaultCbPoLength1: number | null;
   /** Default PO length 1 (m) for Area SP (null = blank/manual setup required) */
   defaultSpPoLength1: number | null;
+  /** Default PO weight 1 (kg) for Area BA (null = blank/manual setup required) */
+  defaultBaPoLength1: number | null;
+  /** Default PO weight 1 (kg) for Area CA (null = blank/manual setup required) */
+  defaultCaPoLength1: number | null;
+  /** Default PO weight 1 (kg) for Area IS (null = blank/manual setup required) */
+  defaultIsPoLength1: number | null;
+  /** Default PO weight 1 (kg) for Area IP (null = blank/manual setup required) */
+  defaultIpPoLength1: number | null;
+  /** Default PO length 1 (m) for Area CH (null = blank/manual setup required) */
+  defaultChPoLength1: number | null;
+  /** Default PO length 1 (m) for Area CR (null = blank/manual setup required) */
+  defaultCrPoLength1: number | null;
 }
 
 /** Used for any parameter WL_DefaultValues has no (valid) row for yet. */
@@ -90,6 +102,12 @@ export const BUILT_IN_DEFAULTS: DefaultValues = {
   defaultBuPoLength1: null,
   defaultCbPoLength1: null,
   defaultSpPoLength1: null,
+  defaultBaPoLength1: null,
+  defaultCaPoLength1: null,
+  defaultIsPoLength1: null,
+  defaultIpPoLength1: null,
+  defaultChPoLength1: null,
+  defaultCrPoLength1: null,
 };
 
 /** WL_DefaultValues.mpp_parameters name for each setting (matched case-insensitively). */
@@ -121,6 +139,12 @@ const PARAMETER_NAMES: Record<keyof DefaultValues, string> = {
   defaultBuPoLength1: 'DefaultBuPoLength1',
   defaultCbPoLength1: 'DefaultCbPoLength1',
   defaultSpPoLength1: 'DefaultSpPoLength1',
+  defaultBaPoLength1: 'DefaultBaPoLength1',
+  defaultCaPoLength1: 'DefaultCaPoLength1',
+  defaultIsPoLength1: 'DefaultIsPoLength1',
+  defaultIpPoLength1: 'DefaultIpPoLength1',
+  defaultChPoLength1: 'DefaultChPoLength1',
+  defaultCrPoLength1: 'DefaultCrPoLength1',
 };
 
 const KEYS = Object.keys(PARAMETER_NAMES) as (keyof DefaultValues)[];
@@ -168,7 +192,18 @@ function parseValue<K extends keyof DefaultValues>(key: K, raw: string | undefin
   if (key === 'frequencyStartDate' || key === 'frequencyEndDate') {
     return (text !== '' ? text : undefined) as DefaultValues[K] | undefined;
   }
-  if (key === 'defaultBuPoLength1' || key === 'defaultCbPoLength1' || key === 'defaultSpPoLength1') {
+  const nullablePoKeys: (keyof DefaultValues)[] = [
+    'defaultBuPoLength1',
+    'defaultCbPoLength1',
+    'defaultSpPoLength1',
+    'defaultBaPoLength1',
+    'defaultCaPoLength1',
+    'defaultIsPoLength1',
+    'defaultIpPoLength1',
+    'defaultChPoLength1',
+    'defaultCrPoLength1',
+  ];
+  if (nullablePoKeys.includes(key)) {
     if (text === '' || text.toLowerCase() === 'null') return null as DefaultValues[K];
     const n = Number(text);
     return (Number.isFinite(n) && n > 0 ? n : null) as DefaultValues[K];
@@ -200,10 +235,55 @@ export async function loadDefaultValuesOrBuiltIn(): Promise<DefaultValues> {
 function formatValue(key: keyof DefaultValues, value: DefaultValues[keyof DefaultValues]): string {
   if (key === 'doffPriority' || key === 'useWaitingModel' || key === 'manOcc100Percent') return value ? 'Yes' : 'No';
   if (key === 'waitingModel') return formatWaitingModel(value as DefaultValues['waitingModel']);
-  if (key === 'defaultBuPoLength1' || key === 'defaultCbPoLength1' || key === 'defaultSpPoLength1') {
+  const nullablePoKeys: (keyof DefaultValues)[] = [
+    'defaultBuPoLength1',
+    'defaultCbPoLength1',
+    'defaultSpPoLength1',
+    'defaultBaPoLength1',
+    'defaultCaPoLength1',
+    'defaultIsPoLength1',
+    'defaultIpPoLength1',
+    'defaultChPoLength1',
+    'defaultCrPoLength1',
+  ];
+  if (nullablePoKeys.includes(key)) {
     return value != null && Number.isFinite(value as number) ? String(value) : '';
   }
   return String(value);
+}
+
+/**
+ * Returns the default Pay-Off length / weight for a given Area from Setting -> Default Values.
+ * - Area WW, BA, CA, IS, IP: weight in kilograms (kg)
+ * - Area BU, CB, SP, CH, CR: length in meters (m)
+ * Returns null if no default is configured for that Area.
+ */
+export function getDefaultPoLengthForArea(defaults: DefaultValues, area: string | undefined): number | null {
+  const a = (area || '').trim().toUpperCase();
+  switch (a) {
+    case 'WW':
+      return defaults.defaultWwdPoLength1 ?? 480;
+    case 'BU':
+      return defaults.defaultBuPoLength1 ?? null;
+    case 'CB':
+      return defaults.defaultCbPoLength1 ?? null;
+    case 'SP':
+      return defaults.defaultSpPoLength1 ?? null;
+    case 'BA':
+      return defaults.defaultBaPoLength1 ?? null;
+    case 'CA':
+      return defaults.defaultCaPoLength1 ?? null;
+    case 'IS':
+      return defaults.defaultIsPoLength1 ?? null;
+    case 'IP':
+      return defaults.defaultIpPoLength1 ?? null;
+    case 'CH':
+      return defaults.defaultChPoLength1 ?? null;
+    case 'CR':
+      return defaults.defaultCrPoLength1 ?? null;
+    default:
+      return null;
+  }
 }
 
 /** Upserts one WL_DefaultValues row per parameter. */

@@ -7,7 +7,7 @@ import { activityCycleLength, deriveMachineSpec, ensureCoreActivities, syncAutoA
 import { fetchAllPages } from './dataversePaging';
 import { resolveEffectiveFrequencies, type HistoricalFrequencyMap } from './frequencyCatalog';
 import { isWwdConstruction, getDynamicSpec, synthesizeDynamicSpec, findMatchingActivityConstruction } from './dynamicSpecStore';
-import { loadDefaultValuesOrBuiltIn } from './defaultValuesStore';
+import { loadDefaultValuesOrBuiltIn, getDefaultPoLengthForArea } from './defaultValuesStore';
 
 export type FrequencyRemark = 'Historical' | 'Manual (Fallback)' | 'Manual';
 
@@ -95,14 +95,20 @@ export async function resolveConstructions(
         });
 
         const upperId = productId.toUpperCase();
-        const area = (wwdSpec.area || (upperId.startsWith('BU') ? 'BU' : (upperId.startsWith('CB') ? 'CB' : (upperId.startsWith('SP') || upperId.startsWith('HENX') ? 'SP' : 'WW')))).toUpperCase();
+        let area = (wwdSpec.area || '').toUpperCase();
+        if (!area) {
+          const knownAreas = ['BU', 'CB', 'SP', 'BA', 'CA', 'IS', 'IP', 'CH', 'CR'];
+          const matchedPrefix = knownAreas.find((a) => upperId.startsWith(a));
+          if (matchedPrefix) {
+            area = matchedPrefix;
+          } else if (upperId.startsWith('HENX')) {
+            area = 'SP';
+          } else {
+            area = 'WW';
+          }
+        }
 
-        let defaultPo: number | null = null;
-        if (area === 'WW') defaultPo = defaults.defaultWwdPoLength1 ?? 480;
-        else if (area === 'BU') defaultPo = defaults.defaultBuPoLength1 ?? null;
-        else if (area === 'CB') defaultPo = defaults.defaultCbPoLength1 ?? null;
-        else if (area === 'SP') defaultPo = defaults.defaultSpPoLength1 ?? null;
-
+        const defaultPo = getDefaultPoLengthForArea(defaults, area);
         const isAreaNoPo = defaultPo == null || defaultPo === 0;
 
         let spec: MachineSpecInput = {
@@ -120,7 +126,7 @@ export async function resolveConstructions(
           poLength3: 0,
         };
 
-        if (isAreaNoPo && ['BU', 'CB', 'SP'].includes(area)) {
+        if (isAreaNoPo) {
           errors.push(`Warning: Dynamic Construction "${productId}" (Area ${area}) has null/blank PO Length 1. Please configure PO Length in WL_Products.`);
         }
 
@@ -156,18 +162,18 @@ export async function resolveConstructions(
 
         let activityRows: Mpp_wl_activities[] = [];
         if (baseConstruction && !activitiesLoadFailed) {
-          const matchedAct = findMatchingActivityConstruction(baseConstruction, activitiesByConstruction);
+          const matchedAct = findMatchingActivityConstruction(baseConstruction, activitiesByConstruction, area);
           if (matchedAct) {
             activityRows = activitiesByConstruction.get(constructionKey(matchedAct)) ?? [];
           }
         }
 
         if (activityRows.length === 0) {
-          errors.push(`WWD Base Construction "${baseConstruction}" has no activities in WL_Activities.`);
+          errors.push(`Base Construction "${baseConstruction}" (Area ${area}) has no activities in WL_Activities.`);
         }
 
         const mockProduct = {
-          mpp_area: 'WW',
+          mpp_area: area,
           mpp_polength1: spec.poLength1,
           mpp_polength2: 0,
           mpp_polength3: 0,
@@ -192,8 +198,8 @@ export async function resolveConstructions(
           attributes: {
             constructionDetail: productId,
             construction: baseConstruction,
-            area: 'WW',
-            machineCode: 'WWD',
+            area,
+            machineCode: wwdSpec.machineCode || (area === 'WW' ? 'WWD' : area),
             product: baseConstruction.split('-')[1] ?? '',
             tensileGroup: wwdSpec.tensileStrength,
             spoolType: wwdSpec.spoolType,
@@ -217,8 +223,13 @@ export async function resolveConstructions(
     }
     let spec = mapProductToSpec(product);
     const prodArea = (product.mpp_area || '').trim().toUpperCase();
-    if (['BU', 'CB', 'SP'].includes(prodArea) && (product.mpp_polength1 == null || Number(product.mpp_polength1) === 0)) {
-      errors.push(`Warning: ${product.mpp_constructiondetailcode} (Area ${product.mpp_area}) has null/blank PO Length 1 in WL_Products. Please configure PO Length in WL_Products.`);
+    if (product.mpp_polength1 == null || Number(product.mpp_polength1) === 0) {
+      const fallbackDefault = getDefaultPoLengthForArea(defaults, prodArea);
+      if (fallbackDefault != null && fallbackDefault > 0) {
+        spec.poLength1 = fallbackDefault;
+      } else {
+        errors.push(`Warning: ${product.mpp_constructiondetailcode} (Area ${product.mpp_area || prodArea}) has null/blank PO Length 1 in WL_Products. Please configure PO Length in WL_Products.`);
+      }
     }
     let frequencyRemark: FrequencyRemark = frequencyMode === 'historical' ? 'Manual (Fallback)' : 'Manual';
     if (frequencyMode === 'historical' && frequencyCatalog) {
