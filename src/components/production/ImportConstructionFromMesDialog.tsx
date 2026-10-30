@@ -27,6 +27,7 @@ interface ImportConstructionFromMesDialogProps {
   onClose: () => void;
   onLocalChange: (patch: Partial<ProductionSetup>) => void;
   onSuccess: (message: string) => void;
+  onProductsUpdated?: (products: Mpp_wl_productses[]) => void;
 }
 
 interface MatchedItem {
@@ -85,7 +86,14 @@ export function ImportConstructionFromMesDialog({
   onClose,
   onLocalChange,
   onSuccess,
+  onProductsUpdated,
 }: ImportConstructionFromMesDialogProps) {
+  const [catalogProducts, setCatalogProducts] = useState<Mpp_wl_productses[]>(products);
+
+  useEffect(() => {
+    setCatalogProducts(products);
+  }, [products]);
+
   const [plant, setPlant] = useState('PTBI');
   const [date, setDate] = useState(getYesterdayIso);
   const [shift, setShift] = useState(1);
@@ -140,20 +148,6 @@ export function ImportConstructionFromMesDialog({
     return map;
   }, [setup.assignments]);
 
-  // Lookup map for products catalog
-  const { productByExact, productByNormalized } = useMemo(() => {
-    const exact = new Map<string, Mpp_wl_productses>();
-    const norm = new Map<string, Mpp_wl_productses>();
-    for (const p of products) {
-      if (p.mpp_constructiondetailcode) {
-        const raw = p.mpp_constructiondetailcode.trim();
-        exact.set(raw.toLowerCase(), p);
-        norm.set(normalizeKey(raw), p);
-      }
-    }
-    return { productByExact: exact, productByNormalized: norm };
-  }, [products]);
-
   // Step 1: Query Power BI & Analyze Matching
   const handleFetchAndAnalyze = async () => {
     if (!plant.trim() || !date) {
@@ -181,11 +175,36 @@ export function ImportConstructionFromMesDialog({
       setStage('processing');
       setStatusText(`Processing ${records.length.toLocaleString()} MES records & matching ${setup.layout.length} layout machines…`);
 
+      // Refresh latest WL_Products from Dataverse so we have the absolute latest catalog
+      let activeProducts = catalogProducts;
+      try {
+        const fresh = await fetchAllPages(Mpp_wl_productsesService.getAll, {
+          orderBy: ['mpp_constructiondetailcode asc'],
+        });
+        if (fresh && fresh.length > 0) {
+          activeProducts = fresh;
+          setCatalogProducts(fresh);
+          onProductsUpdated?.(fresh);
+        }
+      } catch (err) {
+        console.warn('Could not refresh products from Dataverse, using cached products:', err);
+      }
+
+      const activeProductByExact = new Map<string, Mpp_wl_productses>();
+      const activeProductByNormalized = new Map<string, Mpp_wl_productses>();
+      for (const p of activeProducts) {
+        if (p.mpp_constructiondetailcode) {
+          const raw = p.mpp_constructiondetailcode.trim();
+          activeProductByExact.set(raw.toLowerCase(), p);
+          activeProductByNormalized.set(normalizeKey(raw), p);
+        }
+      }
+
       // Load WL_Activities to validate dynamic base constructions
       let activityConstructionSet = new Set<string>();
 
       // Pre-seed known base constructions from existing WL_Products
-      for (const p of products) {
+      for (const p of activeProducts) {
         if (p.mpp_constructioncode) {
           activityConstructionSet.add(p.mpp_constructioncode.trim().toLowerCase());
         }
@@ -238,8 +257,8 @@ export function ImportConstructionFromMesDialog({
 
           // 1. Check if construction detail code is ALREADY registered in WL_Products catalog
           const matchedProd =
-            productByExact.get(mesCode.toLowerCase()) ??
-            productByNormalized.get(normalizeKey(mesCode));
+            activeProductByExact.get(mesCode.toLowerCase()) ??
+            activeProductByNormalized.get(normalizeKey(mesCode));
 
           if (matchedProd) {
             // Already registered in WL_Products!
@@ -510,29 +529,76 @@ export function ImportConstructionFromMesDialog({
       // Load historical frequency catalog
       const { catalog: freqCatalog } = await loadFrequencyCatalog({ plant: plant.trim() });
 
-      // Determine unique unregistered WWD constructions
-      const existingProductCodes = new Set(
-        products.map((p) => (p.mpp_constructiondetailcode ?? '').trim().toLowerCase()).filter(Boolean),
-      );
+      // Always load latest products from Dataverse first to prevent duplicate creation
+      let freshCatalog: Mpp_wl_productses[] = [];
+      try {
+        freshCatalog = await fetchAllPages(Mpp_wl_productsesService.getAll, {
+          orderBy: ['mpp_constructiondetailcode asc'],
+        });
+      } catch (err) {
+        console.warn('Failed to load fresh catalog from Dataverse, using cached products:', err);
+        freshCatalog = catalogProducts;
+      }
 
+      const freshCodesMap = new Map<string, Mpp_wl_productses>();
+      for (const p of freshCatalog) {
+        if (p.mpp_constructiondetailcode) {
+          freshCodesMap.set(p.mpp_constructiondetailcode.trim().toLowerCase(), p);
+        }
+      }
+
+      // Determine unique unregistered constructions
       const uniqueWwdByCode = new Map<string, MatchedItem>();
       for (const item of wwdMesItems) {
         const codeKey = item.mesConstruction.trim().toLowerCase();
-        if (!existingProductCodes.has(codeKey) && !uniqueWwdByCode.has(codeKey) && !item.product) {
+        if (!freshCodesMap.has(codeKey) && !uniqueWwdByCode.has(codeKey) && !item.product) {
           uniqueWwdByCode.set(codeKey, item);
         }
       }
 
+      const newlyCreated: Mpp_wl_productses[] = [];
+      const resolvedMap = new Map<string, Mpp_wl_productses>(freshCodesMap);
+      let createdCount = 0;
+
       if (uniqueWwdByCode.size === 0) {
-        setWwdSaveSuccess('All WWD constructions are already registered in WL_Products!');
+        // All items already exist in Dataverse! Update local and parent state immediately.
+        setCatalogProducts(freshCatalog);
+        onProductsUpdated?.(freshCatalog);
+
+        // Move any that match freshCatalog from wwdMesItems to matchedItems
+        const itemsToMove: MatchedItem[] = [];
+        const remainingWwd: MatchedItem[] = [];
+        for (const item of wwdMesItems) {
+          const p = freshCodesMap.get(item.mesConstruction.trim().toLowerCase());
+          if (p) {
+            itemsToMove.push({
+              ...item,
+              product: p,
+              currentId: item.currentId,
+              willChange: item.currentId !== p.mpp_wl_productsid,
+              isPoLengthMissing: p.mpp_polength1 == null || Number(p.mpp_polength1) === 0,
+            });
+          } else {
+            remainingWwd.push(item);
+          }
+        }
+        if (itemsToMove.length > 0) {
+          setMatchedItems((prev) => [...prev, ...itemsToMove]);
+          setWwdMesItems(remainingWwd);
+        }
+
+        setWwdSaveSuccess('All constructions are already registered in WL_Products!');
         setSavingWwd(false);
         return;
       }
 
-      let createdCount = 0;
-      const newlyCreated: Mpp_wl_productses[] = [];
+      for (const [codeKey, item] of uniqueWwdByCode.entries()) {
+        const existing = freshCodesMap.get(codeKey);
+        if (existing) {
+          resolvedMap.set(codeKey, existing);
+          continue;
+        }
 
-      for (const [_, item] of uniqueWwdByCode.entries()) {
         const spec = getDynamicSpec(item.mesConstruction) ?? synthesizeDynamicSpec(item.mesConstruction);
         const baseConst = (item.baseConstruction || spec.baseConstruction).toUpperCase();
 
@@ -585,26 +651,39 @@ export function ImportConstructionFromMesDialog({
         if (result.success && result.data) {
           createdCount++;
           newlyCreated.push(result.data);
+          resolvedMap.set(codeKey, result.data);
         } else {
           console.warn(`Failed to create WL_Products record for ${item.mesConstruction}:`, result.error);
         }
       }
 
-      if (createdCount > 0) {
-        const createdMap = new Map<string, Mpp_wl_productses>();
-        for (const p of newlyCreated) {
-          if (p.mpp_constructiondetailcode) {
-            createdMap.set(p.mpp_constructiondetailcode.trim().toLowerCase(), p);
+      if (createdCount > 0 || newlyCreated.length > 0) {
+        const combinedUpdatedCatalog = [...freshCatalog, ...newlyCreated];
+        setCatalogProducts(combinedUpdatedCatalog);
+        onProductsUpdated?.(combinedUpdatedCatalog);
+
+        // Move newly registered items from wwdMesItems to matchedItems so they immediately show under Matched in Catalog
+        const itemsToMove: MatchedItem[] = [];
+        const remainingWwd: MatchedItem[] = [];
+
+        for (const item of wwdMesItems) {
+          const codeKey = item.mesConstruction.trim().toLowerCase();
+          const p = resolvedMap.get(codeKey);
+          if (p) {
+            itemsToMove.push({
+              ...item,
+              product: p,
+              currentId: item.currentId,
+              willChange: item.currentId !== p.mpp_wl_productsid,
+              isPoLengthMissing: p.mpp_polength1 == null || Number(p.mpp_polength1) === 0,
+            });
+          } else {
+            remainingWwd.push(item);
           }
         }
 
-        // Attach created product to matching dynamic items
-        setWwdMesItems((prev) =>
-          prev.map((item) => {
-            const p = createdMap.get(item.mesConstruction.trim().toLowerCase());
-            return p ? { ...item, product: p } : item;
-          }),
-        );
+        setMatchedItems((prev) => [...prev, ...itemsToMove]);
+        setWwdMesItems(remainingWwd);
 
         const noPoCreatedCount = newlyCreated.filter((p) => p.mpp_polength1 == null || Number(p.mpp_polength1) === 0).length;
         let successMsg = `✅ Successfully registered ${createdCount} construction(s) into WL_Products with frequencies from WL_Frequency!`;
@@ -613,7 +692,7 @@ export function ImportConstructionFromMesDialog({
         }
         setWwdSaveSuccess(successMsg);
       } else {
-        setError('Failed to create new WWD products in Dataverse.');
+        setError('Failed to create new products in Dataverse.');
       }
     } catch (err) {
       console.error('Error saving WWD to WL_Products:', err);

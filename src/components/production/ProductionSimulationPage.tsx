@@ -725,6 +725,7 @@ export function ProductionSimulationPage() {
             onOperatorCountChange={(delta) =>
               setSummaries((prev) => prev.map((s) => (s.id === selectedSetup.id ? { ...s, operatorCount: s.operatorCount + delta } : s)))
             }
+            onProductsUpdated={(updated) => setProducts(updated)}
             resolving={resolving}
             plannedUtilization={plannedResolution.utilization}
             plannedUtilizationErrors={plannedResolution.errors}
@@ -749,6 +750,7 @@ function ProductionSetupEditor({
   onLocalChange,
   onRun,
   onOperatorCountChange,
+  onProductsUpdated,
   resolving,
   plannedUtilization,
   plannedUtilizationErrors,
@@ -762,6 +764,7 @@ function ProductionSetupEditor({
   onLocalChange: (patch: Partial<ProductionSetup>) => void;
   onRun: () => void;
   onOperatorCountChange: (delta: number) => void;
+  onProductsUpdated?: (products: Mpp_wl_productses[]) => void;
   resolving: boolean;
   plannedUtilization: PlannedUtilization | null;
   plannedUtilizationErrors: string[];
@@ -2094,6 +2097,7 @@ function ProductionSetupEditor({
           onClose={() => setMesImportOpen(false)}
           onLocalChange={onLocalChange}
           onSuccess={(msg) => setImportMessage(msg)}
+          onProductsUpdated={onProductsUpdated}
         />
       )}
     </>
