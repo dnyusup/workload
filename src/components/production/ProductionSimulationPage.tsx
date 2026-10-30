@@ -1004,8 +1004,8 @@ function ProductionSetupEditor({
   );
 
   const operatorRequirement = useMemo(
-    () => theoreticalOperators(setup.assignments, products, optimizedCounts.counts),
-    [setup.assignments, products, optimizedCounts.counts],
+    () => theoreticalOperators(setup.assignments, products, optimizedCounts.counts, resolvedConstructions ?? undefined),
+    [setup.assignments, products, optimizedCounts.counts, resolvedConstructions],
   );
 
   const allPlannedMachineIds = useMemo(
@@ -1455,6 +1455,7 @@ function ProductionSetupEditor({
       setup.assignments.filter((a) => selected.has(a.machineId)),
       products,
       optimizedCounts.counts,
+      resolvedConstructions ?? undefined,
     );
     const requiredReady = !optimizedCounts.error && required.pending === 0 && !optimizedCounts.loading;
     if (!resolvedConstructions) return [`All Task: ${formatOccupation(occupation.allTask)}`];

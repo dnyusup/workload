@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { TheoreticalActivityBreakdown, TheoreticalOperatorRow } from '../../lib/theoreticalOperators';
 
@@ -129,6 +129,16 @@ export function TheoreticalOperatorsBadge({
   );
 }
 
+type SortKey =
+  | 'constructionDetail'
+  | 'machines'
+  | 'machinesPerOperator'
+  | 'operators'
+  | 'fracturePerTon'
+  | 'defectPerTon'
+  | 'diesPerTon'
+  | 'frequencyRemark';
+
 function TheoreticalOperatorsDialog({
   total,
   rows,
@@ -148,6 +158,11 @@ function TheoreticalOperatorsDialog({
   error: string | null;
   onClose: () => void;
 }) {
+  const [search, setSearch] = useState('');
+  const [sortKey, setSortKey] = useState<SortKey>('operators');
+  const [sortAsc, setSortAsc] = useState<boolean>(false);
+  const [copied, setCopied] = useState(false);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -156,12 +171,156 @@ function TheoreticalOperatorsDialog({
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const machines = rows.reduce((sum, row) => sum + row.machines, 0);
   const withoutLayout = rows.filter((row) => !row.hasDefaultLayout).length;
+
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortAsc((prev) => !prev);
+    } else {
+      setSortKey(key);
+      setSortAsc(key === 'constructionDetail' || key === 'frequencyRemark');
+    }
+  };
+
+  const filteredRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((r) => {
+      return (
+        r.constructionDetail.toLowerCase().includes(q) ||
+        (r.frequencyRemark && r.frequencyRemark.toLowerCase().includes(q))
+      );
+    });
+  }, [rows, search]);
+
+  const sortedRows = useMemo(() => {
+    const list = [...filteredRows];
+    list.sort((a, b) => {
+      const valA = a[sortKey];
+      const valB = b[sortKey];
+
+      if (valA === undefined || valA === null) return sortAsc ? 1 : -1;
+      if (valB === undefined || valB === null) return sortAsc ? -1 : 1;
+
+      if (typeof valA === 'string' && typeof valB === 'string') {
+        const cmp = valA.localeCompare(valB, undefined, { numeric: true });
+        return sortAsc ? cmp : -cmp;
+      }
+
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        return sortAsc ? valA - valB : valB - valA;
+      }
+
+      return 0;
+    });
+    return list;
+  }, [filteredRows, sortKey, sortAsc]);
+
+  const filteredMachines = sortedRows.reduce((sum, row) => sum + row.machines, 0);
+  const filteredOperators = sortedRows.reduce((sum, row) => sum + row.operators, 0);
+
+  const handleCopyTable = async () => {
+    const headers = [
+      'Construction Detail',
+      'Machines',
+      '#Assigned Machines',
+      'Operators',
+      'Fr / Ton',
+      'Def / Ton',
+      'Dies / Ton',
+      'Remark',
+    ];
+    const bodyRows = sortedRows.map((r) => [
+      r.constructionDetail + (!r.hasDefaultLayout ? ' (no default layout)' : ''),
+      r.machines,
+      r.machinesPerOperator > 0 ? r.machinesPerOperator : '—',
+      r.operators.toFixed(2),
+      r.fracturePerTon != null ? r.fracturePerTon.toFixed(2) : '—',
+      r.defectPerTon != null ? r.defectPerTon.toFixed(2) : '—',
+      r.diesPerTon != null ? r.diesPerTon.toFixed(2) : '—',
+      r.frequencyRemark ?? '—',
+    ]);
+    const totalRow = [
+      `Total${search ? ' (Filtered)' : ''}`,
+      filteredMachines,
+      '—',
+      filteredOperators.toFixed(2),
+      '—',
+      '—',
+      '—',
+      '—',
+    ];
+    const tsv = [headers.join('\t'), ...bodyRows.map((row) => row.join('\t')), totalRow.join('\t')].join('\n');
+    try {
+      await navigator.clipboard.writeText(tsv);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy table to clipboard:', err);
+    }
+  };
+
+  const renderSortTh = (label: string, key: SortKey, title?: string, alignRight?: boolean) => {
+    const active = sortKey === key;
+    return (
+      <th
+        onClick={() => handleSort(key)}
+        className={`sortable-th ${active ? 'is-sorted' : ''} ${alignRight ? 'align-right' : ''}`}
+        title={title ?? `Click to sort by ${label}`}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            handleSort(key);
+          }
+        }}
+      >
+        <div className={`th-content ${alignRight ? 'is-right' : ''}`}>
+          <span>{label}</span>
+          <span className="sort-arrow" aria-hidden="true">
+            {active ? (sortAsc ? '▲' : '▼') : '⇅'}
+          </span>
+        </div>
+      </th>
+    );
+  };
+
+  const renderRemarkBadge = (remark?: string) => {
+    if (!remark) return <span className="freq-badge freq-badge-none">—</span>;
+    if (remark === 'Historical') {
+      return (
+        <span className="freq-badge freq-badge-historical" title="Frequency rate taken from historical MES data">
+          Historical
+        </span>
+      );
+    }
+    if (remark === 'Manual (Fallback)') {
+      return (
+        <span
+          className="freq-badge freq-badge-fallback"
+          title="Historical mode selected, but no historical record found in MES. Fallback to manual WL_Products rate."
+        >
+          Manual (Fallback)
+        </span>
+      );
+    }
+    return (
+      <span className="freq-badge freq-badge-manual" title="Manual frequency mode active (WL_Products)">
+        Manual
+      </span>
+    );
+  };
 
   return createPortal(
     <div className="modal-overlay om-detail-overlay" onClick={onClose}>
-      <div className="om-detail theoretical-operators-dialog" role="dialog" aria-modal="true" aria-label="Theoretical Operator Required" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="om-detail theoretical-operators-dialog theoretical-operators-dialog-wide"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Theoretical Operator Required"
+        onClick={(e) => e.stopPropagation()}
+      >
         <header className="om-detail-header">
           <div>
             <span className="om-detail-eyebrow">Production Setup</span>
@@ -219,40 +378,127 @@ function TheoreticalOperatorsDialog({
             </div>
           </div>
         )}
+
+        <div className="theoretical-operators-toolbar">
+          <div className="theoretical-search-wrap">
+            <svg
+              className="theoretical-search-icon"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <input
+              type="text"
+              className="input theoretical-search-input"
+              placeholder="Search Construction Detail or Remark..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              aria-label="Search Construction Details"
+            />
+            {search && (
+              <button
+                type="button"
+                className="theoretical-search-clear"
+                onClick={() => setSearch('')}
+                title="Clear search"
+                aria-label="Clear search"
+              >
+                ×
+              </button>
+            )}
+          </div>
+          <div className="theoretical-toolbar-actions">
+            <span className="theoretical-row-count">
+              {filteredRows.length === rows.length
+                ? `${rows.length} items`
+                : `${filteredRows.length} of ${rows.length} items`}
+            </span>
+            <button
+              type="button"
+              className={`btn theoretical-copy-btn ${copied ? 'is-copied' : ''}`}
+              onClick={handleCopyTable}
+              title="Copy table to clipboard to paste into Excel (TSV format)"
+            >
+              {copied ? (
+                <>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                  <span>Copied!</span>
+                </>
+              ) : (
+                <>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                  </svg>
+                  <span>Copy Table</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
         <div className="theoretical-operators-table-wrap">
-          <table className="table">
+          <table className="table theoretical-dialog-table">
             <thead>
               <tr>
-                <th>Construction Detail</th>
-                <th>Machines</th>
-                <th title="Optimize Man Occupation in the Work Load Simulator">#Assigned Machines</th>
-                <th>Operators</th>
+                {renderSortTh('Construction Detail', 'constructionDetail')}
+                {renderSortTh('Machines', 'machines', undefined, true)}
+                {renderSortTh('#Assigned Machines', 'machinesPerOperator', 'Optimize Man Occupation in the Work Load Simulator', true)}
+                {renderSortTh('Operators', 'operators', undefined, true)}
+                {renderSortTh('Fr / Ton', 'fracturePerTon', 'Fracture / Ton rate used for simulation', true)}
+                {renderSortTh('Def / Ton', 'defectPerTon', 'Defect / Ton rate used for simulation', true)}
+                {renderSortTh('Dies / Ton', 'diesPerTon', 'Dies Change / Ton rate used for simulation', true)}
+                {renderSortTh('Remark', 'frequencyRemark', 'Frequency rate source: Historical vs Manual (Fallback) vs Manual')}
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
-                <tr key={row.productId}>
-                  <td>
-                    {row.constructionDetail}
-                    {!row.hasDefaultLayout && (
-                      <span className="theoretical-operators-flag" title="No Default Layout for this Area">
-                        {' '}
-                        · no default layout
-                      </span>
-                    )}
+              {sortedRows.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="empty-table-cell">
+                    No Construction Details match "{search}"
                   </td>
-                  <td>{row.machines}</td>
-                  <td>{row.machinesPerOperator > 0 ? row.machinesPerOperator : '—'}</td>
-                  <td>{fmt(row.operators)}</td>
                 </tr>
-              ))}
+              ) : (
+                sortedRows.map((row) => (
+                  <tr key={row.productId}>
+                    <td className="cd-cell">
+                      <span className="cd-name">{row.constructionDetail}</span>
+                      {!row.hasDefaultLayout && (
+                        <span className="theoretical-operators-flag" title="No Default Layout for this Area">
+                          {' '}
+                          · no default layout
+                        </span>
+                      )}
+                    </td>
+                    <td className="text-right">{row.machines}</td>
+                    <td className="text-right">{row.machinesPerOperator > 0 ? row.machinesPerOperator : '—'}</td>
+                    <td className="text-right font-medium">{fmt(row.operators)}</td>
+                    <td className="text-right">{row.fracturePerTon != null ? fmt(row.fracturePerTon) : '—'}</td>
+                    <td className="text-right">{row.defectPerTon != null ? fmt(row.defectPerTon) : '—'}</td>
+                    <td className="text-right">{row.diesPerTon != null ? fmt(row.diesPerTon) : '—'}</td>
+                    <td className="text-center">{renderRemarkBadge(row.frequencyRemark)}</td>
+                  </tr>
+                ))
+              )}
             </tbody>
             <tfoot>
               <tr>
-                <th>Total</th>
-                <th>{machines}</th>
+                <th>Total {search ? '(Filtered)' : ''}</th>
+                <th className="text-right">{filteredMachines}</th>
                 <th />
-                <th>{fmt(total)}</th>
+                <th className="text-right">{fmt(filteredOperators)}</th>
+                <th colSpan={4} />
               </tr>
             </tfoot>
           </table>

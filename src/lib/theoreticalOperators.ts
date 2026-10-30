@@ -156,6 +156,10 @@ export interface TheoreticalOperatorRow {
   /** machines ÷ machinesPerOperator. */
   operators: number;
   hasDefaultLayout: boolean;
+  fracturePerTon?: number;
+  defectPerTon?: number;
+  diesPerTon?: number;
+  frequencyRemark?: 'Historical' | 'Manual (Fallback)' | 'Manual';
 }
 
 /** Theoretical Operator Required: each machine needs 1 ÷ (# Assigned Machines of its Construction
@@ -164,6 +168,7 @@ export function theoreticalOperators(
   assignments: ProductionMachineAssignment[],
   products: Mpp_wl_productses[],
   counts: ReadonlyMap<string, { machinesPerOperator: number; hasDefaultLayout: boolean }>,
+  resolvedConstructions?: Map<string, ResolvedConstruction>,
 ): { total: number; rows: TheoreticalOperatorRow[]; pending: number; unresolved: number } {
   const machinesByProduct = new Map<string, number>();
   assignments.forEach((assignment) => {
@@ -185,13 +190,24 @@ export function theoreticalOperators(
     const operators = count.machinesPerOperator > 0 ? machines / count.machinesPerOperator : 0;
     if (count.machinesPerOperator <= 0) unresolved += 1;
     total += operators;
+    const resolved = resolvedConstructions?.get(productId);
+    const prod = productById.get(productId);
+    const fracturePerTon = resolved?.spec.fracturePerTon ?? (prod?.mpp_fractureperton != null ? Number(prod.mpp_fractureperton) : undefined);
+    const defectPerTon = resolved?.spec.defectsPerTon ?? (prod?.mpp_defectston != null ? Number(prod.mpp_defectston) : undefined);
+    const diesPerTon = resolved?.spec.diesPerTon ?? (prod?.mpp_dieston != null ? Number(prod.mpp_dieston) : undefined);
+    const frequencyRemark = resolved?.frequencyRemark;
+
     rows.push({
       productId,
-      constructionDetail: productById.get(productId)?.mpp_constructiondetailcode ?? productId,
+      constructionDetail: prod?.mpp_constructiondetailcode ?? productId,
       machines,
       machinesPerOperator: count.machinesPerOperator,
       operators,
       hasDefaultLayout: count.hasDefaultLayout,
+      fracturePerTon,
+      defectPerTon,
+      diesPerTon,
+      frequencyRemark,
     });
   });
   rows.sort((a, b) => b.operators - a.operators || a.constructionDetail.localeCompare(b.constructionDetail, undefined, { numeric: true }));

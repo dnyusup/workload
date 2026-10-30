@@ -9,6 +9,8 @@ import { resolveEffectiveFrequencies, type HistoricalFrequencyMap } from './freq
 import { isWwdConstruction, getWwdSpec, synthesizeWwdSpec, findMatchingActivityConstruction } from './wwdSpecStore';
 import { loadDefaultValuesOrBuiltIn } from './defaultValuesStore';
 
+export type FrequencyRemark = 'Historical' | 'Manual (Fallback)' | 'Manual';
+
 export interface ResolvedConstruction {
   productId: string;
   label: string;
@@ -22,6 +24,7 @@ export interface ResolvedConstruction {
   cycleLengths: Record<ActivityKey, number>;
   /** The product's own Task/Doff Priority — where set, it wins over the setup's for its machines. */
   operatorSettings: ProductOperatorSettings;
+  frequencyRemark?: FrequencyRemark;
 }
 
 export interface ConstructionAttributes {
@@ -105,6 +108,7 @@ export async function resolveConstructions(
           poLength3: 0,
         };
 
+        let frequencyRemark: FrequencyRemark = frequencyMode === 'historical' ? 'Manual (Fallback)' : 'Manual';
         if (frequencyMode === 'historical' && frequencyCatalog) {
           const effective = resolveEffectiveFrequencies({
             manual: {
@@ -127,6 +131,7 @@ export async function resolveConstructions(
             diesPerTon: effective.diesPerTon,
             defectsPerTon: effective.defectsPerTon,
           };
+          frequencyRemark = effective.isHistoricalUsed ? 'Historical' : 'Manual (Fallback)';
         }
 
         const derived = deriveMachineSpec(spec);
@@ -185,6 +190,7 @@ export async function resolveConstructions(
           runtimePerSpool: derived.runtimePerSpool > 0 ? derived.runtimePerSpool : 1,
           cycleLengths,
           operatorSettings: {},
+          frequencyRemark,
         });
         continue;
       }
@@ -193,6 +199,7 @@ export async function resolveConstructions(
       continue;
     }
     let spec = mapProductToSpec(product);
+    let frequencyRemark: FrequencyRemark = frequencyMode === 'historical' ? 'Manual (Fallback)' : 'Manual';
     if (frequencyMode === 'historical' && frequencyCatalog) {
       const effective = resolveEffectiveFrequencies({
         manual: {
@@ -215,6 +222,7 @@ export async function resolveConstructions(
         diesPerTon: effective.diesPerTon,
         defectsPerTon: effective.defectsPerTon,
       };
+      frequencyRemark = effective.isHistoricalUsed ? 'Historical' : 'Manual (Fallback)';
     }
     const derived = deriveMachineSpec(spec);
     const construction = product.mpp_constructioncode?.trim();
@@ -259,6 +267,7 @@ export async function resolveConstructions(
       runtimePerSpool: derived.runtimePerSpool > 0 ? derived.runtimePerSpool : 1,
       cycleLengths,
       operatorSettings: productOperatorSettings(product),
+      frequencyRemark,
     });
   }
 

@@ -5956,7 +5956,221 @@
 }
 
 .theoretical-operators-dialog {
-  width: min(820px, 100%);
+  width: min(1180px, 95vw);
+  max-width: 1180px;
+}
+
+.theoretical-operators-dialog-wide {
+  width: min(1180px, 95vw);
+  max-width: 1180px;
+}
+
+.theoretical-operators-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 10px 0 12px;
+  flex-wrap: wrap;
+}
+
+.theoretical-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 260px;
+  max-width: 480px;
+}
+
+.theoretical-search-icon {
+  position: absolute;
+  left: 10px;
+  color: #64748b;
+  pointer-events: none;
+}
+
+.theoretical-search-input {
+  width: 100%;
+  padding-left: 32px !important;
+  padding-right: 28px !important;
+  height: 34px;
+  font-size: 0.84rem;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid #334155;
+  border-radius: 6px;
+  color: #f1f5f9;
+}
+
+.theoretical-search-input:focus {
+  border-color: #38bdf8;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+}
+
+.theoretical-search-clear {
+  position: absolute;
+  right: 8px;
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.theoretical-search-clear:hover {
+  color: #f1f5f9;
+}
+
+.theoretical-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.theoretical-row-count {
+  font-size: 0.78rem;
+  color: #94a3b8;
+  background: rgba(30, 41, 59, 0.6);
+  padding: 4px 10px;
+  border-radius: 9999px;
+  border: 1px solid #334155;
+}
+
+.theoretical-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  background: #1e293b;
+  color: #f1f5f9;
+  border: 1px solid #475569;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.theoretical-copy-btn:hover {
+  background: #334155;
+  border-color: #38bdf8;
+  color: #38bdf8;
+}
+
+.theoretical-copy-btn.is-copied {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: #10b981;
+  color: #34d399;
+}
+
+.theoretical-dialog-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.theoretical-dialog-table th.sortable-th {
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s ease;
+  white-space: nowrap;
+}
+
+.theoretical-dialog-table th.sortable-th:hover {
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.theoretical-dialog-table th.sortable-th.is-sorted {
+  color: #38bdf8;
+  border-bottom: 2px solid #38bdf8;
+}
+
+.theoretical-dialog-table th .th-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.theoretical-dialog-table th .th-content.is-right {
+  justify-content: flex-end;
+  width: 100%;
+}
+
+.theoretical-dialog-table th .sort-arrow {
+  font-size: 0.75rem;
+  opacity: 0.45;
+}
+
+.theoretical-dialog-table th.is-sorted .sort-arrow {
+  opacity: 1;
+  color: #38bdf8;
+}
+
+.theoretical-dialog-table td.cd-cell {
+  max-width: 380px;
+  word-break: break-all;
+}
+
+.theoretical-dialog-table .cd-name {
+  font-weight: 500;
+  color: #f8fafc;
+}
+
+.theoretical-dialog-table .text-right {
+  text-align: right;
+}
+
+.theoretical-dialog-table .text-center {
+  text-align: center;
+}
+
+.theoretical-dialog-table .font-medium {
+  font-weight: 600;
+  color: #38bdf8;
+}
+
+.theoretical-dialog-table .empty-table-cell {
+  text-align: center;
+  padding: 32px 16px;
+  color: #94a3b8;
+  font-style: italic;
+}
+
+/* Frequency Remarks Badges */
+.freq-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  border-radius: 9999px;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+
+.freq-badge-historical {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+.freq-badge-fallback {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.freq-badge-manual {
+  background: rgba(148, 163, 184, 0.12);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.freq-badge-none {
+  color: #64748b;
 }
 
 .theoretical-operators-dialog-summary {
