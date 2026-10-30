@@ -67,12 +67,10 @@ export function TheoreticalOperatorsBadge({
                 <div className="theoretical-operators-activity-row is-all-task">
                   <span className="activity-label">All Task:</span>
                   <span className="activity-metrics">
-                    {activityBreakdown.allTask.forecastUtilizationPercent.toFixed(2)}% (ideal{' '}
-                    {activityBreakdown.allTask.utilizationPercent.toFixed(2)}%)
                     {activityBreakdown.allTask.operators !== undefined ? (
-                      <strong className="activity-opr"> - {fmt(activityBreakdown.allTask.operators)} Opr Required</strong>
+                      <strong className="activity-opr">{fmt(activityBreakdown.allTask.operators)} Opr Required</strong>
                     ) : (
-                      <span className="activity-opr-pending"> - calculating…</span>
+                      <span className="activity-opr-pending">calculating…</span>
                     )}
                   </span>
                 </div>
@@ -81,11 +79,10 @@ export function TheoreticalOperatorsBadge({
                     <span className="activity-bullet">·</span>
                     <span className="activity-label">{act.label}:</span>
                     <span className="activity-metrics">
-                      {act.forecastUtilizationPercent.toFixed(2)}% (ideal {act.utilizationPercent.toFixed(2)}%)
                       {act.operators !== undefined ? (
-                        <strong className="activity-opr"> - {fmt(act.operators)} Opr Required</strong>
+                        <strong className="activity-opr">{fmt(act.operators)} Opr Required</strong>
                       ) : (
-                        <span className="activity-opr-pending"> - calculating…</span>
+                        <span className="activity-opr-pending">calculating…</span>
                       )}
                     </span>
                   </div>
@@ -353,12 +350,10 @@ function TheoreticalOperatorsDialog({
               <div className="summary-item is-all">
                 <span>All Task:</span>
                 <span>
-                  {activityBreakdown.allTask.forecastUtilizationPercent.toFixed(2)}% (ideal{' '}
-                  {activityBreakdown.allTask.utilizationPercent.toFixed(2)}%)
                   {activityBreakdown.allTask.operators !== undefined ? (
-                    <strong> - {fmt(activityBreakdown.allTask.operators)} Opr Required</strong>
+                    <strong>{fmt(activityBreakdown.allTask.operators)} Opr Required</strong>
                   ) : (
-                    ' - calculating…'
+                    'calculating…'
                   )}
                 </span>
               </div>
@@ -366,11 +361,10 @@ function TheoreticalOperatorsDialog({
                 <div key={a.key} className="summary-item">
                   <span>· {a.label}:</span>
                   <span>
-                    {a.forecastUtilizationPercent.toFixed(2)}% (ideal {a.utilizationPercent.toFixed(2)}%)
                     {a.operators !== undefined ? (
-                      <strong> - {fmt(a.operators)} Opr Required</strong>
+                      <strong>{fmt(a.operators)} Opr Required</strong>
                     ) : (
-                      ' - calculating…'
+                      'calculating…'
                     )}
                   </span>
                 </div>
@@ -452,7 +446,12 @@ function TheoreticalOperatorsDialog({
           <table className="table theoretical-dialog-table">
             <thead>
               <tr>
-                {renderSortTh('Construction Detail', 'constructionDetail')}
+                {renderSortTh(
+                  search.trim()
+                    ? `Construction Detail (${filteredRows.length}/${rows.length})`
+                    : `Construction Detail (${rows.length})`,
+                  'constructionDetail',
+                )}
                 {renderSortTh('Machines', 'machines', undefined, true)}
                 {renderSortTh('#Assigned Machines', 'machinesPerOperator', 'Optimize Man Occupation in the Work Load Simulator', true)}
                 {renderSortTh('Operators', 'operators', undefined, true)}
