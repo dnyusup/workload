@@ -1759,6 +1759,16 @@ function ProductionSetupEditor({
   return (
     <>
       {actionError && <div className="production-run-warnings">{actionError}</div>}
+      {plannedUtilizationErrors && plannedUtilizationErrors.length > 0 && (
+        <div className="production-run-warnings" style={{ marginBottom: '14px' }}>
+          {plannedUtilizationErrors.slice(0, 5).map((err, i) => (
+            <div key={i}>{err}</div>
+          ))}
+          {plannedUtilizationErrors.length > 5 && (
+            <div>…and {plannedUtilizationErrors.length - 5} more issues.</div>
+          )}
+        </div>
+      )}
       <Card
         title="Shift & Movement Settings"
         actions={

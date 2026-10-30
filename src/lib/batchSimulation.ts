@@ -104,6 +104,10 @@ function specProblems(product: Mpp_wl_productses): string[] {
   if (!positive(product.mpp_spoollength)) missing.push('SpoolLength');
   if (!positive(product.mpp_numberoffibers)) missing.push('NoOfWires');
   if (!positive(product.mpp_lineardensity)) missing.push('LinearDensity');
+  const area = (product.mpp_area ?? '').trim().toUpperCase();
+  if (['BU', 'CB', 'SP'].includes(area) && !positive(product.mpp_polength1)) {
+    missing.push('POlength1');
+  }
   return missing;
 }
 
