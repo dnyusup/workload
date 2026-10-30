@@ -51,8 +51,14 @@ export interface DefaultValues {
   defaultDefectPerTon: number;
   /** Default fallback rate for Dies/Ton if not found in product or WL_Frequency */
   defaultDiesPerTon: number;
-  /** Default PO weight 1 (kg) specifically for Area WW / WWD machines imported from MES Actual Output */
+  /** Default PO weight 1 (kg) specifically for Area WW machines imported from MES Actual Output */
   defaultWwdPoLength1: number;
+  /** Default PO length 1 (m) for Area BU (null = blank/manual setup required) */
+  defaultBuPoLength1: number | null;
+  /** Default PO length 1 (m) for Area CB (null = blank/manual setup required) */
+  defaultCbPoLength1: number | null;
+  /** Default PO length 1 (m) for Area SP (null = blank/manual setup required) */
+  defaultSpPoLength1: number | null;
 }
 
 /** Used for any parameter WL_DefaultValues has no (valid) row for yet. */
@@ -81,6 +87,9 @@ export const BUILT_IN_DEFAULTS: DefaultValues = {
   defaultDefectPerTon: 0,
   defaultDiesPerTon: 0,
   defaultWwdPoLength1: 480,
+  defaultBuPoLength1: null,
+  defaultCbPoLength1: null,
+  defaultSpPoLength1: null,
 };
 
 /** WL_DefaultValues.mpp_parameters name for each setting (matched case-insensitively). */
@@ -109,6 +118,9 @@ const PARAMETER_NAMES: Record<keyof DefaultValues, string> = {
   defaultDefectPerTon: 'DefaultDefectPerTon',
   defaultDiesPerTon: 'DefaultDiesPerTon',
   defaultWwdPoLength1: 'DefaultWwdPoLength1',
+  defaultBuPoLength1: 'DefaultBuPoLength1',
+  defaultCbPoLength1: 'DefaultCbPoLength1',
+  defaultSpPoLength1: 'DefaultSpPoLength1',
 };
 
 const KEYS = Object.keys(PARAMETER_NAMES) as (keyof DefaultValues)[];
@@ -156,6 +168,11 @@ function parseValue<K extends keyof DefaultValues>(key: K, raw: string | undefin
   if (key === 'frequencyStartDate' || key === 'frequencyEndDate') {
     return (text !== '' ? text : undefined) as DefaultValues[K] | undefined;
   }
+  if (key === 'defaultBuPoLength1' || key === 'defaultCbPoLength1' || key === 'defaultSpPoLength1') {
+    if (text === '' || text.toLowerCase() === 'null') return null as DefaultValues[K];
+    const n = Number(text);
+    return (Number.isFinite(n) && n > 0 ? n : null) as DefaultValues[K];
+  }
   const value = Number(text);
   return (text !== '' && Number.isFinite(value) ? value : undefined) as DefaultValues[K] | undefined;
 }
@@ -183,6 +200,9 @@ export async function loadDefaultValuesOrBuiltIn(): Promise<DefaultValues> {
 function formatValue(key: keyof DefaultValues, value: DefaultValues[keyof DefaultValues]): string {
   if (key === 'doffPriority' || key === 'useWaitingModel' || key === 'manOcc100Percent') return value ? 'Yes' : 'No';
   if (key === 'waitingModel') return formatWaitingModel(value as DefaultValues['waitingModel']);
+  if (key === 'defaultBuPoLength1' || key === 'defaultCbPoLength1' || key === 'defaultSpPoLength1') {
+    return value != null && Number.isFinite(value as number) ? String(value) : '';
+  }
   return String(value);
 }
 

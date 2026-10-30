@@ -4,7 +4,7 @@ import { BUILT_IN_DEFAULTS, loadDefaultValues, saveDefaultValues, type DefaultVa
 import { computeFrequencyDateRange, generateDaxQuery } from '../../lib/frequencyCatalog';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
-import { DateInput, NumberInput, SelectInput, TextInput } from '../ui/Field';
+import { DateInput, NumberInput, OptionalNumberInput, SelectInput, TextInput } from '../ui/Field';
 import { Toggle } from '../ui/Toggle';
 import { DOFF_PRIORITY_TOOLTIP } from '../ui/doffPriorityText';
 import { DefaultLayoutsCard } from './DefaultLayoutsCard';
@@ -249,13 +249,46 @@ FILTER(
               />
             </SettingRow>
             <SettingRow
-              label="Default WWD PO Length 1 (kg)"
-              tooltip="Default Pay-Off Weight 1 (kg) specifically used for Area WW / WWD machines imported from MES Actual Output (where PO Weight is not present in MES). In Area WW, Pay-Off is weight-based (kilograms)."
+              label="Default WW PO Length 1 (kg)"
+              tooltip="Default Pay-Off Weight 1 (kg) specifically used for Area WW machines imported from MES Actual Output (where PO Weight is not present in MES). In Area WW, Pay-Off is weight-based (kilograms)."
             >
               <NumberInput
                 value={draft.defaultWwdPoLength1}
                 min={0}
                 onChange={(v) => setNumber('defaultWwdPoLength1', v)}
+              />
+            </SettingRow>
+            <SettingRow
+              label="Default BU PO Length 1 (m)"
+              tooltip="Default Pay-Off Length 1 (meters) for Area BU. Leave blank/null if no default value is desired (requires manual setup in WL_Products)."
+            >
+              <OptionalNumberInput
+                value={draft.defaultBuPoLength1}
+                min={0}
+                placeholder="null (blank)"
+                onChange={(v) => set('defaultBuPoLength1', v)}
+              />
+            </SettingRow>
+            <SettingRow
+              label="Default CB PO Length 1 (m)"
+              tooltip="Default Pay-Off Length 1 (meters) for Area CB. Leave blank/null if no default value is desired (requires manual setup in WL_Products)."
+            >
+              <OptionalNumberInput
+                value={draft.defaultCbPoLength1}
+                min={0}
+                placeholder="null (blank)"
+                onChange={(v) => set('defaultCbPoLength1', v)}
+              />
+            </SettingRow>
+            <SettingRow
+              label="Default SP PO Length 1 (m)"
+              tooltip="Default Pay-Off Length 1 (meters) for Area SP. Leave blank/null if no default value is desired (requires manual setup in WL_Products)."
+            >
+              <OptionalNumberInput
+                value={draft.defaultSpPoLength1}
+                min={0}
+                placeholder="null (blank)"
+                onChange={(v) => set('defaultSpPoLength1', v)}
               />
             </SettingRow>
           </SettingGroup>

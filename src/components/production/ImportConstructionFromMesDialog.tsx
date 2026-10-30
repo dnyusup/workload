@@ -266,15 +266,7 @@ export function ImportConstructionFromMesDialog({
             // Validate dynamic base construction against WL_Activities for ALL areas
             const rawBaseConstruction = extractBaseConstruction(mesCode);
             const machCode = rec.group || rec.sapMachineTypeGroup || mesCode.split('-')[0] || '';
-            const upperMach = machCode.toUpperCase();
-            const recArea = (rec.area || '').trim().toUpperCase() ||
-              (isWwd || upperMach.startsWith('WWD') || upperMach.startsWith('WW')
-                ? 'WW'
-                : (upperMach.startsWith('BU') || upperMach === 'BOS' || upperMach === 'BIS' || upperMach === 'BC' || upperMach === 'BM'
-                  ? 'BU'
-                  : (upperMach.startsWith('CB') || upperMach === 'COS' || upperMach === 'CIS' || upperMach === 'CC'
-                    ? 'CB'
-                    : (upperMach.startsWith('SP') || upperMach === 'HENX' ? 'SP' : upperMach))));
+            const recArea = (rec.area || '').trim().toUpperCase() || (isWwd ? 'WW' : '');
 
             const matchedActKey = findMatchingActivityConstruction(rawBaseConstruction, activityConstructionSet, recArea);
 
@@ -515,7 +507,6 @@ export function ImportConstructionFromMesDialog({
 
     try {
       const defaults = await loadDefaultValuesOrBuiltIn();
-      const defaultPoWeight = defaults.defaultWwdPoLength1 || 480;
 
       // Load historical frequency catalog
       const { catalog: freqCatalog } = await loadFrequencyCatalog({ plant: plant.trim() });
@@ -562,11 +553,18 @@ export function ImportConstructionFromMesDialog({
         const diesRate = freqItem?.diesPerTon ?? spec.diesPerTon ?? defaults.defaultDiesPerTon ?? 0;
         const defectRate = freqItem?.defectPerTon ?? spec.defectPerTon ?? defaults.defaultDefectPerTon ?? 0;
 
-        // Khusus area BU, CB, SP: jangan ada default values POlength1 dan biarkan null saja
-        const isAreaNoDefaultPo = ['BU', 'CB', 'SP'].includes(itemArea);
-        const poLength1 = isAreaNoDefaultPo
-          ? (null as any)
-          : (itemArea === 'WW' ? defaultPoWeight : (null as any));
+        // Default PO Length 1 per Area from Settings:
+        // Area WW uses kg (default 480 kg); BU, CB, and SP use meters (null unless configured in Setting -> Default Values)
+        let poLength1: number | null = null;
+        if (itemArea === 'WW') {
+          poLength1 = defaults.defaultWwdPoLength1 || 480;
+        } else if (itemArea === 'BU') {
+          poLength1 = defaults.defaultBuPoLength1 ?? null;
+        } else if (itemArea === 'CB') {
+          poLength1 = defaults.defaultCbPoLength1 ?? null;
+        } else if (itemArea === 'SP') {
+          poLength1 = defaults.defaultSpPoLength1 ?? null;
+        }
 
         const payload: Omit<Mpp_wl_productsesBase, 'mpp_wl_productsid'> = {
           mpp_machinecode: machCode,
@@ -580,7 +578,7 @@ export function ImportConstructionFromMesDialog({
           mpp_laylength: spec.layLength || 0,
           mpp_spooltype: spec.spoolType || 'BS40',
           mpp_tensilegroup: spec.tensileStrength || '',
-          mpp_polength1: poLength1,
+          mpp_polength1: poLength1 as any,
           mpp_polength2: null as any,
           mpp_polength3: null as any,
           mpp_numberoffibers: spec.numberOfWires ?? item.numberOfWires ?? 1,
@@ -1327,7 +1325,7 @@ export function ImportConstructionFromMesDialog({
                       These <strong>{wwdMesItems.length}</strong> machines have construction specifications dynamically built from MES Actual Output (validated against <code>WL_Activities</code>).
                       You can assign them directly to your setup, or permanently register these constructions into <code>WL_Products</code> with rates from <code>WL_Frequency</code>.
                       <div style={{ marginTop: '4px', color: '#fde047', fontSize: '0.76rem', fontWeight: 500 }}>
-                        📌 <strong>Note:</strong> For Area <strong>BU, CB, and SP</strong>, PO Length 1 will be left blank (null) upon saving. A manual PO Length setup in <strong>WL_Products</strong> is required.
+                        📌 <strong>Note:</strong> PO Length 1 follows Setting → Default Values (WW = 480 kg; BU, CB, SP default to null/blank unless configured in Settings).
                       </div>
                     </div>
                     <Button

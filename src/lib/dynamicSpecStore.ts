@@ -175,11 +175,7 @@ export function saveDynamicSpecsFromActualOutput(records: ActualOutputRecord[]):
 
     const density = rec.linerDensity ?? calculatedDensity;
     const machCode = rec.group || rec.sapMachineTypeGroup || rec.constructionDetail.split('-')[0] || '';
-    const upperMach = machCode.toUpperCase();
-    const recArea = (rec.area || '').trim().toUpperCase() ||
-      (upperMach.startsWith('WWD') || upperMach.startsWith('WW')
-        ? 'WW'
-        : (upperMach.startsWith('BU') ? 'BU' : (upperMach.startsWith('CB') ? 'CB' : (upperMach.startsWith('SP') || upperMach.startsWith('HENX') ? 'SP' : upperMach))));
+    const recArea = (rec.area || '').trim().toUpperCase() || machCode.toUpperCase();
 
     const spec: DynamicSpecData = {
       constructionDetail: rec.constructionDetail.trim(),
@@ -224,50 +220,15 @@ export function getDynamicSpec(code: string | undefined): DynamicSpecData | null
 
 export const getWwdSpec = getDynamicSpec;
 
-export const MACHINE_TYPE_TO_AREA_MAP: Record<string, string> = {
-  BOS: 'BU',
-  BIS: 'BU',
-  BC: 'BU',
-  BU: 'BU',
-  BM: 'BU',
-  COS: 'CB',
-  CIS: 'CB',
-  CC: 'CB',
-  CB: 'CB',
-  HENX: 'SP',
-  SP: 'SP',
-  WWD: 'WW',
-  WW: 'WW',
-  BA: 'BA',
-  CA: 'CA',
-  IS: 'IS',
-  IP: 'IP',
-  CH: 'CH',
-  CR: 'CR',
-};
-
-export const AREA_TO_MACHINE_TYPES: Record<string, string[]> = {
-  BU: ['BU', 'BOS', 'BIS', 'BC', 'BM'],
-  CB: ['CB', 'COS', 'CIS', 'CC'],
-  SP: ['SP', 'HENX'],
-  WW: ['WW', 'WWD'],
-  BA: ['BA'],
-  CA: ['CA'],
-  IS: ['IS'],
-  IP: ['IP'],
-  CH: ['CH'],
-  CR: ['CR'],
-};
-
 /**
  * Matches a base construction against a Set or Map of activity construction keys.
- * Handles machine types vs area prefixes (e.g. BOS -> BU, HENX -> SP),
- * presence/absence of prefix, decimal notation (comma vs dot), and optional spool type.
+ * Directly uses the Area column (e.g. Area BU for BOS, Area WW for WWD),
+ * matching against machine code prefix, area prefix, or pure product specification.
  */
 export function findMatchingActivityConstruction(
   baseConstruction: string,
   activitySetOrMap: Set<string> | Map<string, any>,
-  areaHint?: string,
+  area?: string,
 ): string | null {
   if (!baseConstruction) return null;
 
@@ -292,33 +253,27 @@ export function findMatchingActivityConstruction(
 
   const raw = baseConstruction.trim();
   const parts = raw.split('-');
-  const rawPrefix = parts[0]?.toUpperCase() ?? '';
-  const area = (areaHint || MACHINE_TYPE_TO_AREA_MAP[rawPrefix] || '').toUpperCase();
+  const machCode = parts[0]?.toUpperCase() ?? '';
+  const areaCode = (area || '').trim().toUpperCase();
 
-  // Prefixes to test in priority order
-  const prefixes: string[] = [rawPrefix];
-  if (area && !prefixes.includes(area)) {
-    prefixes.push(area);
-  }
-  if (area && AREA_TO_MACHINE_TYPES[area]) {
-    for (const mt of AREA_TO_MACHINE_TYPES[area]) {
-      if (!prefixes.includes(mt)) prefixes.push(mt);
-    }
-  }
-  if (rawPrefix && MACHINE_TYPE_TO_AREA_MAP[rawPrefix]) {
-    const mappedArea = MACHINE_TYPE_TO_AREA_MAP[rawPrefix];
-    if (!prefixes.includes(mappedArea)) prefixes.push(mappedArea);
-    for (const mt of AREA_TO_MACHINE_TYPES[mappedArea] || []) {
-      if (!prefixes.includes(mt)) prefixes.push(mt);
-    }
-  }
-  // Add other standard areas and no prefix
-  for (const std of ['BU', 'CB', 'SP', 'WW', 'WWD', 'BA', 'CA']) {
-    if (!prefixes.includes(std)) prefixes.push(std);
-  }
-  if (!prefixes.includes('')) prefixes.push('');
+  // Prefixes to test:
+  // 1. The code's own machine prefix (e.g. 'BOS' or 'WWD')
+  // 2. The Area column from the record (e.g. 'BU' or 'WW')
+  // 3. WWD <-> WW alias (since historically WWD has area WW)
+  // 4. No prefix (pure body)
+  const prefixes: string[] = [];
+  if (machCode) prefixes.push(machCode);
+  if (areaCode && !prefixes.includes(areaCode)) prefixes.push(areaCode);
+  if (areaCode === 'WW' && !prefixes.includes('WWD')) prefixes.push('WWD');
+  if (machCode === 'WWD' && !prefixes.includes('WW')) prefixes.push('WW');
+  if (areaCode === 'SP' && !prefixes.includes('HENX')) prefixes.push('HENX');
+  if (machCode === 'HENX' && !prefixes.includes('SP')) prefixes.push('SP');
+  prefixes.push('');
 
-  // Bodies to test
+  // Bodies to test:
+  // - full body after prefix: e.g. '2+2X0.23-13-HT-BS40'
+  // - without spool type: e.g. '2+2X0.23-13-HT'
+  // - product spec only: e.g. '2+2X0.23'
   const bodies: string[] = [];
   if (parts.length > 1) {
     const fullBody = parts.slice(1).join('-');
@@ -362,7 +317,6 @@ export function findMatchingActivityConstruction(
   // 2. Normalized check (ignoring punctuation, spaces, case, dot vs comma)
   const normStr = (str: string) => str.toLowerCase().replace(/[\s\-_]/g, '').replace(/,/g, '.');
 
-  // Collect all existing keys
   const existingKeys: string[] = [];
   if (activitySetOrMap instanceof Map) {
     for (const k of activitySetOrMap.keys()) existingKeys.push(k);

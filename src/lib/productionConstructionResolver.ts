@@ -96,7 +96,14 @@ export async function resolveConstructions(
 
         const upperId = productId.toUpperCase();
         const area = (wwdSpec.area || (upperId.startsWith('BU') ? 'BU' : (upperId.startsWith('CB') ? 'CB' : (upperId.startsWith('SP') || upperId.startsWith('HENX') ? 'SP' : 'WW')))).toUpperCase();
-        const isAreaNoPo = ['BU', 'CB', 'SP'].includes(area);
+
+        let defaultPo: number | null = null;
+        if (area === 'WW') defaultPo = defaults.defaultWwdPoLength1 ?? 480;
+        else if (area === 'BU') defaultPo = defaults.defaultBuPoLength1 ?? null;
+        else if (area === 'CB') defaultPo = defaults.defaultCbPoLength1 ?? null;
+        else if (area === 'SP') defaultPo = defaults.defaultSpPoLength1 ?? null;
+
+        const isAreaNoPo = defaultPo == null || defaultPo === 0;
 
         let spec: MachineSpecInput = {
           area,
@@ -108,12 +115,12 @@ export async function resolveConstructions(
           fracturePerTon: wwdSpec.fracturePerTon ?? defaults.defaultFracturePerTon ?? 0,
           diesPerTon: wwdSpec.diesPerTon ?? defaults.defaultDiesPerTon ?? 0,
           defectsPerTon: wwdSpec.defectPerTon ?? defaults.defaultDefectPerTon ?? 0,
-          poLength1: isAreaNoPo ? 0 : (defaults.defaultWwdPoLength1 ?? 480),
+          poLength1: defaultPo ?? 0,
           poLength2: 0,
           poLength3: 0,
         };
 
-        if (isAreaNoPo) {
+        if (isAreaNoPo && ['BU', 'CB', 'SP'].includes(area)) {
           errors.push(`Warning: Dynamic Construction "${productId}" (Area ${area}) has null/blank PO Length 1. Please configure PO Length in WL_Products.`);
         }
 

@@ -84,6 +84,49 @@ export function NumberInput({
   );
 }
 
+export function OptionalNumberInput({
+  value,
+  onChange,
+  step = 'any',
+  readOnly = false,
+  disabled = false,
+  min,
+  placeholder = 'null',
+  title,
+}: {
+  value: number | null;
+  onChange?: (v: number | null) => void;
+  step?: number | 'any';
+  readOnly?: boolean;
+  disabled?: boolean;
+  min?: number;
+  placeholder?: string;
+  title?: string;
+}) {
+  return (
+    <input
+      type="number"
+      className={`input ${readOnly || disabled ? 'input-readonly' : ''}`}
+      value={value != null && Number.isFinite(value) ? value : ''}
+      step={step}
+      min={min}
+      readOnly={readOnly}
+      disabled={disabled}
+      placeholder={placeholder}
+      title={title}
+      onChange={(e) => {
+        const text = e.target.value.trim();
+        if (text === '') {
+          onChange?.(null);
+        } else {
+          const parsed = parseFloat(text);
+          onChange?.(Number.isFinite(parsed) ? parsed : null);
+        }
+      }}
+    />
+  );
+}
+
 export function TextInput({
   value,
   onChange,
