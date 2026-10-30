@@ -9,6 +9,8 @@ import { loadSavedLayouts, type SavedLayout } from './savedLayoutsStore';
 import { productOperatorSettings } from './productCatalog';
 import { recommendedMachineCountForForecast } from './singleOperatorUtilization';
 import type { HistoricalFrequencyMap } from './frequencyCatalog';
+import { calculateSelectionOccupation } from './productionUtilization';
+import type { ResolvedConstruction } from './productionConstructionResolver';
 
 /** What the Work Load Simulator's setup for a Construction Detail is built from. */
 export interface OptimizeInputs {
@@ -195,3 +197,86 @@ export function theoreticalOperators(
   rows.sort((a, b) => b.operators - a.operators || a.constructionDetail.localeCompare(b.constructionDetail, undefined, { numeric: true }));
   return { total, rows, pending, unresolved };
 }
+
+export interface TheoreticalActivityItem {
+  key: string;
+  label: string;
+  plannedMinutes: number;
+  forecastUtilizationPercent: number;
+  utilizationPercent: number;
+  operators?: number;
+}
+
+export interface TheoreticalActivityBreakdown {
+  allTask: TheoreticalActivityItem;
+  activities: TheoreticalActivityItem[];
+}
+
+/**
+ * Calculates theoretical operator required per activity family (Doffing, Loading, Fracture Repairing, etc.)
+ * by splitting each Construction Detail's operators according to its activities' share of ideal handling time.
+ */
+export function calculateTheoreticalActivityBreakdown({
+  setup,
+  resolvedConstructions,
+  machineIds,
+  requiredRows,
+  requiredTotal,
+  requiredReady,
+  assignmentByMachine,
+}: {
+  setup: ProductionSetup;
+  resolvedConstructions: Map<string, ResolvedConstruction>;
+  machineIds: string[];
+  requiredRows: TheoreticalOperatorRow[];
+  requiredTotal: number;
+  requiredReady: boolean;
+  assignmentByMachine?: Map<string, ProductionMachineAssignment>;
+}): TheoreticalActivityBreakdown | null {
+  if (machineIds.length === 0) return null;
+  const occupation = calculateSelectionOccupation(setup, resolvedConstructions, machineIds);
+  if (occupation.plannedMachineCount === 0) return null;
+
+  const map = assignmentByMachine ?? new Map(setup.assignments.map((a) => [a.machineId, a]));
+  const requiredByActivity = new Map<string, number>();
+
+  if (requiredReady) {
+    requiredRows.forEach((row) => {
+      if (row.operators <= 0) return;
+      const machinesOfConstruction = machineIds.filter(
+        (id) => map.get(id)?.constructionDetailId === row.productId,
+      );
+      if (machinesOfConstruction.length === 0) return;
+      const rows = calculateSelectionOccupation(setup, resolvedConstructions, machinesOfConstruction).activities.filter(
+        (a) => a.plannedMinutes > 0,
+      );
+      const planned = rows.reduce((sum, a) => sum + a.plannedMinutes, 0);
+      if (planned <= 0) return;
+      rows.forEach((a) =>
+        requiredByActivity.set(a.key, (requiredByActivity.get(a.key) ?? 0) + (row.operators * a.plannedMinutes) / planned),
+      );
+    });
+  }
+
+  return {
+    allTask: {
+      key: 'all',
+      label: 'All Task',
+      plannedMinutes: occupation.allTask.plannedMinutes,
+      forecastUtilizationPercent: occupation.allTask.forecastUtilizationPercent,
+      utilizationPercent: occupation.allTask.utilizationPercent,
+      operators: requiredReady ? requiredTotal : undefined,
+    },
+    activities: occupation.activities
+      .filter((row) => row.plannedMinutes > 0)
+      .map((row) => ({
+        key: row.key,
+        label: row.label,
+        plannedMinutes: row.plannedMinutes,
+        forecastUtilizationPercent: row.forecastUtilizationPercent,
+        utilizationPercent: row.utilizationPercent,
+        operators: requiredByActivity.get(row.key),
+      })),
+  };
+}
+

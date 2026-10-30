@@ -59,7 +59,11 @@ import {
 import { loadDefaultValuesOrBuiltIn } from '../../lib/defaultValuesStore';
 import { useAppConfig } from '../../context/appConfig';
 import { useOptimizedMachineCounts, type OptimizedCount } from '../../hooks/useOptimizedMachineCounts';
-import { setupOperatorSettings, theoreticalOperators } from '../../lib/theoreticalOperators';
+import {
+  calculateTheoreticalActivityBreakdown,
+  setupOperatorSettings,
+  theoreticalOperators,
+} from '../../lib/theoreticalOperators';
 import { TheoreticalOperatorsBadge } from './TheoreticalOperatorsBadge';
 
 const TASK_PRIORITY_OPTIONS: { value: TaskPriorityMode; label: string }[] = [
@@ -1003,6 +1007,36 @@ function ProductionSetupEditor({
     () => theoreticalOperators(setup.assignments, products, optimizedCounts.counts),
     [setup.assignments, products, optimizedCounts.counts],
   );
+
+  const allPlannedMachineIds = useMemo(
+    () => setup.assignments.filter((a) => a.constructionDetailId).map((a) => a.machineId),
+    [setup.assignments],
+  );
+
+  const overallActivityBreakdown = useMemo(() => {
+    if (!resolvedConstructions || allPlannedMachineIds.length === 0) return null;
+    const requiredReady = !optimizedCounts.error && operatorRequirement.pending === 0 && !optimizedCounts.loading;
+    return calculateTheoreticalActivityBreakdown({
+      setup,
+      resolvedConstructions,
+      machineIds: allPlannedMachineIds,
+      requiredRows: operatorRequirement.rows,
+      requiredTotal: operatorRequirement.total,
+      requiredReady,
+      assignmentByMachine,
+    });
+  }, [
+    setup,
+    resolvedConstructions,
+    allPlannedMachineIds,
+    operatorRequirement.rows,
+    operatorRequirement.total,
+    operatorRequirement.pending,
+    optimizedCounts.error,
+    optimizedCounts.loading,
+    assignmentByMachine,
+  ]);
+
   const theoreticalOperatorsBadge = (
     <TheoreticalOperatorsBadge
       total={operatorRequirement.total}
@@ -1012,6 +1046,7 @@ function ProductionSetupEditor({
       operatorsInSetup={setup.operators.length}
       loading={optimizedCounts.loading}
       error={optimizedCounts.error}
+      activityBreakdown={overallActivityBreakdown}
     />
   );
 
@@ -1408,7 +1443,7 @@ function ProductionSetupEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [setup, resolvedConstructions, selectedMachineIds],
   );
-  const formatOccupation = (row: SelectionOccupation['allTask']) =>
+  const formatOccupation = (row: { forecastUtilizationPercent: number; utilizationPercent: number }) =>
     `${row.forecastUtilizationPercent.toFixed(2)}% (ideal ${row.utilizationPercent.toFixed(2)}%)`;
   const selectBoxDetails = (machineIds: string[]): string[] => {
     const occupation = occupationFor(machineIds);
@@ -1422,32 +1457,30 @@ function ProductionSetupEditor({
       optimizedCounts.counts,
     );
     const requiredReady = !optimizedCounts.error && required.pending === 0 && !optimizedCounts.loading;
+    if (!resolvedConstructions) return [`All Task: ${formatOccupation(occupation.allTask)}`];
+
+    const breakdown = calculateTheoreticalActivityBreakdown({
+      setup,
+      resolvedConstructions,
+      machineIds,
+      requiredRows: required.rows,
+      requiredTotal: required.total,
+      requiredReady,
+      assignmentByMachine,
+    });
+    if (!breakdown) return ['No Construction assigned yet'];
+
     const requiredText = optimizedCounts.error
       ? ''
       : requiredReady
         ? ` - ${required.total.toFixed(2)} Opr Required`
         : ' - Opr Required: calculating…';
-    // Per activity: each Construction Detail's operators (machines ÷ # Assigned Machines) split by
-    // its activities' share of the ideal handling time on those machines — so they add up to All Task.
-    const requiredByActivity = new Map<string, number>();
-    if (requiredReady && resolvedConstructions) {
-      required.rows.forEach((row) => {
-        if (row.operators <= 0) return;
-        const machinesOfConstruction = machineIds.filter((id) => assignmentByMachine.get(id)?.constructionDetailId === row.productId);
-        const rows = calculateSelectionOccupation(setup, resolvedConstructions, machinesOfConstruction).activities.filter((a) => a.plannedMinutes > 0);
-        const planned = rows.reduce((sum, a) => sum + a.plannedMinutes, 0);
-        if (planned <= 0) return;
-        rows.forEach((a) => requiredByActivity.set(a.key, (requiredByActivity.get(a.key) ?? 0) + (row.operators * a.plannedMinutes) / planned));
-      });
-    }
+
     return [
-      `All Task: ${formatOccupation(occupation.allTask)}${requiredText}`,
-      ...occupation.activities
-        .filter((row) => row.plannedMinutes > 0)
-        .map((row) => {
-          const activityRequired = requiredByActivity.get(row.key);
-          return `· ${row.label}: ${formatOccupation(row)}${activityRequired !== undefined ? ` - ${activityRequired.toFixed(2)} Opr Required` : ''}`;
-        }),
+      `All Task: ${formatOccupation(breakdown.allTask)}${requiredText}`,
+      ...breakdown.activities.map((row) => {
+        return `· ${row.label}: ${formatOccupation(row)}${row.operators !== undefined ? ` - ${row.operators.toFixed(2)} Opr Required` : ''}`;
+      }),
     ];
   };
   const occupationStatus = (percent: number) =>

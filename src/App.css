@@ -5794,26 +5794,150 @@
   pointer-events: auto;
 }
 
+.theoretical-operators-widget {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #1e293b;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  transition: all 0.2s ease;
+  overflow: hidden;
+  max-width: 500px;
+}
+
+.theoretical-operators-widget:hover {
+  border-color: #38bdf8;
+}
+
+.theoretical-operators-widget.is-expanded {
+  border-color: #38bdf8;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55), 0 0 15px rgba(56, 189, 248, 0.15);
+  min-width: 380px;
+}
+
+.theoretical-operators-widget.has-error {
+  border-color: #b91c1c;
+}
+
+.theoretical-operators-header {
+  display: flex;
+  align-items: center;
+}
+
 .theoretical-operators-badge {
   display: flex;
   align-items: baseline;
   gap: 8px;
   padding: 8px 12px;
-  border: 1px solid #1e293b;
-  border-radius: 10px;
-  background: rgba(15, 23, 42, 0.92);
+  border: none;
+  background: transparent;
   color: #e2e8f0;
   font: inherit;
   cursor: pointer;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  width: 100%;
+  text-align: left;
 }
 
-.theoretical-operators-badge:hover {
-  border-color: #38bdf8;
+.theoretical-operators-chevron {
+  margin-left: auto;
+  font-size: 0.65rem;
+  color: #38bdf8;
+  transition: transform 0.2s ease;
+  padding-left: 6px;
+  user-select: none;
 }
 
-.theoretical-operators-badge.has-error {
-  border-color: #b91c1c;
+.theoretical-operators-chevron.expanded {
+  transform: rotate(180deg);
+}
+
+.theoretical-operators-expanded-panel {
+  padding: 10px 14px 12px;
+  border-top: 1px solid #1e293b;
+  background: rgba(10, 15, 29, 0.98);
+  font-size: 0.82rem;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.theoretical-operators-activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  line-height: 1.45;
+}
+
+.theoretical-operators-activity-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: #94a3b8;
+}
+
+.theoretical-operators-activity-row.is-all-task {
+  color: #f1f5f9;
+  font-weight: 600;
+  padding-bottom: 5px;
+  border-bottom: 1px dashed #334155;
+  margin-bottom: 2px;
+}
+
+.theoretical-operators-activity-row .activity-bullet {
+  color: #38bdf8;
+  font-weight: bold;
+}
+
+.theoretical-operators-activity-row .activity-label {
+  color: #e2e8f0;
+  white-space: nowrap;
+}
+
+.theoretical-operators-activity-row .activity-metrics {
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+}
+
+.theoretical-operators-activity-row .activity-opr {
+  color: #38bdf8;
+  font-weight: 600;
+}
+
+.theoretical-operators-activity-row .activity-opr-pending {
+  color: #64748b;
+  font-style: italic;
+}
+
+.theoretical-operators-loading {
+  margin: 6px 0;
+  color: #64748b;
+  font-style: italic;
+  font-size: 0.8rem;
+}
+
+.theoretical-operators-expanded-footer {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid #1e293b;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.theoretical-operators-detail-link {
+  border: none;
+  background: none;
+  color: #38bdf8;
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+  transition: background 0.15s ease;
+}
+
+.theoretical-operators-detail-link:hover {
+  background: rgba(56, 189, 248, 0.1);
+  text-decoration: underline;
 }
 
 .theoretical-operators-label {
@@ -5833,6 +5957,49 @@
 
 .theoretical-operators-dialog {
   width: min(820px, 100%);
+}
+
+.theoretical-operators-dialog-summary {
+  margin: 6px 0 14px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid #1e293b;
+  font-size: 0.82rem;
+}
+
+.dialog-summary-title {
+  color: #94a3b8;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+}
+
+.dialog-summary-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  line-height: 1.45;
+}
+
+.dialog-summary-list .summary-item {
+  display: flex;
+  gap: 6px;
+  color: #cbd5e1;
+}
+
+.dialog-summary-list .summary-item.is-all {
+  color: #f1f5f9;
+  font-weight: 600;
+  padding-bottom: 4px;
+  border-bottom: 1px dashed #334155;
+  margin-bottom: 2px;
+}
+
+.dialog-summary-list .summary-item strong {
+  color: #38bdf8;
 }
 
 .theoretical-operators-table-wrap {
