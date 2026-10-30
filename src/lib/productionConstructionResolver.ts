@@ -243,7 +243,15 @@ export async function resolveConstructions(
 
     let activityRows: Mpp_wl_activities[] = [];
     if (construction) {
-      if (!activitiesLoadFailed) activityRows = activitiesByConstruction.get(constructionKey(construction)) ?? [];
+      if (!activitiesLoadFailed) {
+        activityRows = activitiesByConstruction.get(constructionKey(construction)) ?? [];
+        if (activityRows.length === 0) {
+          const matchedAct = findMatchingActivityConstruction(construction, activitiesByConstruction, prodArea);
+          if (matchedAct) {
+            activityRows = activitiesByConstruction.get(constructionKey(matchedAct)) ?? [];
+          }
+        }
+      }
     } else {
       errors.push(`${product.mpp_constructiondetailcode} has no Construction code set — cannot resolve its activities.`);
     }

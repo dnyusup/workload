@@ -222,7 +222,17 @@ export async function runBatchSimulation({
         fail(`Missing or zero in WL_Products: ${missingSpec.join(', ')}.`);
         continue;
       }
-      const activities = await activitiesFor(construction);
+      let activities = await activitiesFor(construction);
+      if (activities.rows.length === 0 && area) {
+        const parts = construction.split('-');
+        if (parts.length > 1 && parts[0].toUpperCase() !== area) {
+          const areaConst = [area, ...parts.slice(1)].join('-');
+          const areaActivities = await activitiesFor(areaConst);
+          if (areaActivities.rows.length > 0) {
+            activities = areaActivities;
+          }
+        }
+      }
       if (activities.error) {
         fail(`Failed to load WL_Activities: ${activities.error}`);
         continue;

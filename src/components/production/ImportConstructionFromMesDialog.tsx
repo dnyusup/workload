@@ -181,17 +181,24 @@ export function ImportConstructionFromMesDialog({
       setStage('processing');
       setStatusText(`Processing ${records.length.toLocaleString()} MES records & matching ${setup.layout.length} layout machines…`);
 
-      // Load WL_Activities to validate WWD base constructions
+      // Load WL_Activities to validate dynamic base constructions
       let activityConstructionSet = new Set<string>();
+
+      // Pre-seed known base constructions from existing WL_Products
+      for (const p of products) {
+        if (p.mpp_constructioncode) {
+          activityConstructionSet.add(p.mpp_constructioncode.trim().toLowerCase());
+        }
+      }
+
       try {
-        const actRows = await fetchAllPages(Mpp_wl_activitiesService.getAll, {
-          select: ['mpp_constructiontype'],
-        });
-        activityConstructionSet = new Set(
-          actRows.map((r) => (r.mpp_constructiontype ?? '').trim().toLowerCase()).filter(Boolean),
-        );
+        const actRows = await fetchAllPages(Mpp_wl_activitiesService.getAll);
+        for (const r of actRows) {
+          const ct = (r.mpp_constructiontype ?? '').trim().toLowerCase();
+          if (ct) activityConstructionSet.add(ct);
+        }
       } catch (actErr) {
-        console.warn('Failed to load WL_Activities for WWD validation:', actErr);
+        console.warn('Failed to load WL_Activities for dynamic validation:', actErr);
       }
 
       // Index records by machine name (highest volume wins if multiple)
@@ -258,7 +265,18 @@ export function ImportConstructionFromMesDialog({
           } else {
             // Validate dynamic base construction against WL_Activities for ALL areas
             const rawBaseConstruction = extractBaseConstruction(mesCode);
-            const matchedActKey = findMatchingActivityConstruction(rawBaseConstruction, activityConstructionSet);
+            const machCode = rec.group || rec.sapMachineTypeGroup || mesCode.split('-')[0] || '';
+            const upperMach = machCode.toUpperCase();
+            const recArea = (rec.area || '').trim().toUpperCase() ||
+              (isWwd || upperMach.startsWith('WWD') || upperMach.startsWith('WW')
+                ? 'WW'
+                : (upperMach.startsWith('BU') || upperMach === 'BOS' || upperMach === 'BIS' || upperMach === 'BC' || upperMach === 'BM'
+                  ? 'BU'
+                  : (upperMach.startsWith('CB') || upperMach === 'COS' || upperMach === 'CIS' || upperMach === 'CC'
+                    ? 'CB'
+                    : (upperMach.startsWith('SP') || upperMach === 'HENX' ? 'SP' : upperMach))));
+
+            const matchedActKey = findMatchingActivityConstruction(rawBaseConstruction, activityConstructionSet, recArea);
 
             if (matchedActKey) {
               const canonicalBase = matchedActKey;
@@ -270,13 +288,6 @@ export function ImportConstructionFromMesDialog({
                 (Number.isFinite(diam) && diam > 0
                   ? Number(((Math.PI / 4) * Math.pow(diam, 2) * 7.85).toFixed(4))
                   : 0);
-
-              const machCode = rec.group || rec.sapMachineTypeGroup || mesCode.split('-')[0] || '';
-              const upperMach = machCode.toUpperCase();
-              const recArea = (rec.area || '').trim().toUpperCase() ||
-                (isWwd || upperMach.startsWith('WWD') || upperMach.startsWith('WW')
-                  ? 'WW'
-                  : (upperMach.startsWith('BU') ? 'BU' : (upperMach.startsWith('CB') ? 'CB' : (upperMach.startsWith('SP') || upperMach.startsWith('HENX') ? 'SP' : upperMach))));
 
               saveDynamicSpec({
                 constructionDetail: mesCode,

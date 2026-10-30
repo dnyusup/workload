@@ -224,22 +224,55 @@ export function getDynamicSpec(code: string | undefined): DynamicSpecData | null
 
 export const getWwdSpec = getDynamicSpec;
 
+export const MACHINE_TYPE_TO_AREA_MAP: Record<string, string> = {
+  BOS: 'BU',
+  BIS: 'BU',
+  BC: 'BU',
+  BU: 'BU',
+  BM: 'BU',
+  COS: 'CB',
+  CIS: 'CB',
+  CC: 'CB',
+  CB: 'CB',
+  HENX: 'SP',
+  SP: 'SP',
+  WWD: 'WW',
+  WW: 'WW',
+  BA: 'BA',
+  CA: 'CA',
+  IS: 'IS',
+  IP: 'IP',
+  CH: 'CH',
+  CR: 'CR',
+};
+
+export const AREA_TO_MACHINE_TYPES: Record<string, string[]> = {
+  BU: ['BU', 'BOS', 'BIS', 'BC', 'BM'],
+  CB: ['CB', 'COS', 'CIS', 'CC'],
+  SP: ['SP', 'HENX'],
+  WW: ['WW', 'WWD'],
+  BA: ['BA'],
+  CA: ['CA'],
+  IS: ['IS'],
+  IP: ['IP'],
+  CH: ['CH'],
+  CR: ['CR'],
+};
+
 /**
  * Matches a base construction against a Set or Map of activity construction keys.
- * Strictly respects product specifications (e.g. 1X0.32, 0.32, and 0,320 are strictly distinct).
- * Handles case-insensitivity, presence/absence of 'WWD-' prefix, and 'SP-' <-> 'HENX-'.
+ * Handles machine types vs area prefixes (e.g. BOS -> BU, HENX -> SP),
+ * presence/absence of prefix, decimal notation (comma vs dot), and optional spool type.
  */
 export function findMatchingActivityConstruction(
   baseConstruction: string,
   activitySetOrMap: Set<string> | Map<string, any>,
+  areaHint?: string,
 ): string | null {
   if (!baseConstruction) return null;
 
   const hasKey = (key: string): boolean => {
     const k = key.trim().toLowerCase();
-    if (activitySetOrMap instanceof Set) {
-      return activitySetOrMap.has(k);
-    }
     return activitySetOrMap.has(k);
   };
 
@@ -258,33 +291,94 @@ export function findMatchingActivityConstruction(
   };
 
   const raw = baseConstruction.trim();
+  const parts = raw.split('-');
+  const rawPrefix = parts[0]?.toUpperCase() ?? '';
+  const area = (areaHint || MACHINE_TYPE_TO_AREA_MAP[rawPrefix] || '').toUpperCase();
+
+  // Prefixes to test in priority order
+  const prefixes: string[] = [rawPrefix];
+  if (area && !prefixes.includes(area)) {
+    prefixes.push(area);
+  }
+  if (area && AREA_TO_MACHINE_TYPES[area]) {
+    for (const mt of AREA_TO_MACHINE_TYPES[area]) {
+      if (!prefixes.includes(mt)) prefixes.push(mt);
+    }
+  }
+  if (rawPrefix && MACHINE_TYPE_TO_AREA_MAP[rawPrefix]) {
+    const mappedArea = MACHINE_TYPE_TO_AREA_MAP[rawPrefix];
+    if (!prefixes.includes(mappedArea)) prefixes.push(mappedArea);
+    for (const mt of AREA_TO_MACHINE_TYPES[mappedArea] || []) {
+      if (!prefixes.includes(mt)) prefixes.push(mt);
+    }
+  }
+  // Add other standard areas and no prefix
+  for (const std of ['BU', 'CB', 'SP', 'WW', 'WWD', 'BA', 'CA']) {
+    if (!prefixes.includes(std)) prefixes.push(std);
+  }
+  if (!prefixes.includes('')) prefixes.push('');
+
+  // Bodies to test
+  const bodies: string[] = [];
+  if (parts.length > 1) {
+    const fullBody = parts.slice(1).join('-');
+    bodies.push(fullBody);
+    if (parts.length > 2) {
+      const withoutSpool = parts.slice(1, -1).join('-');
+      if (!bodies.includes(withoutSpool)) bodies.push(withoutSpool);
+    }
+    const productSpec = parts[1];
+    if (productSpec && !bodies.includes(productSpec)) bodies.push(productSpec);
+  } else {
+    bodies.push(raw);
+  }
+
+  // Generate candidates with dot and comma variants
   const variants: string[] = [raw];
 
-  // Variant: without 'WWD-' prefix
-  if (/^WWD-/i.test(raw)) {
-    variants.push(raw.replace(/^WWD-/i, ''));
-  } else {
-    // Variant: with 'WWD-' prefix
-    variants.push('WWD-' + raw);
+  for (const pfx of prefixes) {
+    for (const b of bodies) {
+      const candidate = pfx ? `${pfx}-${b}` : b;
+      if (!variants.includes(candidate)) variants.push(candidate);
+
+      if (candidate.includes('.')) {
+        const withComma = candidate.replace(/\./g, ',');
+        if (!variants.includes(withComma)) variants.push(withComma);
+      }
+      if (candidate.includes(',')) {
+        const withDot = candidate.replace(/,/g, '.');
+        if (!variants.includes(withDot)) variants.push(withDot);
+      }
+    }
   }
 
-  // Variant: SP <-> HENX
-  if (/^HENX-/i.test(raw)) {
-    variants.push(raw.replace(/^HENX-/i, 'SP-'));
-  } else if (/^SP-/i.test(raw)) {
-    variants.push(raw.replace(/^SP-/i, 'HENX-'));
-  }
-
-  // Variant: without machine code prefix (e.g. '1X0.32-14-HT-BS40')
-  const dashIndex = raw.indexOf('-');
-  if (dashIndex > 0) {
-    const withoutPrefix = raw.slice(dashIndex + 1);
-    variants.push(withoutPrefix);
-  }
-
+  // 1. Direct check
   for (const v of variants) {
     if (hasKey(v)) {
       return getCanonicalKey(v);
+    }
+  }
+
+  // 2. Normalized check (ignoring punctuation, spaces, case, dot vs comma)
+  const normStr = (str: string) => str.toLowerCase().replace(/[\s\-_]/g, '').replace(/,/g, '.');
+
+  // Collect all existing keys
+  const existingKeys: string[] = [];
+  if (activitySetOrMap instanceof Map) {
+    for (const k of activitySetOrMap.keys()) existingKeys.push(k);
+  } else if (activitySetOrMap instanceof Set) {
+    for (const k of activitySetOrMap) existingKeys.push(k);
+  }
+
+  const existingNormMap = new Map<string, string>();
+  for (const ek of existingKeys) {
+    existingNormMap.set(normStr(ek), ek);
+  }
+
+  for (const v of variants) {
+    const nv = normStr(v);
+    if (existingNormMap.has(nv)) {
+      return existingNormMap.get(nv)!;
     }
   }
 
