@@ -45,6 +45,19 @@ export function UsersManagerPage() {
   const [roleToAdd, setRoleToAdd] = useState<'Admin' | 'Contribute'>('Contribute');
   const [maxSetupToAdd, setMaxSetupToAdd] = useState<number | ''>(2);
   const searchSeq = useRef(0);
+
+  // Search & Role filter for Users with Access
+  const [userListSearch, setUserListSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState<'All' | 'Admin' | 'Contribute'>('All');
+
+  // Inline Max Setup edit & save states
+  const [editingMaxSetup, setEditingMaxSetup] = useState<Record<string, number | ''>>({});
+  const [savingMaxSetupId, setSavingMaxSetupId] = useState<string | null>(null);
+  const [savedFeedbackId, setSavedFeedbackId] = useState<string | null>(null);
+
+  const adminCount = useMemo(() => rows.filter((r) => r.role === 'Admin').length, [rows]);
+  const contributeCount = useMemo(() => rows.filter((r) => r.role === 'Contribute').length, [rows]);
+
   const sortedRows = useMemo(
     () =>
       [...rows].sort((a, b) => {
@@ -55,6 +68,15 @@ export function UsersManagerPage() {
       }),
     [rows],
   );
+
+  const filteredRows = useMemo(() => {
+    const q = userListSearch.trim().toLowerCase();
+    return sortedRows.filter((row) => {
+      if (roleFilter !== 'All' && row.role !== roleFilter) return false;
+      if (!q) return true;
+      return (row.name || '').toLowerCase().includes(q) || (row.email || '').toLowerCase().includes(q);
+    });
+  }, [sortedRows, userListSearch, roleFilter]);
 
   // Split so the initial load (where `loading` already starts true) doesn't set state
   // synchronously inside the mount effect; reloads go through loadRows().
@@ -156,16 +178,33 @@ export function UsersManagerPage() {
     }
   };
 
-  const changeMaxSetup = async (id: string, maxSetup: number | undefined) => {
-    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, maxSetup } : r)));
+  const saveMaxSetup = async (id: string, customValue?: number) => {
+    const target = rows.find((r) => r.id === id);
+    if (!target) return;
+    const pendingVal = customValue !== undefined ? customValue : editingMaxSetup[id];
+    const finalVal = typeof pendingVal === 'number' && pendingVal > 0 ? pendingVal : (target.maxSetup ?? 2);
+
+    setSavingMaxSetupId(id);
+    setError(null);
     try {
-      const result = await Mpp_wl_usersesService.update(id, { mpp_max_setup: maxSetup });
+      const result = await Mpp_wl_usersesService.update(id, { mpp_max_setup: finalVal });
       if (!result.success) throw new Error(result.error?.message ?? 'Failed to update Max Setup.');
-      const target = rows.find((r) => r.id === id);
-      if (target && target.email.toLowerCase() === user.email.toLowerCase()) await refresh();
+      setRows((prev) => prev.map((r) => (r.id === id ? { ...r, maxSetup: finalVal } : r)));
+      setEditingMaxSetup((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      setSavedFeedbackId(id);
+      setTimeout(() => {
+        setSavedFeedbackId((current) => (current === id ? null : current));
+      }, 2000);
+      if (target.email.toLowerCase() === user.email.toLowerCase()) await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update Max Setup.');
       loadRows();
+    } finally {
+      setSavingMaxSetupId(null);
     }
   };
 
@@ -251,53 +290,122 @@ export function UsersManagerPage() {
         </div>
       </Card>
 
-      <Card title="Users with Access">
+      <Card
+        title="Users with Access"
+        actions={
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <input
+              type="search"
+              className="input"
+              placeholder="Search by name or email…"
+              value={userListSearch}
+              onChange={(e) => setUserListSearch(e.target.value)}
+              style={{ width: '200px', height: '34px', fontSize: '0.8rem' }}
+              aria-label="Search users"
+            />
+            <select
+              className="input"
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value as 'All' | 'Admin' | 'Contribute')}
+              style={{ width: '150px', height: '34px', fontSize: '0.8rem' }}
+              aria-label="Filter users by role"
+            >
+              <option value="All">All Roles ({rows.length})</option>
+              <option value="Admin">Admin ({adminCount})</option>
+              <option value="Contribute">Contribute ({contributeCount})</option>
+            </select>
+          </div>
+        }
+      >
         {loading ? (
           <p className="data-manager-hint">Loading…</p>
         ) : rows.length === 0 ? (
           <p className="data-manager-hint">No one has been granted Admin/Contribute access yet.</p>
+        ) : filteredRows.length === 0 ? (
+          <p className="data-manager-hint">
+            No users match "{userListSearch}"{roleFilter !== 'All' ? ` with ${roleFilter} role` : ''}.
+          </p>
         ) : (
           <ul className="user-access-list">
-            {sortedRows.map((row) => (
-              <li key={row.id} className="user-access-item">
-                <div className="user-access-identity">
-                  <span className="layout-list-name">{row.name || row.email}</span>
-                  <span className="layout-list-count">{row.email}</span>
-                </div>
-                <div className="user-access-actions" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  {row.role === 'Contribute' && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <label style={{ fontSize: '0.75rem', color: '#94a3b8', whiteSpace: 'nowrap' }}>
-                        Max Setup:
-                      </label>
-                      <input
-                        type="number"
-                        min={1}
-                        className="input"
-                        style={{ width: '68px', padding: '4px 8px', height: '36px' }}
-                        value={row.maxSetup ?? ''}
-                        placeholder="e.g. 2"
-                        onChange={(e) => {
-                          const val = e.target.value === '' ? undefined : Math.max(1, parseInt(e.target.value, 10) || 1);
-                          changeMaxSetup(row.id, val);
-                        }}
-                      />
-                    </div>
-                  )}
-                  <select
-                    className="input user-role-select"
-                    value={row.role}
-                    onChange={(e) => changeRole(row.id, e.target.value as 'Admin' | 'Contribute')}
-                  >
-                    <option value="Contribute">Contribute</option>
-                    <option value="Admin">Admin</option>
-                  </select>
-                  <Button variant="danger" onClick={() => removeUser(row)} disabled={busy}>
-                    Remove
-                  </Button>
-                </div>
-              </li>
-            ))}
+            {filteredRows.map((row) => {
+              const editVal = editingMaxSetup[row.id];
+              const val = editVal !== undefined ? editVal : (row.maxSetup ?? '');
+              const isDirty = editVal !== undefined && editVal !== '' && editVal !== row.maxSetup;
+              const isSaving = savingMaxSetupId === row.id;
+              const isJustSaved = savedFeedbackId === row.id;
+
+              return (
+                <li key={row.id} className="user-access-item">
+                  <div className="user-access-identity">
+                    <span className="layout-list-name">{row.name || row.email}</span>
+                    <span className="layout-list-count">{row.email}</span>
+                  </div>
+                  <div className="user-access-actions" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    {row.role === 'Contribute' && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <label style={{ fontSize: '0.75rem', color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                          Max Setup:
+                        </label>
+                        <input
+                          type="number"
+                          min={1}
+                          className="input"
+                          style={{
+                            width: '64px',
+                            padding: '4px 6px',
+                            height: '34px',
+                            textAlign: 'center',
+                            borderColor: isDirty ? '#38bdf8' : undefined,
+                          }}
+                          value={val}
+                          placeholder="e.g. 2"
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            setEditingMaxSetup((prev) => ({
+                              ...prev,
+                              [row.id]: raw === '' ? '' : Math.max(1, parseInt(raw, 10) || 1),
+                            }));
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && isDirty) {
+                              e.preventDefault();
+                              void saveMaxSetup(row.id);
+                            }
+                          }}
+                        />
+                        {isDirty && (
+                          <Button
+                            variant="secondary"
+                            style={{ padding: '2px 8px', height: '34px', fontSize: '0.75rem' }}
+                            disabled={isSaving || val === ''}
+                            onClick={() => void saveMaxSetup(row.id)}
+                            title="Save Max Setup to Dataverse"
+                          >
+                            {isSaving ? 'Saving…' : 'Save'}
+                          </Button>
+                        )}
+                        {isJustSaved && !isDirty && (
+                          <span style={{ color: '#4ade80', fontSize: '0.75rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+                            ✓ Saved
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    <select
+                      className="input user-role-select"
+                      value={row.role}
+                      onChange={(e) => changeRole(row.id, e.target.value as 'Admin' | 'Contribute')}
+                    >
+                      <option value="Contribute">Contribute</option>
+                      <option value="Admin">Admin</option>
+                    </select>
+                    <Button variant="danger" onClick={() => removeUser(row)} disabled={busy}>
+                      Remove
+                    </Button>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </Card>
