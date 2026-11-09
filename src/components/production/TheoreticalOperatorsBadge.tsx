@@ -15,6 +15,7 @@ export function TheoreticalOperatorsBadge({
   loading,
   error,
   activityBreakdown,
+  onOpenAutoAssign,
 }: {
   total: number;
   rows: TheoreticalOperatorRow[];
@@ -26,6 +27,7 @@ export function TheoreticalOperatorsBadge({
   loading: boolean;
   error: string | null;
   activityBreakdown?: TheoreticalActivityBreakdown | null;
+  onOpenAutoAssign?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -94,7 +96,31 @@ export function TheoreticalOperatorsBadge({
               <p className="theoretical-operators-loading">No Construction assigned yet</p>
             )}
 
-            <div className="theoretical-operators-expanded-footer">
+            <div className="theoretical-operators-expanded-footer" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {onOpenAutoAssign && (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  style={{
+                    width: '100%',
+                    justifyContent: 'center',
+                    background: 'rgba(56, 189, 248, 0.15)',
+                    color: '#38bdf8',
+                    borderColor: 'rgba(56, 189, 248, 0.35)',
+                    fontWeight: 600,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenAutoAssign();
+                  }}
+                  title="Auto assign operators based on theoretical required and facing TU pairs"
+                >
+                  <span>⚡ Auto Assign Operator</span>
+                </button>
+              )}
               <button
                 type="button"
                 className="theoretical-operators-detail-link"
@@ -119,6 +145,7 @@ export function TheoreticalOperatorsBadge({
           operatorsInSetup={operatorsInSetup}
           activityBreakdown={activityBreakdown}
           error={error}
+          onOpenAutoAssign={onOpenAutoAssign}
           onClose={() => setOpen(false)}
         />
       )}
@@ -144,6 +171,7 @@ function TheoreticalOperatorsDialog({
   operatorsInSetup,
   activityBreakdown,
   error,
+  onOpenAutoAssign,
   onClose,
 }: {
   total: number;
@@ -153,6 +181,7 @@ function TheoreticalOperatorsDialog({
   operatorsInSetup: number;
   activityBreakdown?: TheoreticalActivityBreakdown | null;
   error: string | null;
+  onOpenAutoAssign?: () => void;
   onClose: () => void;
 }) {
   const [search, setSearch] = useState('');
@@ -411,6 +440,28 @@ function TheoreticalOperatorsDialog({
             )}
           </div>
           <div className="theoretical-toolbar-actions">
+            {onOpenAutoAssign && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                style={{
+                  background: 'rgba(56, 189, 248, 0.15)',
+                  color: '#38bdf8',
+                  borderColor: 'rgba(56, 189, 248, 0.35)',
+                  fontWeight: 600,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+                onClick={() => {
+                  onClose();
+                  onOpenAutoAssign();
+                }}
+                title="Auto assign operators based on theoretical required and facing TU pairs"
+              >
+                <span>⚡ Auto Assign Operator</span>
+              </button>
+            )}
             <span className="theoretical-row-count">
               {filteredRows.length === rows.length
                 ? `${rows.length} items`

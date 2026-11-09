@@ -45,6 +45,7 @@ import { OperatorStartTimesDialog } from './OperatorStartTimesDialog';
 import { ImportConstructionFromMesDialog } from './ImportConstructionFromMesDialog';
 import { ShareProductionSetupDialog } from './ShareProductionSetupDialog';
 import { DuplicateSetupDialog } from './DuplicateSetupDialog';
+import { AutoAssignOperatorsDialog } from './AutoAssignOperatorsDialog';
 import {
   MachineAssignmentsGroupBySelect,
   MachineAssignmentsSearch,
@@ -1061,6 +1062,7 @@ function ProductionSetupEditor({
   const [plannedUtilizationOpen, setPlannedUtilizationOpen] = useState(false);
   const [startTimesOpen, setStartTimesOpen] = useState(false);
   const [waitingModelInfoOpen, setWaitingModelInfoOpen] = useState(false);
+  const [autoAssignOpen, setAutoAssignOpen] = useState(false);
   const [plannedUtilizationFullscreen, setPlannedUtilizationFullscreen] = useState(false);
   const plannedUtilizationPanelRef = useRef<HTMLDivElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -1313,6 +1315,7 @@ function ProductionSetupEditor({
       loading={optimizedCounts.loading}
       error={optimizedCounts.error}
       activityBreakdown={overallActivityBreakdown}
+      onOpenAutoAssign={!isReadOnly ? () => setAutoAssignOpen(true) : undefined}
     />
   );
 
@@ -2442,6 +2445,22 @@ function ProductionSetupEditor({
           onLocalChange={onLocalChange}
           onSuccess={(msg) => setImportMessage(msg)}
           onProductsUpdated={onProductsUpdated}
+        />
+      )}
+
+      {autoAssignOpen && !isReadOnly && (
+        <AutoAssignOperatorsDialog
+          setup={setup}
+          activityBreakdown={overallActivityBreakdown}
+          onClose={() => setAutoAssignOpen(false)}
+          onSuccess={(result) => {
+            onLocalChange({
+              operators: result.newOperators,
+              assignments: result.updatedAssignments,
+            });
+            onOperatorCountChange(result.newOperators.length - setup.operators.length);
+            setSelectedMachineIds([]);
+          }}
         />
       )}
     </>
