@@ -46,7 +46,7 @@ function AppShell() {
 
   // If the current role cannot see the selected page, render Simulator without triggering a
   // synchronous state update from an effect. The stored page remains available if access returns.
-  const activePage = authLoading || pagesForRole(user.role).includes(page) ? page : 'simulator';
+  const activePage = authLoading || pagesForRole(user.role, user.hasSharedSetups).includes(page) ? page : 'simulator';
 
   const handleStart = () => {
     setConfig((prev) => ({
@@ -61,6 +61,7 @@ function AppShell() {
       <Sidebar
         page={activePage}
         role={user.role}
+        hasSharedSetups={user.hasSharedSetups}
         onNavigate={(nextPage) => {
           setOutputModelNotice(null);
           setPage(nextPage);

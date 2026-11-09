@@ -1,4 +1,6 @@
 import { Office365UsersService } from '../generated/services/Office365UsersService';
+import { Mpp_wl_usersesService } from '../generated/services/Mpp_wl_usersesService';
+import { fetchAllPages } from './dataversePaging';
 
 /** email (lowercased) → resolved display name — module-level so every page that lists
  * Layouts/Production Setups shares one cache instead of re-querying Graph for the same person. */
@@ -49,3 +51,39 @@ export async function resolveDisplayNames(emails: (string | undefined)[]): Promi
   );
   return out;
 }
+
+/** Cache of registered non-guest users (Admin or Contribute) from WL_users */
+let registeredRolesCache: Map<string, 'admin' | 'contribute'> | null = null;
+let registeredRolesPromise: Promise<Map<string, 'admin' | 'contribute'>> | null = null;
+
+export async function getRegisteredUserRoles(): Promise<Map<string, 'admin' | 'contribute'>> {
+  if (registeredRolesCache) return registeredRolesCache;
+  if (!registeredRolesPromise) {
+    registeredRolesPromise = fetchAllPages(Mpp_wl_usersesService.getAll, {
+      select: ['mpp_wl_usersid', 'mpp_email', 'mpp_role'],
+    })
+      .then((rows) => {
+        const map = new Map<string, 'admin' | 'contribute'>();
+        rows.forEach((r) => {
+          const mail = (r.mpp_email ?? '').trim().toLowerCase();
+          const role = (r.mpp_role ?? '').trim().toLowerCase();
+          if (mail && (role === 'admin' || role === 'contribute')) {
+            map.set(mail, role as 'admin' | 'contribute');
+          }
+        });
+        registeredRolesCache = map;
+        registeredRolesPromise = null;
+        return map;
+      })
+      .catch(() => {
+        registeredRolesPromise = null;
+        return new Map<string, 'admin' | 'contribute'>();
+      });
+  }
+  return registeredRolesPromise;
+}
+
+export function invalidateRegisteredUserRolesCache(): void {
+  registeredRolesCache = null;
+}
+

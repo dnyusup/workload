@@ -54,8 +54,13 @@ export const MENU_GROUPS: MenuGroup[] = [
 
 /** Pages a given role is allowed to see — shared with App.tsx so the sidebar's visible menu and
  * the actual page-routing guard can never drift apart. */
-export function pagesForRole(role: UserRole): AppPage[] {
-  return MENU.filter((item) => item.roles.includes(role)).map((item) => item.page);
+export function pagesForRole(role: UserRole, hasSharedSetups = false): AppPage[] {
+  return MENU.filter((item) => {
+    if (item.page === 'production' && role === 'guest') {
+      return hasSharedSetups;
+    }
+    return item.roles.includes(role);
+  }).map((item) => item.page);
 }
 
 /** The same icon shown for a page in the sidebar — reused for the top header's logo badge so it

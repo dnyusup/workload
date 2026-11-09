@@ -6,6 +6,7 @@ import type { Mpp_wl_userses } from '../../generated/models/Mpp_wl_usersesModel'
 import { fetchAllPages } from '../../lib/dataversePaging';
 import { useDebouncedCallback } from '../../hooks/useDebouncedCallback';
 import { useAuth } from '../../context/auth';
+import { invalidateRegisteredUserRolesCache } from '../../lib/userDirectory';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 
@@ -152,6 +153,7 @@ export function UsersManagerPage() {
       setPicked(null);
       setSearchTerm('');
       setMaxSetupToAdd(2);
+      invalidateRegisteredUserRolesCache();
       if (picked.email.toLowerCase() === user.email.toLowerCase()) await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add user.');
@@ -171,6 +173,7 @@ export function UsersManagerPage() {
       }
       const result = await Mpp_wl_usersesService.update(id, patch);
       if (!result.success) throw new Error(result.error?.message ?? 'Failed to update role.');
+      invalidateRegisteredUserRolesCache();
       if (target && target.email.toLowerCase() === user.email.toLowerCase()) await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update role.');
@@ -215,6 +218,7 @@ export function UsersManagerPage() {
     try {
       await Mpp_wl_usersesService.delete(row.id);
       setRows((prev) => prev.filter((r) => r.id !== row.id));
+      invalidateRegisteredUserRolesCache();
       if (row.email.toLowerCase() === user.email.toLowerCase()) await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to remove user.');

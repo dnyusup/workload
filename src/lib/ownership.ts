@@ -100,11 +100,13 @@ export function getSharedRoleForCurrentUser(
 }
 
 /** Checks whether the current user can edit the setup.
- * True if Admin, Owner, or shared user with 'edit' role. */
+ * True if Admin, Owner, or shared user with 'edit' role.
+ * Guest users can NEVER edit any setup. */
 export function canEditSetup(
   record: { sharedEmail?: string; sharedRole?: string; createdByEmail?: string; createdByName?: string },
   user: AuthUser,
 ): boolean {
+  if (user.role === 'guest') return false;
   if (user.role === 'admin') return true;
   if (isOwnedByCurrentUser(record, user)) return true;
   const sharedRole = getSharedRoleForCurrentUser(record, user);

@@ -10,6 +10,8 @@ export interface AuthUser {
   role: UserRole;
   /** Maximum number of Production Setups this user can create (applies to Contribute role). */
   maxSetup?: number;
+  /** Whether a Guest user has any Production Setups shared to them. */
+  hasSharedSetups?: boolean;
 }
 
 export interface AuthContextValue {

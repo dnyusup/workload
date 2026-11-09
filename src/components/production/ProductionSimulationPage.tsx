@@ -379,6 +379,7 @@ export function ProductionSimulationPage() {
   const isLimitReached = !isAdmin && user.role === 'contribute' && typeof user.maxSetup === 'number' && createdCount >= user.maxSetup;
 
   const createSetup = async () => {
+    if (user.role === 'guest') return;
     const layout = savedLayouts.find((l) => l.id === creatingFromLayoutId);
     if (!layout || !newSetupName.trim()) return;
     if (isLimitReached) {
@@ -426,7 +427,9 @@ export function ProductionSimulationPage() {
   };
 
   type SetupFilterTab = 'created' | 'shared' | 'all';
-  const [setupFilterTab, setSetupFilterTab] = useState<SetupFilterTab>('created');
+  const [setupFilterTab, setSetupFilterTab] = useState<SetupFilterTab>(
+    user.role === 'guest' ? 'shared' : 'created'
+  );
   const [sharingSetup, setSharingSetup] = useState<ProductionSetupSummary | ProductionSetup | null>(null);
   const [duplicatingTarget, setDuplicatingTarget] = useState<ProductionSetupSummary | ProductionSetup | null>(null);
   const [duplicateProgress, setDuplicateProgress] = useState<{ done: number; total: number } | null>(null);
@@ -436,10 +439,11 @@ export function ProductionSimulationPage() {
   const canShare = (s: ProductionSetupSummary | ProductionSetup) => isAdmin || isOwnedByCurrentUser(s, user);
 
   const tabFilteredSummaries = useMemo(() => {
+    if (user.role === 'guest') return summaries.filter(isShared);
     if (setupFilterTab === 'created') return summaries.filter(isOwned);
     if (setupFilterTab === 'shared') return summaries.filter(isShared);
     return isAdmin ? summaries : summaries.filter((s) => isOwned(s) || isShared(s));
-  }, [summaries, setupFilterTab, isOwned, isShared, isAdmin]);
+  }, [summaries, setupFilterTab, isOwned, isShared, isAdmin, user.role]);
 
   const filteredSummaries = useMemo(() => {
     const q = setupSearchTerm.trim().toLowerCase();
@@ -453,6 +457,7 @@ export function ProductionSimulationPage() {
   }, [tabFilteredSummaries, setupSearchTerm, creatorNames]);
 
   const handleDuplicateSetup = async (source: ProductionSetupSummary | ProductionSetup, newName: string) => {
+    if (user.role === 'guest') return;
     if (isLimitReached) {
       const msg = `Maximum setup limit reached (${createdCount}/${user.maxSetup}). Please delete an existing setup or ask an Admin to increase your limit.`;
       setSummariesError(msg);
@@ -706,67 +711,77 @@ export function ProductionSimulationPage() {
         subtitle="Snapshot of a Layout plus Construction & per-activity operator assignment per machine"
         className="layout-manager-sidebar-card"
       >
-        <div className="production-new-setup">
-          {savedLayouts.length === 0 ? (
-            <p className="data-manager-hint">Create a Layout first in the "Layouts" menu before creating a Production Setup.</p>
-          ) : (
-            <>
-              <select className="input" value={creatingFromLayoutId} onChange={(e) => setCreatingFromLayoutId(e.target.value)} disabled={creatingSetup}>
-                <option value="">Select Layout…</option>
-                {savedLayouts.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.name} ({l.machines.length} machines)
-                  </option>
-                ))}
-              </select>
-              <input
-                className="input"
-                placeholder="Setup name"
-                value={newSetupName}
-                onChange={(e) => setNewSetupName(e.target.value)}
-                disabled={creatingSetup}
-              />
-              <Button
-                variant="secondary"
-                onClick={createSetup}
-                disabled={!creatingFromLayoutId || !newSetupName.trim() || creatingSetup || isLimitReached}
-                title={isLimitReached ? `Maximum setup limit reached (${createdCount}/${user.maxSetup})` : undefined}
-              >
-                {creatingSetup
-                  ? createProgress && createProgress.total > 0
-                    ? `Creating… (${createProgress.done}/${createProgress.total})`
-                    : 'Creating…'
-                  : '+ New Setup'}
-              </Button>
-              {isLimitReached && (
-                <p className="data-manager-hint" style={{ color: '#f87171', margin: '4px 0 0 0' }}>
-                  Maximum setup limit reached ({createdCount}/{user.maxSetup}). Delete an existing setup or ask an Admin to increase your limit.
-                </p>
-              )}
-              {creatingSetup && (
-                <p className="data-manager-hint">Creating machine rows in Dataverse — this can take a while for large layouts, please wait.</p>
-              )}
-            </>
-          )}
-        </div>
+        {user.role !== 'guest' && (
+          <div className="production-new-setup">
+            {savedLayouts.length === 0 ? (
+              <p className="data-manager-hint">Create a Layout first in the "Layouts" menu before creating a Production Setup.</p>
+            ) : (
+              <>
+                <select className="input" value={creatingFromLayoutId} onChange={(e) => setCreatingFromLayoutId(e.target.value)} disabled={creatingSetup}>
+                  <option value="">Select Layout…</option>
+                  {savedLayouts.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name} ({l.machines.length} machines)
+                    </option>
+                  ))}
+                </select>
+                <input
+                  className="input"
+                  placeholder="Setup name"
+                  value={newSetupName}
+                  onChange={(e) => setNewSetupName(e.target.value)}
+                  disabled={creatingSetup}
+                />
+                <Button
+                  variant="secondary"
+                  onClick={createSetup}
+                  disabled={!creatingFromLayoutId || !newSetupName.trim() || creatingSetup || isLimitReached}
+                  title={isLimitReached ? `Maximum setup limit reached (${createdCount}/${user.maxSetup})` : undefined}
+                >
+                  {creatingSetup
+                    ? createProgress && createProgress.total > 0
+                      ? `Creating… (${createProgress.done}/${createProgress.total})`
+                      : 'Creating…'
+                    : '+ New Setup'}
+                </Button>
+                {isLimitReached && (
+                  <p className="data-manager-hint" style={{ color: '#f87171', margin: '4px 0 0 0' }}>
+                    Maximum setup limit reached ({createdCount}/{user.maxSetup}). Delete an existing setup or ask an Admin to increase your limit.
+                  </p>
+                )}
+                {creatingSetup && (
+                  <p className="data-manager-hint">Creating machine rows in Dataverse — this can take a while for large layouts, please wait.</p>
+                )}
+              </>
+            )}
+          </div>
+        )}
         {loadingSummaries ? (
           <p className="data-manager-hint">Loading…</p>
         ) : summaries.length === 0 ? (
-          <p className="data-manager-hint">No Production Setups yet.</p>
+          <p className="data-manager-hint">
+            {user.role === 'guest' ? 'No setups have been shared with you yet.' : 'No Production Setups yet.'}
+          </p>
         ) : (
           <>
-            <select
-              className="input setup-filter-select"
-              value={setupFilterTab}
-              onChange={(e) => setSetupFilterTab(e.target.value as SetupFilterTab)}
-              aria-label="Filter setups by ownership"
-            >
-              <option value="created">
-                Created by me ({createdCount}{!isAdmin && user.role === 'contribute' && typeof user.maxSetup === 'number' ? ` / ${user.maxSetup}` : ''})
-              </option>
-              <option value="shared">Shared to me ({sharedCount})</option>
-              <option value="all">All setup ({allCount})</option>
-            </select>
+            {user.role === 'guest' ? (
+              <div style={{ padding: '6px 0', fontSize: '0.82rem', color: '#94a3b8', fontWeight: 600 }}>
+                Shared to me ({sharedCount})
+              </div>
+            ) : (
+              <select
+                className="input setup-filter-select"
+                value={setupFilterTab}
+                onChange={(e) => setSetupFilterTab(e.target.value as SetupFilterTab)}
+                aria-label="Filter setups by ownership"
+              >
+                <option value="created">
+                  Created by me ({createdCount}{!isAdmin && user.role === 'contribute' && typeof user.maxSetup === 'number' ? ` / ${user.maxSetup}` : ''})
+                </option>
+                <option value="shared">Shared to me ({sharedCount})</option>
+                <option value="all">All setup ({allCount})</option>
+              </select>
+            )}
             <input
               className="input list-search-input"
               placeholder="Search by name or creator…"
@@ -775,9 +790,13 @@ export function ProductionSimulationPage() {
             />
             {filteredSummaries.length === 0 ? (
               <p className="data-manager-hint">
-                {setupFilterTab === 'created' && 'No setups created by you yet.'}
-                {setupFilterTab === 'shared' && 'No setups shared with you yet.'}
-                {setupFilterTab === 'all' && `No Production Setups match "${setupSearchTerm}".`}
+                {user.role === 'guest'
+                  ? 'No setups have been shared with you yet.'
+                  : setupFilterTab === 'created'
+                  ? 'No setups created by you yet.'
+                  : setupFilterTab === 'shared'
+                  ? 'No setups shared with you yet.'
+                  : `No Production Setups match "${setupSearchTerm}".`}
               </p>
             ) : (
               <div className="layout-list-scroll">
@@ -814,26 +833,28 @@ export function ProductionSimulationPage() {
                         </span>
                       </button>
                       <div className="setup-card-actions">
-                        <button
-                          type="button"
-                          className="setup-icon-btn duplicate"
-                          title={isLimitReached ? `Maximum setup limit reached (${createdCount}/${user.maxSetup})` : "Duplicate Setup"}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (isLimitReached) {
-                              alert(`Maximum setup limit reached (${createdCount}/${user.maxSetup}). Please delete an existing setup or ask an Admin to increase your limit.`);
-                              return;
-                            }
-                            setDuplicatingTarget(s);
-                          }}
-                          disabled={duplicatingId !== null || deletingId !== null}
-                          aria-label={`Duplicate ${s.name}`}
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                          </svg>
-                        </button>
+                        {user.role !== 'guest' && (
+                          <button
+                            type="button"
+                            className="setup-icon-btn duplicate"
+                            title={isLimitReached ? `Maximum setup limit reached (${createdCount}/${user.maxSetup})` : "Duplicate Setup"}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (isLimitReached) {
+                                alert(`Maximum setup limit reached (${createdCount}/${user.maxSetup}). Please delete an existing setup or ask an Admin to increase your limit.`);
+                                return;
+                              }
+                              setDuplicatingTarget(s);
+                            }}
+                            disabled={duplicatingId !== null || deletingId !== null}
+                            aria-label={`Duplicate ${s.name}`}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                            </svg>
+                          </button>
+                        )}
                         {canShare(s) && (
                           <button
                             type="button"
@@ -901,13 +922,17 @@ export function ProductionSimulationPage() {
               setSummaries((prev) => prev.map((s) => (s.id === selectedSetup.id ? { ...s, operatorCount: s.operatorCount + delta } : s)))
             }
             onProductsUpdated={(updated) => setProducts(updated)}
-            onDuplicate={() => {
-              if (isLimitReached) {
-                alert(`Maximum setup limit reached (${createdCount}/${user.maxSetup}). Please delete an existing setup or ask an Admin to increase your limit.`);
-                return;
-              }
-              setDuplicatingTarget(selectedSetup);
-            }}
+            onDuplicate={
+              user.role === 'guest'
+                ? undefined
+                : () => {
+                    if (isLimitReached) {
+                      alert(`Maximum setup limit reached (${createdCount}/${user.maxSetup}). Please delete an existing setup or ask an Admin to increase your limit.`);
+                      return;
+                    }
+                    setDuplicatingTarget(selectedSetup);
+                  }
+            }
             onShare={canShare(selectedSetup) ? () => setSharingSetup(selectedSetup) : undefined}
             resolving={resolving}
             plannedUtilization={plannedResolution.utilization}
@@ -918,7 +943,11 @@ export function ProductionSimulationPage() {
           />
         ) : (
           <Card title="No Setup Selected">
-            <p className="data-manager-hint">Select a Layout then click "+ New Setup" to create a new one.</p>
+            <p className="data-manager-hint">
+              {user.role === 'guest'
+                ? 'Select a shared setup from the sidebar to inspect assignments and run simulations.'
+                : 'Select a Layout then click "+ New Setup" to create a new one, or select an existing setup.'}
+            </p>
           </Card>
         )}
       </div>
@@ -934,7 +963,7 @@ export function ProductionSimulationPage() {
         />
       )}
 
-      {duplicatingTarget && (
+      {duplicatingTarget && user.role !== 'guest' && (
         <DuplicateSetupDialog
           setup={duplicatingTarget}
           onClose={() => setDuplicatingTarget(null)}

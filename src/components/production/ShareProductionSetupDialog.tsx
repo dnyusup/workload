@@ -6,6 +6,7 @@ import { Office365UsersService } from '../../generated/services/Office365UsersSe
 import type { User } from '../../generated/models/Office365UsersModel';
 import { Button } from '../ui/Button';
 import { parseSharedUsers, serializeSharedUsers, type SharedUserEntry, type SharedRole } from '../../lib/ownership';
+import { getRegisteredUserRoles } from '../../lib/userDirectory';
 
 interface ShareProductionSetupDialogProps {
   setup: ProductionSetupSummary | ProductionSetup;
@@ -17,6 +18,8 @@ export function ShareProductionSetupDialog({ setup, onClose, onSuccess }: ShareP
   const initialEntries = parseSharedUsers(setup.sharedEmail, setup.sharedRole);
 
   const [entries, setEntries] = useState<SharedUserEntry[]>(initialEntries);
+  const [registeredRoles, setRegisteredRoles] = useState<Map<string, 'admin' | 'contribute'>>(new Map());
+  const [loadingRoles, setLoadingRoles] = useState(true);
   const [inputVal, setInputVal] = useState('');
   const [searching, setSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<User[]>([]);
@@ -25,6 +28,14 @@ export function ShareProductionSetupDialog({ setup, onClose, onSuccess }: ShareP
 
   const searchSeq = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    getRegisteredUserRoles()
+      .then((map) => setRegisteredRoles(map))
+      .finally(() => setLoadingRoles(false));
+  }, []);
+
+  const isGuestUser = (email: string) => !registeredRoles.has(email.trim().toLowerCase());
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -86,13 +97,20 @@ export function ShareProductionSetupDialog({ setup, onClose, onSuccess }: ShareP
   };
 
   const changeRole = (email: string, role: SharedRole) => {
+    // Guest users can only have 'read' role, never 'edit'
+    if (isGuestUser(email) && role === 'edit') return;
     setEntries((prev) => prev.map((e) => (e.email === email ? { ...e, role } : e)));
   };
 
   const handleSave = async () => {
     setSaving(true);
     setError(null);
-    const { sharedEmail, sharedRole } = serializeSharedUsers(entries);
+    // Sanitize: ensure any guest user is strictly 'read'
+    const sanitized = entries.map((e) => ({
+      ...e,
+      role: isGuestUser(e.email) ? ('read' as SharedRole) : e.role,
+    }));
+    const { sharedEmail, sharedRole } = serializeSharedUsers(sanitized);
     try {
       await updateProductionSetupHeader(setup.id, { sharedEmail, sharedRole });
       onSuccess(sharedEmail, sharedRole);
@@ -118,7 +136,7 @@ export function ShareProductionSetupDialog({ setup, onClose, onSuccess }: ShareP
             <span className="om-detail-eyebrow">Production Setup Sharing</span>
             <h3>Share Setup: {setup.name}</h3>
             <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: '#94a3b8' }}>
-              Choose whether shared contributors can view/duplicate this setup (read-only) or edit it directly.
+              Shared contributors can view or edit this setup. Guest users are strictly read-only.
             </p>
           </div>
           <button
@@ -137,7 +155,7 @@ export function ShareProductionSetupDialog({ setup, onClose, onSuccess }: ShareP
           {/* Add email input with autocomplete */}
           <div style={{ position: 'relative' }}>
             <label style={{ display: 'block', fontSize: '0.78rem', color: '#cbd5e1', marginBottom: '6px', fontWeight: 600 }}>
-              Add contributor by name or email:
+              Add contributor or guest by name or email:
             </label>
             <div style={{ display: 'flex', gap: '8px' }}>
               <input
@@ -194,6 +212,7 @@ export function ShareProductionSetupDialog({ setup, onClose, onSuccess }: ShareP
               >
                 {searchResults.map((user, idx) => {
                   const mail = (user.Mail ?? user.UserPrincipalName ?? '').trim();
+                  const isGuest = !loadingRoles && isGuestUser(mail);
                   return (
                     <li
                       key={user.Id ?? mail ?? idx}
@@ -210,7 +229,14 @@ export function ShareProductionSetupDialog({ setup, onClose, onSuccess }: ShareP
                       className="share-autocomplete-item"
                       onClick={() => addEmail(mail)}
                     >
-                      <strong style={{ color: '#f8fafc' }}>{user.DisplayName || mail}</strong>
+                      <strong style={{ color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        {user.DisplayName || mail}
+                        {mail && isGuest && (
+                          <span style={{ fontSize: '0.68rem', color: '#94a3b8', fontWeight: 'normal' }}>
+                            (Guest - Read Only)
+                          </span>
+                        )}
+                      </strong>
                       <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{mail}</span>
                     </li>
                   );
@@ -255,91 +281,129 @@ export function ShareProductionSetupDialog({ setup, onClose, onSuccess }: ShareP
                   flexDirection: 'column',
                 }}
               >
-                {entries.map((entry) => (
-                  <div
-                    key={entry.email}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '8px 12px',
-                      borderBottom: '1px solid #1e293b',
-                      fontSize: '0.82rem',
-                      gap: '8px',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
-                      <span
-                        style={{
-                          width: '26px',
-                          height: '26px',
-                          flexShrink: 0,
-                          borderRadius: '50%',
-                          background: entry.role === 'edit' ? 'rgba(34, 197, 94, 0.15)' : 'rgba(56, 189, 248, 0.15)',
-                          color: entry.role === 'edit' ? '#4ade80' : '#38bdf8',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontWeight: 700,
-                          fontSize: '0.75rem',
-                        }}
-                      >
-                        {entry.email[0]?.toUpperCase() ?? '@'}
-                      </span>
-                      <span
-                        style={{
-                          color: '#f1f5f9',
-                          fontFamily: 'monospace',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                        title={entry.email}
-                      >
-                        {entry.email}
-                      </span>
-                    </div>
+                {entries.map((entry) => {
+                  const isGuest = !loadingRoles && isGuestUser(entry.email);
+                  return (
+                    <div
+                      key={entry.email}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '8px 12px',
+                        borderBottom: '1px solid #1e293b',
+                        fontSize: '0.82rem',
+                        gap: '8px',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
+                        <span
+                          style={{
+                            width: '26px',
+                            height: '26px',
+                            flexShrink: 0,
+                            borderRadius: '50%',
+                            background:
+                              entry.role === 'edit' && !isGuest
+                                ? 'rgba(34, 197, 94, 0.15)'
+                                : 'rgba(56, 189, 248, 0.15)',
+                            color: entry.role === 'edit' && !isGuest ? '#4ade80' : '#38bdf8',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontWeight: 700,
+                            fontSize: '0.75rem',
+                          }}
+                        >
+                          {entry.email[0]?.toUpperCase() ?? '@'}
+                        </span>
+                        <span
+                          style={{
+                            color: '#f1f5f9',
+                            fontFamily: 'monospace',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                          title={entry.email}
+                        >
+                          {entry.email}
+                        </span>
+                        {isGuest && (
+                          <span
+                            style={{
+                              fontSize: '0.68rem',
+                              color: '#94a3b8',
+                              background: 'rgba(148, 163, 184, 0.12)',
+                              border: '1px solid rgba(148, 163, 184, 0.25)',
+                              padding: '1px 5px',
+                              borderRadius: '4px',
+                            }}
+                            title="Guest users can only have Read-only access"
+                          >
+                            Guest
+                          </span>
+                        )}
+                      </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-                      <select
-                        value={entry.role}
-                        onChange={(e) => changeRole(entry.email, e.target.value as SharedRole)}
-                        disabled={saving}
-                        aria-label={`Permission role for ${entry.email}`}
-                        style={{
-                          padding: '3px 8px',
-                          fontSize: '0.75rem',
-                          borderRadius: '6px',
-                          background: entry.role === 'edit' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(56, 189, 248, 0.12)',
-                          color: entry.role === 'edit' ? '#4ade80' : '#38bdf8',
-                          border: `1px solid ${entry.role === 'edit' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(56, 189, 248, 0.3)'}`,
-                          cursor: 'pointer',
-                          fontWeight: 500,
-                        }}
-                      >
-                        <option value="read" style={{ background: '#0f172a', color: '#f1f5f9' }}>Can view (Read-only)</option>
-                        <option value="edit" style={{ background: '#0f172a', color: '#f1f5f9' }}>Can edit</option>
-                      </select>
-                      <button
-                        type="button"
-                        onClick={() => removeEmail(entry.email)}
-                        disabled={saving}
-                        title={`Remove ${entry.email}`}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: '#ef4444',
-                          cursor: 'pointer',
-                          padding: '4px 6px',
-                          fontSize: '0.9rem',
-                          borderRadius: '4px',
-                        }}
-                      >
-                        ✕
-                      </button>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                        {isGuest ? (
+                          <span
+                            title="Guest users can only have Read-only access"
+                            style={{
+                              fontSize: '0.75rem',
+                              padding: '3px 8px',
+                              borderRadius: '6px',
+                              background: 'rgba(56, 189, 248, 0.12)',
+                              color: '#38bdf8',
+                              border: '1px solid rgba(56, 189, 248, 0.25)',
+                              fontWeight: 500,
+                            }}
+                          >
+                            Can view (Read-only)
+                          </span>
+                        ) : (
+                          <select
+                            value={entry.role}
+                            onChange={(e) => changeRole(entry.email, e.target.value as SharedRole)}
+                            disabled={saving}
+                            aria-label={`Permission role for ${entry.email}`}
+                            style={{
+                              padding: '3px 8px',
+                              fontSize: '0.75rem',
+                              borderRadius: '6px',
+                              background: entry.role === 'edit' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(56, 189, 248, 0.12)',
+                              color: entry.role === 'edit' ? '#4ade80' : '#38bdf8',
+                              border: `1px solid ${entry.role === 'edit' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(56, 189, 248, 0.3)'}`,
+                              cursor: 'pointer',
+                              fontWeight: 500,
+                            }}
+                          >
+                            <option value="read" style={{ background: '#0f172a', color: '#f1f5f9' }}>Can view (Read-only)</option>
+                            <option value="edit" style={{ background: '#0f172a', color: '#f1f5f9' }}>Can edit</option>
+                          </select>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => removeEmail(entry.email)}
+                          disabled={saving}
+                          title={`Remove ${entry.email}`}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: '#ef4444',
+                            cursor: 'pointer',
+                            padding: '4px 6px',
+                            fontSize: '0.9rem',
+                            borderRadius: '4px',
+                          }}
+                        >
+                          ✕
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

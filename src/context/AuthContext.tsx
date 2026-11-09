@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect, useCallback, type ReactNode } from 'react';
 import { Office365UsersService } from '../generated/services/Office365UsersService';
 import { Mpp_wl_usersesService } from '../generated/services/Mpp_wl_usersesService';
+import { Mpp_wl_productionsetupsesService } from '../generated/services/Mpp_wl_productionsetupsesService';
 import { fetchAllPages } from '../lib/dataversePaging';
 import { AuthContext, type AuthUser, type UserRole } from './auth';
 
@@ -35,7 +36,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const match = rows.find((row) => (row.mpp_email ?? '').trim().toLowerCase() === email.toLowerCase());
       const role = roleFromRow(match?.mpp_role) ?? 'guest';
       const maxSetup = typeof match?.mpp_max_setup === 'number' ? match.mpp_max_setup : undefined;
-      setUser({ email, displayName, role, maxSetup });
+
+      let hasSharedSetups = false;
+      if (role === 'guest' && email) {
+        try {
+          const setupRows = await fetchAllPages(Mpp_wl_productionsetupsesService.getAll, {
+            select: ['mpp_wl_productionsetupsid', 'mpp_shared_email'],
+          });
+          const lowerEmail = email.toLowerCase();
+          hasSharedSetups = setupRows.some((row) => {
+            if (!row.mpp_shared_email) return false;
+            const emails = row.mpp_shared_email.split(/[,;\s]+/).map((e) => e.trim().toLowerCase());
+            return emails.includes(lowerEmail);
+          });
+        } catch {
+          hasSharedSetups = false;
+        }
+      }
+
+      setUser({ email, displayName, role, maxSetup, hasSharedSetups });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to determine the current user — access defaults to Guest.');
       setUser(UNKNOWN_USER);

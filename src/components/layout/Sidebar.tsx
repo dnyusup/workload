@@ -5,10 +5,12 @@ import { MENU, MENU_GROUPS, type AppPage } from './menu';
 export function Sidebar({
   page,
   role,
+  hasSharedSetups = false,
   onNavigate,
 }: {
   page: AppPage;
   role: UserRole;
+  hasSharedSetups?: boolean;
   onNavigate: (page: AppPage) => void;
 }) {
   const [isHovered, setIsHovered] = useState(false);
@@ -19,12 +21,16 @@ export function Sidebar({
 
   const visibleGroups = useMemo(() => {
     return MENU_GROUPS.map((group) => {
-      const groupItems = MENU.filter(
-        (item) => group.pages.includes(item.page) && item.roles.includes(role),
-      );
+      const groupItems = MENU.filter((item) => {
+        if (!group.pages.includes(item.page)) return false;
+        if (item.page === 'production' && role === 'guest') {
+          return hasSharedSetups;
+        }
+        return item.roles.includes(role);
+      });
       return { ...group, items: groupItems };
     }).filter((group) => group.items.length > 0);
-  }, [role]);
+  }, [role, hasSharedSetups]);
 
   return (
     <aside
