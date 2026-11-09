@@ -7174,41 +7174,28 @@
 }
 
 /* Production Setup Sharing, Duplication, and Filter Tabs */
-.setup-filter-tabs {
-  display: flex;
-  gap: 3px;
-  background: #090e17;
-  padding: 3px;
-  border-radius: 8px;
-  border: 1px solid #1e293b;
+.setup-filter-select {
+  width: 100%;
   margin-bottom: 8px;
-}
-
-.setup-filter-tab {
-  flex: 1;
-  padding: 5px 2px;
-  border: none;
+  background-color: #090e17;
+  border: 1px solid #1e293b;
   border-radius: 6px;
-  background: transparent;
-  color: #94a3b8;
-  font-size: 0.72rem;
+  color: #38bdf8;
+  font-size: 0.8rem;
   font-weight: 500;
+  padding: 6px 10px;
   cursor: pointer;
-  text-align: center;
-  white-space: nowrap;
   transition: all 0.15s ease;
 }
 
-.setup-filter-tab:hover:not(.active) {
-  background: rgba(255, 255, 255, 0.05);
-  color: #e2e8f0;
+.setup-filter-select:hover {
+  border-color: #334155;
 }
 
-.setup-filter-tab.active {
-  background: #1e293b;
-  color: #38bdf8;
-  font-weight: 600;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+.setup-filter-select:focus {
+  border-color: #38bdf8;
+  outline: none;
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.2);
 }
 
 .setup-card-actions {

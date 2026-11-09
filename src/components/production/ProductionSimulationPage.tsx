@@ -736,29 +736,16 @@ export function ProductionSimulationPage() {
           <p className="data-manager-hint">No Production Setups yet.</p>
         ) : (
           <>
-            <div className="setup-filter-tabs">
-              <button
-                type="button"
-                className={`setup-filter-tab ${setupFilterTab === 'created' ? 'active' : ''}`}
-                onClick={() => setSetupFilterTab('created')}
-              >
-                Created by me ({createdCount})
-              </button>
-              <button
-                type="button"
-                className={`setup-filter-tab ${setupFilterTab === 'shared' ? 'active' : ''}`}
-                onClick={() => setSetupFilterTab('shared')}
-              >
-                Shared to me ({sharedCount})
-              </button>
-              <button
-                type="button"
-                className={`setup-filter-tab ${setupFilterTab === 'all' ? 'active' : ''}`}
-                onClick={() => setSetupFilterTab('all')}
-              >
-                All setup ({allCount})
-              </button>
-            </div>
+            <select
+              className="input setup-filter-select"
+              value={setupFilterTab}
+              onChange={(e) => setSetupFilterTab(e.target.value as SetupFilterTab)}
+              aria-label="Filter setups by ownership"
+            >
+              <option value="created">Created by me ({createdCount})</option>
+              <option value="shared">Shared to me ({sharedCount})</option>
+              <option value="all">All setup ({allCount})</option>
+            </select>
             <input
               className="input list-search-input"
               placeholder="Search by name or creator…"
