@@ -29,6 +29,8 @@ export interface ProductionSetupSummary {
   /** Dataverse's own `createdbyname` — always populated, used for display and as the ownership
    * fallback when `createdByEmail` is empty (pre-existing setups). */
   createdByName: string;
+  /** Semicolon/comma-separated list of contributor emails with read-only shared access. */
+  sharedEmail?: string;
 }
 
 /** machineId (LayoutMachine.id, plain text on the row) → that row's own Dataverse id — needed
@@ -118,6 +120,7 @@ export async function listProductionSetupSummaries(): Promise<ProductionSetupSum
     createdAt: row.createdon ? new Date(row.createdon).getTime() : Date.now(),
     createdByEmail: row.mpp_creator_email ?? '',
     createdByName: (row as any).createdbyname ?? '',
+    sharedEmail: row.mpp_shared_email ?? '',
   }));
 }
 
@@ -189,6 +192,9 @@ export async function loadProductionSetup(id: string, constructionLabelById: Map
     frequencyStartDate: header.mpp_frequencystartdate ? header.mpp_frequencystartdate.slice(0, 10) : undefined,
     frequencyEndDate: header.mpp_frequencyenddate ? header.mpp_frequencyenddate.slice(0, 10) : undefined,
     updatedAt: header.modifiedon ? new Date(header.modifiedon).getTime() : Date.now(),
+    createdByEmail: header.mpp_creator_email ?? '',
+    createdByName: (header as any).createdbyname ?? '',
+    sharedEmail: header.mpp_shared_email ?? '',
   };
 }
 
@@ -303,6 +309,7 @@ export async function updateProductionSetupHeader(
       | 'frequencyMode'
       | 'frequencyStartDate'
       | 'frequencyEndDate'
+      | 'sharedEmail'
     >
   >,
 ): Promise<void> {
@@ -332,9 +339,137 @@ export async function updateProductionSetupHeader(
   if (patch.frequencyEndDate !== undefined) {
     fields.mpp_frequencyenddate = patch.frequencyEndDate || null;
   }
+  if (patch.sharedEmail !== undefined) {
+    fields.mpp_shared_email = patch.sharedEmail || null;
+  }
   if (Object.keys(fields).length === 0) return;
   const result = await Mpp_wl_productionsetupsesService.update(id, fields as any);
   if (!result.success) throw new Error(result.error?.message ?? 'Failed to update Production Setup.');
+}
+
+/** Duplicates an existing production setup, creating a complete personal copy for the current user.
+ * Recreates layout, operator rows with mapped IDs, and all machine assignments. */
+export async function duplicateProductionSetup(
+  sourceSetupId: string,
+  newName: string,
+  creatorEmail: string,
+  onProgress?: (done: number, total: number) => void,
+  constructionLabelById: Map<string, string> = new Map(),
+): Promise<ProductionSetup> {
+  // 1. Load source setup in full
+  const source = await loadProductionSetup(sourceSetupId, constructionLabelById);
+
+  // 2. Create new header in Dataverse
+  const headerResult = await Mpp_wl_productionsetupsesService.create({
+    mpp_name: newName,
+    mpp_layoutsnapshotjson: serializeLayoutBlob(source.layout, source.operatorStart, source.walls, source.remarks),
+    mpp_creator_email: creatorEmail,
+    mpp_shared_email: undefined, // Duplicated setup is personal and private by default
+    mpp_shifttime: source.shiftTime,
+    mpp_lunchtime: source.lunchTime,
+    mpp_lunchstartat: source.lunchStartAt,
+    mpp_meetingtime: source.meetingTime,
+    mpp_meetingstartat: source.meetingStartAt,
+    mpp_taskpriority: source.taskPriority,
+    mpp_walkingspeed: source.movement.walkingSpeed,
+    mpp_pixelspermeter: source.movement.pixelsPerMeter || DEFAULT_PIXELS_PER_METER,
+    mpp_rpc: source.rpc,
+    mpp_doffpriority: source.doffPriority ? 'Yes' : 'No',
+    mpp_minremaintaskfordoffpriority: source.minRemainForDoffPriority,
+    mpp_optimizemodel: formatWaitingModel(source.waitingModel),
+    mpp_frequencysource: source.frequencyMode ?? 'manual',
+    mpp_frequencystartdate: source.frequencyStartDate,
+    mpp_frequencyenddate: source.frequencyEndDate,
+    mpp_planningtype: source.frequencyMode ?? 'manual',
+    statecode: 0,
+  });
+  if (!headerResult.success || !headerResult.data) {
+    throw new Error(headerResult.error?.message ?? 'Failed to duplicate Production Setup.');
+  }
+  const newSetupId = headerResult.data.mpp_wl_productionsetupsid;
+
+  // 3. Create operators and record mapping oldId -> newId
+  const operatorIdMap = new Map<string, string>();
+  const newOperators: ProductionOperator[] = [];
+  for (const op of source.operators) {
+    const opResult = await Mpp_wl_productionsetupoperatorsesService.create({
+      mpp_productionsetupid: newSetupId,
+      mpp_name: op.label,
+      mpp_lunchstartatminutes: op.lunchStartAt,
+      mpp_meetingstartatminutes: op.meetingStartAt,
+      statecode: 0,
+    });
+    if (opResult.success && opResult.data) {
+      operatorIdMap.set(op.id, opResult.data.mpp_wl_productionsetupoperatorsid);
+      newOperators.push({
+        id: opResult.data.mpp_wl_productionsetupoperatorsid,
+        label: op.label,
+        lunchStartAt: op.lunchStartAt,
+        meetingStartAt: op.meetingStartAt,
+      });
+    }
+  }
+
+  // Helper to remap a list of operator IDs
+  const mapOperatorIds = (ids: string[] | undefined): string | undefined => {
+    if (!ids || ids.length === 0) return undefined;
+    const mapped = ids.map((id) => operatorIdMap.get(id) || id).filter(Boolean);
+    return mapped.length > 0 ? mapped.join(ASSIGNED_OPERATOR_SEPARATOR) : undefined;
+  };
+
+  // 4. Create all machine assignment rows with concurrency
+  const rowIdByMachineId = new Map<string, string>();
+  const total = source.layout.length;
+  await runWithConcurrency(
+    source.layout,
+    async (machine) => {
+      const assign = source.assignments.find((a) => a.machineId === machine.id);
+      const result = await Mpp_wl_productionsetupmachinesesService.create({
+        mpp_productionsetupid: newSetupId,
+        mpp_machineid: machine.id,
+        mpp_machinelabel: machine.label,
+        mpp_constructiondetailid: assign?.constructionDetailId || undefined,
+        mpp_assignedopr: mapOperatorIds(assign?.assignedOperatorIds),
+        mpp_doffingoperatorid: mapOperatorIds(assign?.doffingOperatorIds),
+        mpp_loadingoperatorid: mapOperatorIds(assign?.loadingOperatorIds),
+        mpp_fracturerepairingoperatorid: mapOperatorIds(assign?.fractureRepairingOperatorIds),
+        mpp_dieschangeoperatorid: mapOperatorIds(assign?.diesChangeOperatorIds),
+        mpp_defectrepairingoperatorid: mapOperatorIds(assign?.defectRepairingOperatorIds),
+        mpp_groupname: assign?.groupName?.trim() || undefined,
+        mpp_doffpriority: assign?.doffPriority === undefined ? undefined : assign.doffPriority ? 'Yes' : 'No',
+        mpp_minremaintaskfordoffpriority: assign?.minRemainForDoffPriority ?? undefined,
+        statecode: 0,
+      });
+      if (result.success && result.data) {
+        rowIdByMachineId.set(machine.id, result.data.mpp_wl_productionsetupmachinesid);
+      }
+    },
+    BULK_CONCURRENCY,
+    onProgress ? (done) => onProgress(done, total) : undefined,
+  );
+  machineRowIdCache.set(newSetupId, rowIdByMachineId);
+
+  // Remap in-memory assignments for the returned setup object
+  const newAssignments: ProductionMachineAssignment[] = source.assignments.map((a) => ({
+    ...a,
+    assignedOperatorIds: a.assignedOperatorIds?.map((id) => operatorIdMap.get(id) || id),
+    doffingOperatorIds: a.doffingOperatorIds?.map((id) => operatorIdMap.get(id) || id),
+    loadingOperatorIds: a.loadingOperatorIds?.map((id) => operatorIdMap.get(id) || id),
+    fractureRepairingOperatorIds: a.fractureRepairingOperatorIds?.map((id) => operatorIdMap.get(id) || id),
+    diesChangeOperatorIds: a.diesChangeOperatorIds?.map((id) => operatorIdMap.get(id) || id),
+    defectRepairingOperatorIds: a.defectRepairingOperatorIds?.map((id) => operatorIdMap.get(id) || id),
+  }));
+
+  return {
+    ...source,
+    id: newSetupId,
+    name: newName,
+    createdByEmail: creatorEmail,
+    sharedEmail: '',
+    operators: newOperators,
+    assignments: newAssignments,
+    updatedAt: Date.now(),
+  };
 }
 
 export async function deleteProductionSetup(id: string, onProgress?: (done: number, total: number) => void): Promise<void> {

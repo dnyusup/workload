@@ -510,6 +510,9 @@ export interface ProductionSetup {
   frequencyStartDate?: string;
   frequencyEndDate?: string;
   updatedAt: number;
+  createdByEmail?: string;
+  createdByName?: string;
+  sharedEmail?: string;
 }
 
 /** One independent operator's live state during a Production Simulation run — same FSM shape as

@@ -31,6 +31,7 @@ export interface Mpp_wl_productionsetupsesBase {
   mpp_pixelspermeter?: number;
   mpp_planningtype?: string;
   mpp_rpc?: number;
+  mpp_shared_email?: string;
   mpp_shifttime?: number;
   mpp_taskpriority?: string;
   mpp_walkingspeed?: number;

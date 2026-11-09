@@ -10,6 +10,7 @@ import {
   createProductionSetup,
   deleteProductionSetup,
   updateProductionSetupHeader,
+  duplicateProductionSetup,
   addProductionOperator,
   removeProductionOperator,
   updateMachineAssignments,
@@ -17,7 +18,7 @@ import {
 } from '../../lib/productionSetupsStore';
 import { useDebouncedCallback } from '../../hooks/useDebouncedCallback';
 import { useAuth } from '../../context/auth';
-import { isOwnedByCurrentUser } from '../../lib/ownership';
+import { isOwnedByCurrentUser, isSharedWithCurrentUser } from '../../lib/ownership';
 import { resolveDisplayNames } from '../../lib/userDirectory';
 import { Mpp_wl_productsesService } from '../../generated/services/Mpp_wl_productsesService';
 import { fetchAllPages } from '../../lib/dataversePaging';
@@ -42,6 +43,8 @@ import { ProductionRunView } from './ProductionRunView';
 import { CanvasLegendPanel } from './CanvasLegendPanel';
 import { OperatorStartTimesDialog } from './OperatorStartTimesDialog';
 import { ImportConstructionFromMesDialog } from './ImportConstructionFromMesDialog';
+import { ShareProductionSetupDialog } from './ShareProductionSetupDialog';
+import { DuplicateSetupDialog } from './DuplicateSetupDialog';
 import {
   MachineAssignmentsGroupBySelect,
   MachineAssignmentsSearch,
@@ -269,7 +272,9 @@ export function ProductionSimulationPage() {
   const fetchSummaries = () => {
     listProductionSetupSummaries()
       .then((result) => {
-        const visible = isAdmin ? result : result.filter((s) => isOwnedByCurrentUser(s, user));
+        const visible = isAdmin
+          ? result
+          : result.filter((s) => isOwnedByCurrentUser(s, user) || isSharedWithCurrentUser(s, user));
         setSummaries(visible);
         const emailsToResolve = visible
           .map((s) => s.createdByEmail)
@@ -409,15 +414,85 @@ export function ProductionSimulationPage() {
     }
   };
 
-  const canDelete = (s: ProductionSetupSummary) => isAdmin || isOwnedByCurrentUser(s, user);
+  type SetupFilterTab = 'created' | 'shared' | 'all';
+  const [setupFilterTab, setSetupFilterTab] = useState<SetupFilterTab>('created');
+  const [sharingSetup, setSharingSetup] = useState<ProductionSetupSummary | ProductionSetup | null>(null);
+  const [duplicatingTarget, setDuplicatingTarget] = useState<ProductionSetupSummary | ProductionSetup | null>(null);
+  const [duplicateProgress, setDuplicateProgress] = useState<{ done: number; total: number } | null>(null);
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
 
-  const filteredSummaries = summaries
-    .filter((s) => {
-      const q = setupSearchTerm.trim().toLowerCase();
-      if (!q) return true;
-      return s.name.toLowerCase().includes(q) || creatorNameFor(s).toLowerCase().includes(q);
-    })
-    .sort((a, b) => b.updatedAt - a.updatedAt);
+  const canDelete = (s: ProductionSetupSummary | ProductionSetup) => isAdmin || isOwnedByCurrentUser(s, user);
+  const canShare = (s: ProductionSetupSummary | ProductionSetup) => isAdmin || isOwnedByCurrentUser(s, user);
+
+  const isOwned = useCallback((s: ProductionSetupSummary) => isOwnedByCurrentUser(s, user), [user]);
+  const isShared = useCallback((s: ProductionSetupSummary) => isSharedWithCurrentUser(s, user), [user]);
+
+  const createdCount = useMemo(() => summaries.filter(isOwned).length, [summaries, isOwned]);
+  const sharedCount = useMemo(() => summaries.filter(isShared).length, [summaries, isShared]);
+  const allCount = summaries.length;
+
+  const tabFilteredSummaries = useMemo(() => {
+    if (setupFilterTab === 'created') return summaries.filter(isOwned);
+    if (setupFilterTab === 'shared') return summaries.filter(isShared);
+    return isAdmin ? summaries : summaries.filter((s) => isOwned(s) || isShared(s));
+  }, [summaries, setupFilterTab, isOwned, isShared, isAdmin]);
+
+  const filteredSummaries = useMemo(() => {
+    const q = setupSearchTerm.trim().toLowerCase();
+    return tabFilteredSummaries
+      .filter((s) => {
+        if (!q) return true;
+        return s.name.toLowerCase().includes(q) || creatorNameFor(s).toLowerCase().includes(q);
+      })
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabFilteredSummaries, setupSearchTerm, creatorNames]);
+
+  const handleDuplicateSetup = async (source: ProductionSetupSummary | ProductionSetup, newName: string) => {
+    setDuplicatingId(source.id);
+    setDuplicateProgress({ done: 0, total: 1 });
+    setSummariesError(null);
+    try {
+      const duplicated = await duplicateProductionSetup(
+        source.id,
+        newName,
+        user.email,
+        (done, total) => setDuplicateProgress({ done, total }),
+        constructionLabelById,
+      );
+      const newSummary: ProductionSetupSummary = {
+        id: duplicated.id,
+        name: duplicated.name,
+        operatorCount: duplicated.operators.length,
+        machineCount: duplicated.layout.length,
+        updatedAt: duplicated.updatedAt,
+        createdAt: duplicated.updatedAt,
+        createdByEmail: user.email,
+        createdByName: user.displayName,
+        sharedEmail: '',
+      };
+      setSummaries((prev) => [newSummary, ...prev]);
+      setSelectedSetup(duplicated);
+      setSelectedId(duplicated.id);
+      setSetupFilterTab('created');
+    } catch (err) {
+      setSummariesError(err instanceof Error ? err.message : 'Failed to duplicate Production Setup.');
+      throw err;
+    } finally {
+      setDuplicatingId(null);
+      setDuplicateProgress(null);
+    }
+  };
+
+  const handleShareSaved = (updatedSharedEmail: string) => {
+    if (!sharingSetup) return;
+    setSummaries((prev) =>
+      prev.map((s) => (s.id === sharingSetup.id ? { ...s, sharedEmail: updatedSharedEmail } : s)),
+    );
+    if (selectedSetup && selectedSetup.id === sharingSetup.id) {
+      setSelectedSetup((prev) => (prev ? { ...prev, sharedEmail: updatedSharedEmail } : prev));
+    }
+  };
 
   const deleteSetup = async (id: string) => {
     const summary = summaries.find((s) => s.id === id);
@@ -661,6 +736,29 @@ export function ProductionSimulationPage() {
           <p className="data-manager-hint">No Production Setups yet.</p>
         ) : (
           <>
+            <div className="setup-filter-tabs">
+              <button
+                type="button"
+                className={`setup-filter-tab ${setupFilterTab === 'created' ? 'active' : ''}`}
+                onClick={() => setSetupFilterTab('created')}
+              >
+                Created by me ({createdCount})
+              </button>
+              <button
+                type="button"
+                className={`setup-filter-tab ${setupFilterTab === 'shared' ? 'active' : ''}`}
+                onClick={() => setSetupFilterTab('shared')}
+              >
+                Shared to me ({sharedCount})
+              </button>
+              <button
+                type="button"
+                className={`setup-filter-tab ${setupFilterTab === 'all' ? 'active' : ''}`}
+                onClick={() => setSetupFilterTab('all')}
+              >
+                All setup ({allCount})
+              </button>
+            </div>
             <input
               className="input list-search-input"
               placeholder="Search by name or creator…"
@@ -668,7 +766,11 @@ export function ProductionSimulationPage() {
               onChange={(e) => setSetupSearchTerm(e.target.value)}
             />
             {filteredSummaries.length === 0 ? (
-              <p className="data-manager-hint">No Production Setups match "{setupSearchTerm}".</p>
+              <p className="data-manager-hint">
+                {setupFilterTab === 'created' && 'No setups created by you yet.'}
+                {setupFilterTab === 'shared' && 'No setups shared with you yet.'}
+                {setupFilterTab === 'all' && `No Production Setups match "${setupSearchTerm}".`}
+              </p>
             ) : (
               <div className="layout-list-scroll">
                 <ul className="layout-list">
@@ -680,7 +782,11 @@ export function ProductionSimulationPage() {
                         title={`Last modified: ${new Date(s.updatedAt).toLocaleString()}`}
                         onClick={() => setSelectedId(s.id)}
                       >
-                        <span className="layout-list-name">{s.name}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                          <span className="layout-list-name">{s.name}</span>
+                          {isShared(s) && <span className="setup-badge-shared">Shared to me</span>}
+                          {isOwned(s) && !!s.sharedEmail?.trim() && <span className="setup-badge-sharing">Sharing</span>}
+                        </div>
                         <span className="layout-list-count">
                           {s.machineCount} machines · {s.operatorCount} operators
                         </span>
@@ -688,15 +794,61 @@ export function ProductionSimulationPage() {
                           By {creatorNameFor(s)} · {new Date(s.createdAt).toLocaleString()}
                         </span>
                       </button>
-                      <div className="layout-list-actions">
+                      <div className="setup-card-actions">
+                        <button
+                          type="button"
+                          className="setup-icon-btn duplicate"
+                          title="Duplicate Setup"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDuplicatingTarget(s);
+                          }}
+                          disabled={duplicatingId !== null || deletingId !== null}
+                          aria-label={`Duplicate ${s.name}`}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                          </svg>
+                        </button>
+                        {canShare(s) && (
+                          <button
+                            type="button"
+                            className="setup-icon-btn share"
+                            title="Share Setup"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSharingSetup(s);
+                            }}
+                            disabled={duplicatingId !== null || deletingId !== null}
+                            aria-label={`Share ${s.name}`}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <circle cx="18" cy="5" r="3" />
+                              <circle cx="6" cy="12" r="3" />
+                              <circle cx="18" cy="19" r="3" />
+                              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                              <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                            </svg>
+                          </button>
+                        )}
                         {canDelete(s) && (
-                          <Button variant="danger" onClick={() => deleteSetup(s.id)} disabled={deletingId !== null}>
-                            {deletingId === s.id
-                              ? deleteProgress && deleteProgress.total > 0
-                                ? `Deleting… (${deleteProgress.done}/${deleteProgress.total})`
-                                : 'Deleting…'
-                              : 'Delete'}
-                          </Button>
+                          <button
+                            type="button"
+                            className="setup-icon-btn danger"
+                            title="Delete Setup"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteSetup(s.id);
+                            }}
+                            disabled={deletingId !== null || duplicatingId !== null}
+                            aria-label={`Delete ${s.name}`}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="3 6 5 6 21 6" />
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                            </svg>
+                          </button>
                         )}
                       </div>
                     </li>
@@ -726,6 +878,8 @@ export function ProductionSimulationPage() {
               setSummaries((prev) => prev.map((s) => (s.id === selectedSetup.id ? { ...s, operatorCount: s.operatorCount + delta } : s)))
             }
             onProductsUpdated={(updated) => setProducts(updated)}
+            onDuplicate={() => setDuplicatingTarget(selectedSetup)}
+            onShare={canShare(selectedSetup) ? () => setSharingSetup(selectedSetup) : undefined}
             resolving={resolving}
             plannedUtilization={plannedResolution.utilization}
             plannedUtilizationErrors={plannedResolution.errors}
@@ -739,6 +893,43 @@ export function ProductionSimulationPage() {
           </Card>
         )}
       </div>
+
+      {sharingSetup && (
+        <ShareProductionSetupDialog
+          setup={sharingSetup}
+          onClose={() => setSharingSetup(null)}
+          onSuccess={(newSharedEmail) => {
+            handleShareSaved(newSharedEmail);
+            setSharingSetup(null);
+          }}
+        />
+      )}
+
+      {duplicatingTarget && (
+        <DuplicateSetupDialog
+          setup={duplicatingTarget}
+          onClose={() => setDuplicatingTarget(null)}
+          onDuplicate={async (newName) => {
+            await handleDuplicateSetup(duplicatingTarget, newName);
+          }}
+        />
+      )}
+
+      {duplicatingId && duplicateProgress && (
+        <BlockingProgressOverlay
+          title="Duplicating Production Setup…"
+          done={duplicateProgress.done}
+          total={duplicateProgress.total}
+        />
+      )}
+
+      {deletingId && deleteProgress && (
+        <BlockingProgressOverlay
+          title="Deleting Production Setup…"
+          done={deleteProgress.done}
+          total={deleteProgress.total}
+        />
+      )}
     </div>
   );
 }
@@ -751,6 +942,8 @@ function ProductionSetupEditor({
   onRun,
   onOperatorCountChange,
   onProductsUpdated,
+  onDuplicate,
+  onShare,
   resolving,
   plannedUtilization,
   plannedUtilizationErrors,
@@ -765,6 +958,8 @@ function ProductionSetupEditor({
   onRun: () => void;
   onOperatorCountChange: (delta: number) => void;
   onProductsUpdated?: (products: Mpp_wl_productses[]) => void;
+  onDuplicate?: () => void;
+  onShare?: () => void;
   resolving: boolean;
   plannedUtilization: PlannedUtilization | null;
   plannedUtilizationErrors: string[];
@@ -772,8 +967,11 @@ function ProductionSetupEditor({
   resolvedConstructions: Map<string, ResolvedConstruction> | null;
   optimizedCounts: { counts: ReadonlyMap<string, OptimizedCount>; error: string | null; loading: boolean };
 }) {
-  /** Only an Admin picks the waiting model; for everyone else it follows Default Values. */
-  const canChangeWaitingModel = useAuth().user.role === 'admin';
+  const { user } = useAuth();
+  const isAdmin = user.role === 'admin';
+  const isReadOnly = !isAdmin && !isOwnedByCurrentUser(setup, user);
+  /** Only an Admin picks the waiting model (and only when not read-only); for everyone else it follows Default Values. */
+  const canChangeWaitingModel = isAdmin && !isReadOnly;
   const [selectedMachineIds, setSelectedMachineIds] = useState<string[]>([]);
   const [newOperatorName, setNewOperatorName] = useState('');
   const [addingOperator, setAddingOperator] = useState(false);
@@ -1069,6 +1267,7 @@ function ProductionSetupEditor({
   /** Applies a patch to the selected machines both locally (optimistic) and in Dataverse — every
    * bulk-assign action (Construction / per-activity operator / Unplan) goes through this. */
   const applyBulk = async (patch: Partial<ProductionMachineAssignment>, { plannedOnly = false } = {}) => {
+    if (isReadOnly) return;
     // Operator patches skip machines with no Construction — an operator on an unplanned machine is meaningless.
     const targetIds = plannedOnly
       ? selectedMachineIds.filter((id) => assignmentByMachine.get(id)?.constructionDetailId)
@@ -1097,7 +1296,7 @@ function ProductionSetupEditor({
   };
 
   const unplanSelection = async () => {
-    if (selectedMachineIds.length === 0) return;
+    if (isReadOnly || selectedMachineIds.length === 0) return;
     await applyBulk({
       constructionDetailId: undefined,
       constructionDetailLabel: undefined,
@@ -1131,6 +1330,7 @@ function ProductionSetupEditor({
     setup.operators.some((o) => o.label.trim().toLowerCase() === label.trim().toLowerCase());
 
   const addOperator = async () => {
+    if (isReadOnly) return;
     const label = newOperatorName.trim();
     if (!label) return;
     if (operatorNameExists(label)) {
@@ -1152,6 +1352,7 @@ function ProductionSetupEditor({
   };
 
   const addBulkOperators = async () => {
+    if (isReadOnly) return;
     const prefix = bulkOperatorPrefix.trim();
     if (!prefix) return;
     const labels = buildBulkOperatorLabels(prefix, bulkOperatorCount).filter((label) => !operatorNameExists(label));
@@ -1179,6 +1380,7 @@ function ProductionSetupEditor({
   };
 
   const removeOperator = async (id: string) => {
+    if (isReadOnly) return;
     setActionError(null);
     try {
       await removeProductionOperator(setup.id, id);
@@ -1203,6 +1405,7 @@ function ProductionSetupEditor({
   };
 
   const applyConstruction = () => {
+    if (isReadOnly) return;
     const product = products.find((p) => p.mpp_wl_productsid === bulkConstructionId);
     if (!product) return;
     applyBulk({ constructionDetailId: product.mpp_wl_productsid, constructionDetailLabel: product.mpp_constructiondetailcode });
@@ -1212,6 +1415,7 @@ function ProductionSetupEditor({
   /** Sets the selection's Multi Task operators. Removing ([]) clears every selected machine;
    * assigning skips unplanned ones. */
   const applyMultiTaskOperators = (operatorIds: string[]) => {
+    if (isReadOnly) return;
     void applyBulk({ assignedOperatorIds: operatorIds.length > 0 ? operatorIds : undefined }, { plannedOnly: operatorIds.length > 0 });
     setBulkMultiTaskIds(operatorIds);
     setAppliedMultiTaskIds(operatorIds);
@@ -1219,6 +1423,7 @@ function ProductionSetupEditor({
 
   /** Sets one activity's Split Task operators on the selection, same rules as Multi Task. */
   const applyTaskOperators = (family: ProductionActivityFamily, operatorIds: string[]) => {
+    if (isReadOnly) return;
     void applyBulk({ [TASK_OPERATOR_FIELDS[family]]: operatorIds.length > 0 ? operatorIds : undefined }, { plannedOnly: operatorIds.length > 0 });
     setBulkTaskIds((prev) => ({ ...prev, [family]: operatorIds }));
     setAppliedTaskIds((prev) => ({ ...prev, [family]: operatorIds }));
@@ -1226,18 +1431,21 @@ function ProductionSetupEditor({
 
   /** undefined for both = follow the setup's Doff Priority again. */
   const applyMachineDoffPriority = (doffPriority: boolean | undefined, minRemain: number | undefined) => {
+    if (isReadOnly) return;
     void applyBulk({ doffPriority, minRemainForDoffPriority: minRemain });
     setBulkDoffPriority(doffPriority);
     setBulkMinRemain(minRemain);
   };
 
   const applyGroupName = (groupName: string) => {
+    if (isReadOnly) return;
     void applyBulk({ groupName: groupName.trim() || undefined });
     setBulkGroupName(groupName.trim());
     setAppliedGroupName(groupName.trim());
   };
 
   const removeConstruction = () => {
+    if (isReadOnly) return;
     void applyBulk({ constructionDetailId: undefined, constructionDetailLabel: undefined });
     setBulkConstructionId('');
     setAppliedConstructionId('');
@@ -1281,6 +1489,7 @@ function ProductionSetupEditor({
    * blank cell clears that field; an unrecognized Machine/Construction/Operator name is reported
    * instead of silently guessed at. */
   const importCsv = async (file: File) => {
+    if (isReadOnly) return;
     const text = await file.text();
     const rows = parseCsv(text);
     if (rows.length < 2) {
@@ -1430,6 +1639,7 @@ function ProductionSetupEditor({
   }, 600);
 
   const onHeaderChange = (patch: Partial<ProductionSetup>) => {
+    if (isReadOnly) return;
     onLocalChange(patch);
     persistHeader(patch);
   };
@@ -1524,7 +1734,7 @@ function ProductionSetupEditor({
       variant="ghost"
       className="production-assign-remove"
       onClick={onClick}
-      disabled={selectedMachineIds.length === 0}
+      disabled={isReadOnly || selectedMachineIds.length === 0}
       title={title}
       aria-label={title}
     >
@@ -1582,6 +1792,7 @@ function ProductionSetupEditor({
           onChange={(id) => {
             if (id && !ids.includes(id)) setIds([...ids, id]);
           }}
+          disabled={isReadOnly}
           placeholder={placeholder}
           searchPlaceholder="Search operator…"
           options={operatorOptions.filter((option) => !ids.includes(option.value) && !excluded.has(option.value))}
@@ -1590,7 +1801,7 @@ function ProductionSetupEditor({
           variant="secondary"
           className={dirty ? 'btn-pending' : ''}
           onClick={() => onApply(ids)}
-          disabled={selectedMachineIds.length === 0}
+          disabled={isReadOnly || selectedMachineIds.length === 0}
           title={applyTitle}
         >
           Apply
@@ -1602,9 +1813,11 @@ function ProductionSetupEditor({
           {ids.map((id) => (
             <span key={id} className="production-operator-chip">
               {operatorLabel(id)}
-              <button type="button" onClick={() => setIds(ids.filter((listId) => listId !== id))} title="Remove from this list">
-                ×
-              </button>
+              {!isReadOnly && (
+                <button type="button" onClick={() => setIds(ids.filter((listId) => listId !== id))} title="Remove from this list">
+                  ×
+                </button>
+              )}
             </span>
           ))}
         </div>
@@ -1647,7 +1860,7 @@ function ProductionSetupEditor({
     <Card
       title={`Assign Selection (${selectedMachineIds.length} machine(s) selected)`}
       actions={
-        <Button variant="danger" onClick={unplanSelection} disabled={selectedMachineIds.length === 0}>
+        <Button variant="danger" onClick={unplanSelection} disabled={isReadOnly || selectedMachineIds.length === 0}>
           Unplan Selection
         </Button>
       }
@@ -1656,7 +1869,7 @@ function ProductionSetupEditor({
         <SearchableSelect
           value={bulkConstructionId}
           onChange={setBulkConstructionId}
-          disabled={loadingProducts}
+          disabled={isReadOnly || loadingProducts}
           placeholder={loadingProducts ? 'Loading…' : 'Select Construction Detail'}
           searchPlaceholder="Search Construction Detail…"
           options={products.map((p) => ({ value: p.mpp_wl_productsid, label: p.mpp_constructiondetailcode ?? p.mpp_wl_productsid }))}
@@ -1665,7 +1878,7 @@ function ProductionSetupEditor({
           variant="secondary"
           className={constructionDirty ? 'btn-pending' : ''}
           onClick={applyConstruction}
-          disabled={selectedMachineIds.length === 0 || !bulkConstructionId}
+          disabled={isReadOnly || selectedMachineIds.length === 0 || !bulkConstructionId}
           title="Apply Construction Detail to selection"
         >
           Apply
@@ -1678,15 +1891,16 @@ function ProductionSetupEditor({
           placeholder="Group Name"
           value={bulkGroupName}
           onChange={(e) => setBulkGroupName(e.target.value)}
+          disabled={isReadOnly}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && selectedMachineIds.length > 0) applyGroupName(bulkGroupName);
+            if (e.key === 'Enter' && selectedMachineIds.length > 0 && !isReadOnly) applyGroupName(bulkGroupName);
           }}
         />
         <Button
           variant="secondary"
           className={groupNameDirty ? 'btn-pending' : ''}
           onClick={() => applyGroupName(bulkGroupName)}
-          disabled={selectedMachineIds.length === 0}
+          disabled={isReadOnly || selectedMachineIds.length === 0}
           title="Apply group name to selection"
         >
           Apply
@@ -1725,14 +1939,14 @@ function ProductionSetupEditor({
         <span className="production-assign-doff-label" title={DOFF_PRIORITY_TOOLTIP}>
           Doff Priority
         </span>
-        <Toggle checked={effectiveDoffPriority} onChange={setBulkDoffPriority} ariaLabel="Doff Priority for selection" />
+        <Toggle checked={effectiveDoffPriority} onChange={setBulkDoffPriority} ariaLabel="Doff Priority for selection" disabled={isReadOnly} />
         <input
           className="input"
           type="number"
           min={0}
           placeholder={`${setup.minRemainForDoffPriority} (setup)`}
           value={bulkMinRemain ?? ''}
-          disabled={!effectiveDoffPriority}
+          disabled={isReadOnly || !effectiveDoffPriority}
           title="Min Remain Task for Doff Priority (min) — blank follows the Construction Detail (WL_Products) where set, else the setup"
           aria-label="Min Remain Task for Doff Priority (min)"
           onChange={(e) => {
@@ -1744,7 +1958,7 @@ function ProductionSetupEditor({
           variant="secondary"
           className={doffPriorityDirty ? 'btn-pending' : ''}
           onClick={() => applyMachineDoffPriority(bulkDoffPriority, bulkMinRemain)}
-          disabled={selectedMachineIds.length === 0}
+          disabled={isReadOnly || selectedMachineIds.length === 0}
           title="Apply Doff Priority to selection"
         >
           Apply
@@ -1772,22 +1986,53 @@ function ProductionSetupEditor({
           )}
         </div>
       )}
+      {isReadOnly && (
+        <div className="setup-readonly-banner">
+          <div className="setup-readonly-info">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+            <div>
+              <strong>Read-Only Access:</strong> This setup was shared with you. You can run simulations, inspect all assignments, and export data, but cannot edit this setup directly.
+            </div>
+          </div>
+          {onDuplicate && (
+            <Button variant="secondary" onClick={onDuplicate} style={{ whiteSpace: 'nowrap' }}>
+              Duplicate to Edit
+            </Button>
+          )}
+        </div>
+      )}
       <Card
         title="Shift & Movement Settings"
         actions={
-          <Button variant="primary" onClick={onRun} disabled={!canRun || resolving || loadingProducts}>
-            {loadingProducts ? 'Loading WL_Products…' : resolving ? 'Preparing…' : '▶ Run Simulation'}
-          </Button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            {onShare && (
+              <Button variant="secondary" onClick={onShare} title="Share Setup with other contributors">
+                Share
+              </Button>
+            )}
+            {onDuplicate && (
+              <Button variant="secondary" onClick={onDuplicate} title="Duplicate Setup">
+                Duplicate
+              </Button>
+            )}
+            <Button variant="primary" onClick={onRun} disabled={!canRun || resolving || loadingProducts}>
+              {loadingProducts ? 'Loading WL_Products…' : resolving ? 'Preparing…' : '▶ Run Simulation'}
+            </Button>
+          </div>
         }
       >
         <div className="grid-2">
           <Field label="Task Priority">
-            <SelectInput value={setup.taskPriority} options={TASK_PRIORITY_OPTIONS} onChange={(v) => onHeaderChange({ taskPriority: v })} />
+            <SelectInput value={setup.taskPriority} options={TASK_PRIORITY_OPTIONS} onChange={(v) => onHeaderChange({ taskPriority: v })} disabled={isReadOnly} />
           </Field>
           <Field label="Frequency Source" tooltip="Frequency value source: Manual from WL_Products or Historical from MES Data (automatically falls back to manual if not in MES Data)">
             <SelectInput
               value={setup.frequencyMode ?? 'manual'}
               options={FREQUENCY_MODE_OPTIONS}
+              disabled={isReadOnly}
               onChange={(v) => {
                 const nextMode = v as FrequencyMode;
                 if (nextMode === 'historical' && (!setup.frequencyStartDate || !setup.frequencyEndDate)) {
@@ -1808,6 +2053,7 @@ function ProductionSetupEditor({
               <Field label="Frequency Start Date" tooltip="Start date for actual Power BI events filter (format: YYYY-MM-DD)">
                 <DateInput
                   value={setup.frequencyStartDate ?? ''}
+                  disabled={isReadOnly}
                   onChange={(v) => onHeaderChange({ frequencyStartDate: v })}
                 />
               </Field>
@@ -1815,6 +2061,7 @@ function ProductionSetupEditor({
                 <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                   <DateInput
                     value={setup.frequencyEndDate ?? ''}
+                    disabled={isReadOnly}
                     onChange={(v) => onHeaderChange({ frequencyEndDate: v })}
                   />
                   <button
@@ -1822,6 +2069,7 @@ function ProductionSetupEditor({
                     className="btn btn-ghost"
                     style={{ padding: '4px 8px', height: '36px', display: 'inline-flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap', fontSize: '0.78rem' }}
                     title="Reset date range to default from Settings"
+                    disabled={isReadOnly}
                     onClick={async () => {
                       const defaults = await loadDefaultValuesOrBuiltIn();
                       const range = computeFrequencyDateRange(
@@ -1846,31 +2094,32 @@ function ProductionSetupEditor({
             </>
           )}
           <Field label="Shift Time (min)">
-            <NumberInput value={setup.shiftTime} onChange={(v) => onHeaderChange({ shiftTime: v })} />
+            <NumberInput value={setup.shiftTime} disabled={isReadOnly} onChange={(v) => onHeaderChange({ shiftTime: v })} />
           </Field>
           <Field label="Lunch Time (min)">
-            <NumberInput value={setup.lunchTime} onChange={(v) => onHeaderChange({ lunchTime: v })} />
+            <NumberInput value={setup.lunchTime} disabled={isReadOnly} onChange={(v) => onHeaderChange({ lunchTime: v })} />
           </Field>
           <Field label="Lunch starts at minute">
-            <NumberInput value={setup.lunchStartAt} min={0} onChange={(v) => onHeaderChange({ lunchStartAt: v })} />
+            <NumberInput value={setup.lunchStartAt} min={0} disabled={isReadOnly} onChange={(v) => onHeaderChange({ lunchStartAt: v })} />
           </Field>
           <Field label="Meeting Time (min)">
-            <NumberInput value={setup.meetingTime} onChange={(v) => onHeaderChange({ meetingTime: v })} />
+            <NumberInput value={setup.meetingTime} disabled={isReadOnly} onChange={(v) => onHeaderChange({ meetingTime: v })} />
           </Field>
           <Field label="Meeting starts at minute">
-            <NumberInput value={setup.meetingStartAt} min={0} onChange={(v) => onHeaderChange({ meetingStartAt: v })} />
+            <NumberInput value={setup.meetingStartAt} min={0} disabled={isReadOnly} onChange={(v) => onHeaderChange({ meetingStartAt: v })} />
           </Field>
           <Field label="RPC %" tooltip="Rest & Personal Care allowance: added on top of every activity's time when it's actually serviced (shown as its own segment in the timeline), e.g. 12% turns a 10-minute activity into 11.2 minutes.">
-            <NumberInput value={setup.rpc ?? 12} min={0} onChange={(v) => onHeaderChange({ rpc: v })} />
+            <NumberInput value={setup.rpc ?? 12} min={0} disabled={isReadOnly} onChange={(v) => onHeaderChange({ rpc: v })} />
           </Field>
           <Field label="Doff Priority" tooltip={DOFF_PRIORITY_TOOLTIP}>
-            <Toggle checked={setup.doffPriority} onChange={(v) => onHeaderChange({ doffPriority: v })} ariaLabel="Doff Priority" />
+            <Toggle checked={setup.doffPriority} onChange={(v) => onHeaderChange({ doffPriority: v })} ariaLabel="Doff Priority" disabled={isReadOnly} />
           </Field>
           <Field label="Min Remain Task for Doff Priority (min)">
             <NumberInput
               value={setup.minRemainForDoffPriority}
               min={0}
-              readOnly={!setup.doffPriority}
+              readOnly={isReadOnly || !setup.doffPriority}
+              disabled={isReadOnly}
               onChange={(v) => onHeaderChange({ minRemainForDoffPriority: Number.isFinite(v) ? v : 0 })}
             />
           </Field>
@@ -1904,7 +2153,7 @@ function ProductionSetupEditor({
           </Field>
           )}
           <Field label="Walking Speed (m/min)">
-            <NumberInput value={setup.movement.walkingSpeed} min={0} onChange={(v) => onHeaderChange({ movement: { ...setup.movement, walkingSpeed: v } })} />
+            <NumberInput value={setup.movement.walkingSpeed} min={0} disabled={isReadOnly} onChange={(v) => onHeaderChange({ movement: { ...setup.movement, walkingSpeed: v } })} />
           </Field>
         </div>
         {!canRun && <p className="data-manager-hint">Add at least 1 operator and assign a Construction Detail to at least 1 machine before running the simulation.</p>}
@@ -1914,14 +2163,16 @@ function ProductionSetupEditor({
         title="Operators"
         actions={
           <div className="production-csv-actions">
-            <Button
-              variant="secondary"
-              onClick={() => setStartTimesOpen(true)}
-              title="Custom Lunch / Meeting start per operator"
-              aria-label="Custom Lunch / Meeting start per operator"
-            >
-              ⚙️
-            </Button>
+            {!isReadOnly && (
+              <Button
+                variant="secondary"
+                onClick={() => setStartTimesOpen(true)}
+                title="Custom Lunch / Meeting start per operator"
+                aria-label="Custom Lunch / Meeting start per operator"
+              >
+                ⚙️
+              </Button>
+            )}
             <Button
               variant="secondary"
               onClick={() => setPlannedUtilizationOpen(true)}
@@ -1941,58 +2192,64 @@ function ProductionSetupEditor({
           />
         )}
         {waitingModelInfoOpen && <WaitingModelInfoDialog selected={setup.waitingModel} onClose={() => setWaitingModelInfoOpen(false)} />}
-        <div className="production-operator-add">
-          <input
-            className="input"
-            placeholder="Operator name, e.g. Operator 1"
-            value={newOperatorName}
-            onChange={(e) => setNewOperatorName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && addOperator()}
-            disabled={addingOperator || addingBulkOperators}
-          />
-          <Button
-            variant="secondary"
-            onClick={addOperator}
-            disabled={addingOperator || addingBulkOperators || !newOperatorName.trim() || operatorNameExists(newOperatorName)}
-            title={operatorNameExists(newOperatorName) ? `Operator "${newOperatorName.trim()}" already exists` : undefined}
-          >
-            {addingOperator ? 'Adding…' : '+ Add Operator'}
-          </Button>
-        </div>
-        <div className="production-operator-add" style={{ marginTop: 10 }}>
-          <input
-            className="input"
-            type="number"
-            min={1}
-            max={500}
-            value={bulkOperatorCount}
-            onChange={(e) => setBulkOperatorCount(Math.max(1, Number(e.target.value) || 1))}
-            disabled={addingOperator || addingBulkOperators}
-          />
-          <input
-            className="input"
-            placeholder="Prefix, e.g. Opr"
-            value={bulkOperatorPrefix}
-            onChange={(e) => setBulkOperatorPrefix(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && addBulkOperators()}
-            disabled={addingOperator || addingBulkOperators}
-          />
-          <Button
-            variant="secondary"
-            onClick={addBulkOperators}
-            disabled={addingOperator || addingBulkOperators || !bulkOperatorPrefix.trim()}
-          >
-            {addingBulkOperators ? 'Creating…' : `+ Add ${bulkOperatorCount} Operators`}
-          </Button>
-        </div>
+        {!isReadOnly && (
+          <>
+            <div className="production-operator-add">
+              <input
+                className="input"
+                placeholder="Operator name, e.g. Operator 1"
+                value={newOperatorName}
+                onChange={(e) => setNewOperatorName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && addOperator()}
+                disabled={addingOperator || addingBulkOperators}
+              />
+              <Button
+                variant="secondary"
+                onClick={addOperator}
+                disabled={addingOperator || addingBulkOperators || !newOperatorName.trim() || operatorNameExists(newOperatorName)}
+                title={operatorNameExists(newOperatorName) ? `Operator "${newOperatorName.trim()}" already exists` : undefined}
+              >
+                {addingOperator ? 'Adding…' : '+ Add Operator'}
+              </Button>
+            </div>
+            <div className="production-operator-add" style={{ marginTop: 10 }}>
+              <input
+                className="input"
+                type="number"
+                min={1}
+                max={500}
+                value={bulkOperatorCount}
+                onChange={(e) => setBulkOperatorCount(Math.max(1, Number(e.target.value) || 1))}
+                disabled={addingOperator || addingBulkOperators}
+              />
+              <input
+                className="input"
+                placeholder="Prefix, e.g. Opr"
+                value={bulkOperatorPrefix}
+                onChange={(e) => setBulkOperatorPrefix(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && addBulkOperators()}
+                disabled={addingOperator || addingBulkOperators}
+              />
+              <Button
+                variant="secondary"
+                onClick={addBulkOperators}
+                disabled={addingOperator || addingBulkOperators || !bulkOperatorPrefix.trim()}
+              >
+                {addingBulkOperators ? 'Creating…' : `+ Add ${bulkOperatorCount} Operators`}
+              </Button>
+            </div>
+          </>
+        )}
         <div className="production-operator-chips">
           {setup.operators.length === 0 && <p className="data-manager-hint">No operators yet.</p>}
           {setup.operators.map((o) => (
             <span key={o.id} className="production-operator-chip" title={operatorIdealDemandTooltip(o.id)}>
               {operatorForecastLabel(o.id, o.label)}
-              <button type="button" onClick={() => removeOperator(o.id)} title="Remove operator">
-                ×
-              </button>
+              {!isReadOnly && (
+                <button type="button" onClick={() => removeOperator(o.id)} title="Remove operator">
+                  ×
+                </button>
+              )}
             </span>
           ))}
         </div>
@@ -2044,28 +2301,32 @@ function ProductionSetupEditor({
           <div className="production-csv-actions">
             <MachineAssignmentsSearch value={assignmentsSearch} onChange={setAssignmentsSearch} />
             <MachineAssignmentsGroupBySelect value={assignmentsGroupBy} onChange={setAssignmentsGroupBy} />
-            <input
-              ref={importInputRef}
-              type="file"
-              accept=".csv,text/csv"
-              className="production-csv-input"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file && !importProgress) void importCsv(file);
-                e.target.value = '';
-              }}
-            />
-            <Button
-              variant="secondary"
-              onClick={() => setMesImportOpen(true)}
-              disabled={importProgress !== null}
-              title="Import active machine Construction Details from Power BI MES (MES_ActualOutput)"
-            >
-              ⚡ Import from MES
-            </Button>
-            <Button variant="ghost" onClick={() => importInputRef.current?.click()} disabled={importProgress !== null}>
-              {importProgress ? `Importing… ${importProgress.done}/${importProgress.total}` : 'Import CSV'}
-            </Button>
+            {!isReadOnly && (
+              <>
+                <input
+                  ref={importInputRef}
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="production-csv-input"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file && !importProgress) void importCsv(file);
+                    e.target.value = '';
+                  }}
+                />
+                <Button
+                  variant="secondary"
+                  onClick={() => setMesImportOpen(true)}
+                  disabled={importProgress !== null}
+                  title="Import active machine Construction Details from Power BI MES (MES_ActualOutput)"
+                >
+                  ⚡ Import from MES
+                </Button>
+                <Button variant="ghost" onClick={() => importInputRef.current?.click()} disabled={importProgress !== null}>
+                  {importProgress ? `Importing… ${importProgress.done}/${importProgress.total}` : 'Import CSV'}
+                </Button>
+              </>
+            )}
             <Button variant="secondary" onClick={exportCsv}>
               Export CSV
             </Button>
