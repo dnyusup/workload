@@ -29,8 +29,10 @@ export interface ProductionSetupSummary {
   /** Dataverse's own `createdbyname` — always populated, used for display and as the ownership
    * fallback when `createdByEmail` is empty (pre-existing setups). */
   createdByName: string;
-  /** Semicolon/comma-separated list of contributor emails with read-only shared access. */
+  /** Semicolon/comma-separated list of contributor emails with shared access. */
   sharedEmail?: string;
+  /** Semicolon/comma-separated list of roles ('read' | 'edit') matching sharedEmail. */
+  sharedRole?: string;
 }
 
 /** machineId (LayoutMachine.id, plain text on the row) → that row's own Dataverse id — needed
@@ -121,6 +123,7 @@ export async function listProductionSetupSummaries(): Promise<ProductionSetupSum
     createdByEmail: row.mpp_creator_email ?? '',
     createdByName: (row as any).createdbyname ?? '',
     sharedEmail: row.mpp_shared_email ?? '',
+    sharedRole: row.mpp_shared_role ?? '',
   }));
 }
 
@@ -195,6 +198,7 @@ export async function loadProductionSetup(id: string, constructionLabelById: Map
     createdByEmail: header.mpp_creator_email ?? '',
     createdByName: (header as any).createdbyname ?? '',
     sharedEmail: header.mpp_shared_email ?? '',
+    sharedRole: header.mpp_shared_role ?? '',
   };
 }
 
@@ -310,6 +314,7 @@ export async function updateProductionSetupHeader(
       | 'frequencyStartDate'
       | 'frequencyEndDate'
       | 'sharedEmail'
+      | 'sharedRole'
     >
   >,
 ): Promise<void> {
@@ -342,6 +347,9 @@ export async function updateProductionSetupHeader(
   if (patch.sharedEmail !== undefined) {
     fields.mpp_shared_email = patch.sharedEmail || null;
   }
+  if (patch.sharedRole !== undefined) {
+    fields.mpp_shared_role = patch.sharedRole || null;
+  }
   if (Object.keys(fields).length === 0) return;
   const result = await Mpp_wl_productionsetupsesService.update(id, fields as any);
   if (!result.success) throw new Error(result.error?.message ?? 'Failed to update Production Setup.');
@@ -365,6 +373,7 @@ export async function duplicateProductionSetup(
     mpp_layoutsnapshotjson: serializeLayoutBlob(source.layout, source.operatorStart, source.walls, source.remarks),
     mpp_creator_email: creatorEmail,
     mpp_shared_email: undefined, // Duplicated setup is personal and private by default
+    mpp_shared_role: undefined,
     mpp_shifttime: source.shiftTime,
     mpp_lunchtime: source.lunchTime,
     mpp_lunchstartat: source.lunchStartAt,

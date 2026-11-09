@@ -513,6 +513,7 @@ export interface ProductionSetup {
   createdByEmail?: string;
   createdByName?: string;
   sharedEmail?: string;
+  sharedRole?: string;
 }
 
 /** One independent operator's live state during a Production Simulation run — same FSM shape as

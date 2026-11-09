@@ -18,7 +18,7 @@ import {
 } from '../../lib/productionSetupsStore';
 import { useDebouncedCallback } from '../../hooks/useDebouncedCallback';
 import { useAuth } from '../../context/auth';
-import { isOwnedByCurrentUser, isSharedWithCurrentUser } from '../../lib/ownership';
+import { isOwnedByCurrentUser, isSharedWithCurrentUser, canEditSetup, getSharedRoleForCurrentUser } from '../../lib/ownership';
 import { resolveDisplayNames } from '../../lib/userDirectory';
 import { Mpp_wl_productsesService } from '../../generated/services/Mpp_wl_productsesService';
 import { fetchAllPages } from '../../lib/dataversePaging';
@@ -493,13 +493,13 @@ export function ProductionSimulationPage() {
     }
   };
 
-  const handleShareSaved = (updatedSharedEmail: string) => {
+  const handleShareSaved = (updatedSharedEmail: string, updatedSharedRole: string) => {
     if (!sharingSetup) return;
     setSummaries((prev) =>
-      prev.map((s) => (s.id === sharingSetup.id ? { ...s, sharedEmail: updatedSharedEmail } : s)),
+      prev.map((s) => (s.id === sharingSetup.id ? { ...s, sharedEmail: updatedSharedEmail, sharedRole: updatedSharedRole } : s)),
     );
     if (selectedSetup && selectedSetup.id === sharingSetup.id) {
-      setSelectedSetup((prev) => (prev ? { ...prev, sharedEmail: updatedSharedEmail } : prev));
+      setSelectedSetup((prev) => (prev ? { ...prev, sharedEmail: updatedSharedEmail, sharedRole: updatedSharedRole } : prev));
     }
   };
 
@@ -792,7 +792,18 @@ export function ProductionSimulationPage() {
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
                           <span className="layout-list-name">{s.name}</span>
-                          {isShared(s) && <span className="setup-badge-shared">Shared to me</span>}
+                          {isShared(s) && (
+                            <span
+                              className="setup-badge-shared"
+                              style={
+                                getSharedRoleForCurrentUser(s, user) === 'edit'
+                                  ? { background: 'rgba(34, 197, 94, 0.15)', color: '#4ade80', borderColor: 'rgba(34, 197, 94, 0.35)' }
+                                  : undefined
+                              }
+                            >
+                              {getSharedRoleForCurrentUser(s, user) === 'edit' ? 'Shared (Edit)' : 'Shared (View)'}
+                            </span>
+                          )}
                           {isOwned(s) && !!s.sharedEmail?.trim() && <span className="setup-badge-sharing">Sharing</span>}
                         </div>
                         <span className="layout-list-count">
@@ -916,8 +927,8 @@ export function ProductionSimulationPage() {
         <ShareProductionSetupDialog
           setup={sharingSetup}
           onClose={() => setSharingSetup(null)}
-          onSuccess={(newSharedEmail) => {
-            handleShareSaved(newSharedEmail);
+          onSuccess={(newSharedEmail, newSharedRole) => {
+            handleShareSaved(newSharedEmail, newSharedRole);
             setSharingSetup(null);
           }}
         />
@@ -987,7 +998,8 @@ function ProductionSetupEditor({
 }) {
   const { user } = useAuth();
   const isAdmin = user.role === 'admin';
-  const isReadOnly = !isAdmin && !isOwnedByCurrentUser(setup, user);
+  const isReadOnly = !canEditSetup(setup, user);
+  const isSharedToMe = isSharedWithCurrentUser(setup, user);
   /** Only an Admin picks the waiting model (and only when not read-only); for everyone else it follows Default Values. */
   const canChangeWaitingModel = isAdmin && !isReadOnly;
   const [selectedMachineIds, setSelectedMachineIds] = useState<string[]>([]);
@@ -2012,12 +2024,30 @@ function ProductionSetupEditor({
               <path d="M7 11V7a5 5 0 0 1 10 0v4" />
             </svg>
             <div>
-              <strong>Read-Only Access:</strong> This setup was shared with you. You can run simulations, inspect all assignments, and export data, but cannot edit this setup directly.
+              <strong>Read-Only Access:</strong> This setup was shared with you as read-only. You can run simulations, inspect all assignments, and export data, but cannot edit this setup directly.
             </div>
           </div>
           {onDuplicate && (
             <Button variant="secondary" onClick={onDuplicate} style={{ whiteSpace: 'nowrap' }}>
               Duplicate to Edit
+            </Button>
+          )}
+        </div>
+      )}
+      {!isReadOnly && isSharedToMe && (
+        <div className="setup-readonly-banner" style={{ borderColor: 'rgba(34, 197, 94, 0.4)', background: 'rgba(34, 197, 94, 0.08)' }}>
+          <div className="setup-readonly-info">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+            </svg>
+            <div style={{ color: '#86efac' }}>
+              <strong>Shared Setup (Can Edit):</strong> This setup was shared with you with edit permissions. Any changes you make will update this setup.
+            </div>
+          </div>
+          {onDuplicate && (
+            <Button variant="secondary" onClick={onDuplicate} style={{ whiteSpace: 'nowrap' }}>
+              Duplicate
             </Button>
           )}
         </div>

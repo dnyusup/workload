@@ -5,20 +5,18 @@ import { updateProductionSetupHeader, type ProductionSetupSummary } from '../../
 import { Office365UsersService } from '../../generated/services/Office365UsersService';
 import type { User } from '../../generated/models/Office365UsersModel';
 import { Button } from '../ui/Button';
+import { parseSharedUsers, serializeSharedUsers, type SharedUserEntry, type SharedRole } from '../../lib/ownership';
 
 interface ShareProductionSetupDialogProps {
   setup: ProductionSetupSummary | ProductionSetup;
   onClose: () => void;
-  onSuccess: (updatedSharedEmail: string) => void;
+  onSuccess: (updatedSharedEmail: string, updatedSharedRole: string) => void;
 }
 
 export function ShareProductionSetupDialog({ setup, onClose, onSuccess }: ShareProductionSetupDialogProps) {
-  const initialEmails = (setup.sharedEmail ?? '')
-    .split(/[,;\s]+/)
-    .map((e: string) => e.trim().toLowerCase())
-    .filter(Boolean);
+  const initialEntries = parseSharedUsers(setup.sharedEmail, setup.sharedRole);
 
-  const [emails, setEmails] = useState<string[]>(initialEmails);
+  const [entries, setEntries] = useState<SharedUserEntry[]>(initialEntries);
   const [inputVal, setInputVal] = useState('');
   const [searching, setSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<User[]>([]);
@@ -72,27 +70,32 @@ export function ShareProductionSetupDialog({ setup, onClose, onSuccess }: ShareP
       setError('Please enter a valid email address.');
       return;
     }
-    if (emails.includes(clean)) {
+    if (entries.some((e) => e.email === clean)) {
       setError(`"${clean}" is already in the share list.`);
       return;
     }
-    setEmails((prev) => [...prev, clean]);
+    // Default role is always 'read'
+    setEntries((prev) => [...prev, { email: clean, role: 'read' }]);
     setInputVal('');
     setSearchResults([]);
     setError(null);
   };
 
   const removeEmail = (emailToRemove: string) => {
-    setEmails((prev) => prev.filter((e) => e !== emailToRemove));
+    setEntries((prev) => prev.filter((e) => e.email !== emailToRemove));
+  };
+
+  const changeRole = (email: string, role: SharedRole) => {
+    setEntries((prev) => prev.map((e) => (e.email === email ? { ...e, role } : e)));
   };
 
   const handleSave = async () => {
     setSaving(true);
     setError(null);
-    const joined = emails.join(';');
+    const { sharedEmail, sharedRole } = serializeSharedUsers(entries);
     try {
-      await updateProductionSetupHeader(setup.id, { sharedEmail: joined });
-      onSuccess(joined);
+      await updateProductionSetupHeader(setup.id, { sharedEmail, sharedRole });
+      onSuccess(sharedEmail, sharedRole);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save shared users.');
@@ -115,7 +118,7 @@ export function ShareProductionSetupDialog({ setup, onClose, onSuccess }: ShareP
             <span className="om-detail-eyebrow">Production Setup Sharing</span>
             <h3>Share Setup: {setup.name}</h3>
             <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: '#94a3b8' }}>
-              Shared contributors will have <strong>read-only</strong> access to this setup and can duplicate it to their own workspace.
+              Choose whether shared contributors can view/duplicate this setup (read-only) or edit it directly.
             </p>
           </div>
           <button
@@ -224,9 +227,9 @@ export function ShareProductionSetupDialog({ setup, onClose, onSuccess }: ShareP
           {/* List of currently shared users */}
           <div>
             <label style={{ display: 'block', fontSize: '0.78rem', color: '#cbd5e1', marginBottom: '8px', fontWeight: 600 }}>
-              Shared with ({emails.length}):
+              Shared with ({entries.length}):
             </label>
-            {emails.length === 0 ? (
+            {entries.length === 0 ? (
               <div
                 style={{
                   padding: '20px',
@@ -252,9 +255,9 @@ export function ShareProductionSetupDialog({ setup, onClose, onSuccess }: ShareP
                   flexDirection: 'column',
                 }}
               >
-                {emails.map((email) => (
+                {entries.map((entry) => (
                   <div
-                    key={email}
+                    key={entry.email}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -262,16 +265,18 @@ export function ShareProductionSetupDialog({ setup, onClose, onSuccess }: ShareP
                       padding: '8px 12px',
                       borderBottom: '1px solid #1e293b',
                       fontSize: '0.82rem',
+                      gap: '8px',
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
                       <span
                         style={{
                           width: '26px',
                           height: '26px',
+                          flexShrink: 0,
                           borderRadius: '50%',
-                          background: 'rgba(56, 189, 248, 0.15)',
-                          color: '#38bdf8',
+                          background: entry.role === 'edit' ? 'rgba(34, 197, 94, 0.15)' : 'rgba(56, 189, 248, 0.15)',
+                          color: entry.role === 'edit' ? '#4ade80' : '#38bdf8',
                           display: 'inline-flex',
                           alignItems: 'center',
                           justifyContent: 'center',
@@ -279,39 +284,60 @@ export function ShareProductionSetupDialog({ setup, onClose, onSuccess }: ShareP
                           fontSize: '0.75rem',
                         }}
                       >
-                        {email[0]?.toUpperCase() ?? '@'}
+                        {entry.email[0]?.toUpperCase() ?? '@'}
                       </span>
-                      <span style={{ color: '#f1f5f9', fontFamily: 'monospace' }}>{email}</span>
                       <span
                         style={{
-                          fontSize: '0.68rem',
-                          background: 'rgba(56, 189, 248, 0.12)',
-                          color: '#38bdf8',
-                          border: '1px solid rgba(56, 189, 248, 0.25)',
-                          padding: '1px 6px',
+                          color: '#f1f5f9',
+                          fontFamily: 'monospace',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                        title={entry.email}
+                      >
+                        {entry.email}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                      <select
+                        value={entry.role}
+                        onChange={(e) => changeRole(entry.email, e.target.value as SharedRole)}
+                        disabled={saving}
+                        aria-label={`Permission role for ${entry.email}`}
+                        style={{
+                          padding: '3px 8px',
+                          fontSize: '0.75rem',
+                          borderRadius: '6px',
+                          background: entry.role === 'edit' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(56, 189, 248, 0.12)',
+                          color: entry.role === 'edit' ? '#4ade80' : '#38bdf8',
+                          border: `1px solid ${entry.role === 'edit' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(56, 189, 248, 0.3)'}`,
+                          cursor: 'pointer',
+                          fontWeight: 500,
+                        }}
+                      >
+                        <option value="read" style={{ background: '#0f172a', color: '#f1f5f9' }}>Can view (Read-only)</option>
+                        <option value="edit" style={{ background: '#0f172a', color: '#f1f5f9' }}>Can edit</option>
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => removeEmail(entry.email)}
+                        disabled={saving}
+                        title={`Remove ${entry.email}`}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#ef4444',
+                          cursor: 'pointer',
+                          padding: '4px 6px',
+                          fontSize: '0.9rem',
                           borderRadius: '4px',
                         }}
                       >
-                        Read-only
-                      </span>
+                        ✕
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => removeEmail(email)}
-                      disabled={saving}
-                      title={`Remove ${email}`}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: '#ef4444',
-                        cursor: 'pointer',
-                        padding: '4px 8px',
-                        fontSize: '0.9rem',
-                        borderRadius: '4px',
-                      }}
-                    >
-                      ✕
-                    </button>
                   </div>
                 ))}
               </div>

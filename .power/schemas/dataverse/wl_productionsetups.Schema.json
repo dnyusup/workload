@@ -290,6 +290,14 @@
           "x-ms-schema-name": "mpp_shared_email",
           "maxLength": 1000000
         },
+        "mpp_shared_role": {
+          "type": "string",
+          "title": "shared_role",
+          "x-ms-dataverse-attribute": "mpp_shared_role",
+          "x-ms-dataverse-type": "MemoType",
+          "x-ms-schema-name": "mpp_shared_role",
+          "maxLength": 1000000
+        },
         "mpp_shifttime": {
           "type": "string",
           "title": "shifttime",
