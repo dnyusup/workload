@@ -23,7 +23,7 @@
       "id": "/providers/microsoft.powerapps/apis/shared_powerbi",
       "displayName": "Power BI"
     },
-    "127ffe26-0014-4aa8-93f8-813d42642f94": {
+    "43a840ef-3f06-4b69-bd87-379257b6577e": {
       "id": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
       "displayName": "Logic flows",
       "dataSources": [
@@ -38,7 +38,7 @@
         }
       }
     },
-    "745561b9-b777-47e7-85db-e704a92c9e80": {
+    "90e0d105-e5fa-4948-a7ff-cc823d6eede5": {
       "id": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
       "displayName": "Logic flows",
       "dataSources": [

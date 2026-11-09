@@ -8,6 +8,8 @@ export interface AuthUser {
   /** 'guest' whenever the signed-in email has no row in WL_Users — matches the app's definition
    * of Guest as "not in the access table", rather than an explicit role value. */
   role: UserRole;
+  /** Maximum number of Production Setups this user can create (applies to Contribute role). */
+  maxSetup?: number;
 }
 
 export interface AuthContextValue {

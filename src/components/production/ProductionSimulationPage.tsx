@@ -371,9 +371,20 @@ export function ProductionSimulationPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, loadingProducts, isAdmin]);
 
+  const isOwned = useCallback((s: ProductionSetupSummary) => isOwnedByCurrentUser(s, user), [user]);
+  const isShared = useCallback((s: ProductionSetupSummary) => isSharedWithCurrentUser(s, user), [user]);
+  const createdCount = useMemo(() => summaries.filter(isOwned).length, [summaries, isOwned]);
+  const sharedCount = useMemo(() => summaries.filter(isShared).length, [summaries, isShared]);
+  const allCount = summaries.length;
+  const isLimitReached = !isAdmin && user.role === 'contribute' && typeof user.maxSetup === 'number' && createdCount >= user.maxSetup;
+
   const createSetup = async () => {
     const layout = savedLayouts.find((l) => l.id === creatingFromLayoutId);
     if (!layout || !newSetupName.trim()) return;
+    if (isLimitReached) {
+      setSummariesError(`Maximum setup limit reached (${createdCount}/${user.maxSetup}). Please delete an existing setup or ask an Admin to increase your limit.`);
+      return;
+    }
     setCreatingSetup(true);
     setCreateProgress({ done: 0, total: layout.machines.length });
     setSummariesError(null);
@@ -424,13 +435,6 @@ export function ProductionSimulationPage() {
   const canDelete = (s: ProductionSetupSummary | ProductionSetup) => isAdmin || isOwnedByCurrentUser(s, user);
   const canShare = (s: ProductionSetupSummary | ProductionSetup) => isAdmin || isOwnedByCurrentUser(s, user);
 
-  const isOwned = useCallback((s: ProductionSetupSummary) => isOwnedByCurrentUser(s, user), [user]);
-  const isShared = useCallback((s: ProductionSetupSummary) => isSharedWithCurrentUser(s, user), [user]);
-
-  const createdCount = useMemo(() => summaries.filter(isOwned).length, [summaries, isOwned]);
-  const sharedCount = useMemo(() => summaries.filter(isShared).length, [summaries, isShared]);
-  const allCount = summaries.length;
-
   const tabFilteredSummaries = useMemo(() => {
     if (setupFilterTab === 'created') return summaries.filter(isOwned);
     if (setupFilterTab === 'shared') return summaries.filter(isShared);
@@ -449,6 +453,11 @@ export function ProductionSimulationPage() {
   }, [tabFilteredSummaries, setupSearchTerm, creatorNames]);
 
   const handleDuplicateSetup = async (source: ProductionSetupSummary | ProductionSetup, newName: string) => {
+    if (isLimitReached) {
+      const msg = `Maximum setup limit reached (${createdCount}/${user.maxSetup}). Please delete an existing setup or ask an Admin to increase your limit.`;
+      setSummariesError(msg);
+      throw new Error(msg);
+    }
     setDuplicatingId(source.id);
     setDuplicateProgress({ done: 0, total: 1 });
     setSummariesError(null);
@@ -717,13 +726,23 @@ export function ProductionSimulationPage() {
                 onChange={(e) => setNewSetupName(e.target.value)}
                 disabled={creatingSetup}
               />
-              <Button variant="secondary" onClick={createSetup} disabled={!creatingFromLayoutId || !newSetupName.trim() || creatingSetup}>
+              <Button
+                variant="secondary"
+                onClick={createSetup}
+                disabled={!creatingFromLayoutId || !newSetupName.trim() || creatingSetup || isLimitReached}
+                title={isLimitReached ? `Maximum setup limit reached (${createdCount}/${user.maxSetup})` : undefined}
+              >
                 {creatingSetup
                   ? createProgress && createProgress.total > 0
                     ? `Creating… (${createProgress.done}/${createProgress.total})`
                     : 'Creating…'
                   : '+ New Setup'}
               </Button>
+              {isLimitReached && (
+                <p className="data-manager-hint" style={{ color: '#f87171', margin: '4px 0 0 0' }}>
+                  Maximum setup limit reached ({createdCount}/{user.maxSetup}). Delete an existing setup or ask an Admin to increase your limit.
+                </p>
+              )}
               {creatingSetup && (
                 <p className="data-manager-hint">Creating machine rows in Dataverse — this can take a while for large layouts, please wait.</p>
               )}
@@ -742,7 +761,9 @@ export function ProductionSimulationPage() {
               onChange={(e) => setSetupFilterTab(e.target.value as SetupFilterTab)}
               aria-label="Filter setups by ownership"
             >
-              <option value="created">Created by me ({createdCount})</option>
+              <option value="created">
+                Created by me ({createdCount}{!isAdmin && user.role === 'contribute' && typeof user.maxSetup === 'number' ? ` / ${user.maxSetup}` : ''})
+              </option>
               <option value="shared">Shared to me ({sharedCount})</option>
               <option value="all">All setup ({allCount})</option>
             </select>
@@ -785,9 +806,13 @@ export function ProductionSimulationPage() {
                         <button
                           type="button"
                           className="setup-icon-btn duplicate"
-                          title="Duplicate Setup"
+                          title={isLimitReached ? `Maximum setup limit reached (${createdCount}/${user.maxSetup})` : "Duplicate Setup"}
                           onClick={(e) => {
                             e.stopPropagation();
+                            if (isLimitReached) {
+                              alert(`Maximum setup limit reached (${createdCount}/${user.maxSetup}). Please delete an existing setup or ask an Admin to increase your limit.`);
+                              return;
+                            }
                             setDuplicatingTarget(s);
                           }}
                           disabled={duplicatingId !== null || deletingId !== null}
@@ -865,7 +890,13 @@ export function ProductionSimulationPage() {
               setSummaries((prev) => prev.map((s) => (s.id === selectedSetup.id ? { ...s, operatorCount: s.operatorCount + delta } : s)))
             }
             onProductsUpdated={(updated) => setProducts(updated)}
-            onDuplicate={() => setDuplicatingTarget(selectedSetup)}
+            onDuplicate={() => {
+              if (isLimitReached) {
+                alert(`Maximum setup limit reached (${createdCount}/${user.maxSetup}). Please delete an existing setup or ask an Admin to increase your limit.`);
+                return;
+              }
+              setDuplicatingTarget(selectedSetup);
+            }}
             onShare={canShare(selectedSetup) ? () => setSharingSetup(selectedSetup) : undefined}
             resolving={resolving}
             plannedUtilization={plannedResolution.utilization}

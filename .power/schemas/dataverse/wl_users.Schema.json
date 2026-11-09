@@ -170,6 +170,13 @@
           "x-ms-dataverse-primary-name": true,
           "maxLength": 850
         },
+        "mpp_max_setup": {
+          "type": "string",
+          "title": "max_setup",
+          "x-ms-dataverse-attribute": "mpp_max_setup",
+          "x-ms-dataverse-type": "IntegerType",
+          "x-ms-schema-name": "mpp_max_setup"
+        },
         "mpp_name": {
           "type": "string",
           "title": "name",

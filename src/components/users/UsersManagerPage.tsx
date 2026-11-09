@@ -14,6 +14,7 @@ interface AccessRow {
   email: string;
   name: string;
   role: 'Admin' | 'Contribute';
+  maxSetup?: number;
 }
 
 function toAccessRow(row: Mpp_wl_userses): AccessRow {
@@ -23,6 +24,7 @@ function toAccessRow(row: Mpp_wl_userses): AccessRow {
     email: row.mpp_email ?? '',
     name: row.mpp_name ?? '',
     role: normalizedRole === 'admin' ? 'Admin' : 'Contribute',
+    maxSetup: typeof row.mpp_max_setup === 'number' ? row.mpp_max_setup : undefined,
   };
 }
 
@@ -41,6 +43,7 @@ export function UsersManagerPage() {
   const [searching, setSearching] = useState(false);
   const [picked, setPicked] = useState<{ email: string; name: string } | null>(null);
   const [roleToAdd, setRoleToAdd] = useState<'Admin' | 'Contribute'>('Contribute');
+  const [maxSetupToAdd, setMaxSetupToAdd] = useState<number | ''>(2);
   const searchSeq = useRef(0);
   const sortedRows = useMemo(
     () =>
@@ -108,6 +111,10 @@ export function UsersManagerPage() {
       setError(`${picked.email} already has access.`);
       return;
     }
+    if (roleToAdd === 'Contribute' && (maxSetupToAdd === '' || Number(maxSetupToAdd) <= 0)) {
+      setError('Max Setup is required for Contribute role (must be at least 1).');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -115,12 +122,14 @@ export function UsersManagerPage() {
         mpp_email: picked.email,
         mpp_name: picked.name,
         mpp_role: roleToAdd,
+        mpp_max_setup: roleToAdd === 'Contribute' ? (typeof maxSetupToAdd === 'number' ? maxSetupToAdd : 2) : undefined,
         statecode: 0,
       });
       if (!result.success || !result.data) throw new Error(result.error?.message ?? 'Failed to add user.');
       setRows((prev) => [...prev, toAccessRow(result.data!)]);
       setPicked(null);
       setSearchTerm('');
+      setMaxSetupToAdd(2);
       if (picked.email.toLowerCase() === user.email.toLowerCase()) await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add user.');
@@ -131,13 +140,31 @@ export function UsersManagerPage() {
 
   const changeRole = async (id: string, role: 'Admin' | 'Contribute') => {
     const target = rows.find((r) => r.id === id);
-    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, role } : r)));
+    const nextMaxSetup = role === 'Contribute' ? (target?.maxSetup ?? 2) : undefined;
+    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, role, maxSetup: nextMaxSetup } : r)));
     try {
-      const result = await Mpp_wl_usersesService.update(id, { mpp_role: role });
+      const patch: { mpp_role: string; mpp_max_setup?: number } = { mpp_role: role };
+      if (role === 'Contribute') {
+        patch.mpp_max_setup = nextMaxSetup;
+      }
+      const result = await Mpp_wl_usersesService.update(id, patch);
       if (!result.success) throw new Error(result.error?.message ?? 'Failed to update role.');
       if (target && target.email.toLowerCase() === user.email.toLowerCase()) await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update role.');
+      loadRows();
+    }
+  };
+
+  const changeMaxSetup = async (id: string, maxSetup: number | undefined) => {
+    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, maxSetup } : r)));
+    try {
+      const result = await Mpp_wl_usersesService.update(id, { mpp_max_setup: maxSetup });
+      if (!result.success) throw new Error(result.error?.message ?? 'Failed to update Max Setup.');
+      const target = rows.find((r) => r.id === id);
+      if (target && target.email.toLowerCase() === user.email.toLowerCase()) await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update Max Setup.');
       loadRows();
     }
   };
@@ -185,12 +212,36 @@ export function UsersManagerPage() {
               ))}
             </ul>
           )}
-          <div className="user-picker-add-row">
+          <div className="user-picker-add-row" style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
             <select className="input" value={roleToAdd} onChange={(e) => setRoleToAdd(e.target.value as 'Admin' | 'Contribute')}>
               <option value="Contribute">Contribute</option>
               <option value="Admin">Admin</option>
             </select>
-            <Button variant="primary" onClick={addUser} disabled={!picked || busy}>
+            {roleToAdd === 'Contribute' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <label style={{ fontSize: '0.8rem', color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                  Max Setup <span style={{ color: '#ef4444' }}>*</span>:
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  className="input"
+                  style={{ width: '80px', height: '36px' }}
+                  placeholder="e.g. 2"
+                  value={maxSetupToAdd}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setMaxSetupToAdd(val === '' ? '' : Math.max(1, parseInt(val, 10) || 1));
+                  }}
+                  required
+                />
+              </div>
+            )}
+            <Button
+              variant="primary"
+              onClick={addUser}
+              disabled={!picked || busy || (roleToAdd === 'Contribute' && (maxSetupToAdd === '' || Number(maxSetupToAdd) <= 0))}
+            >
               + Add {picked ? picked.name : 'Selected Person'}
             </Button>
           </div>
@@ -213,7 +264,26 @@ export function UsersManagerPage() {
                   <span className="layout-list-name">{row.name || row.email}</span>
                   <span className="layout-list-count">{row.email}</span>
                 </div>
-                <div className="user-access-actions">
+                <div className="user-access-actions" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {row.role === 'Contribute' && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <label style={{ fontSize: '0.75rem', color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                        Max Setup:
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        className="input"
+                        style={{ width: '68px', padding: '4px 8px', height: '36px' }}
+                        value={row.maxSetup ?? ''}
+                        placeholder="e.g. 2"
+                        onChange={(e) => {
+                          const val = e.target.value === '' ? undefined : Math.max(1, parseInt(e.target.value, 10) || 1);
+                          changeMaxSetup(row.id, val);
+                        }}
+                      />
+                    </div>
+                  )}
                   <select
                     className="input user-role-select"
                     value={row.role}

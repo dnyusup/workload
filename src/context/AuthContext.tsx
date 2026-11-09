@@ -34,7 +34,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const rows = await fetchAllPages(Mpp_wl_usersesService.getAll, {});
       const match = rows.find((row) => (row.mpp_email ?? '').trim().toLowerCase() === email.toLowerCase());
       const role = roleFromRow(match?.mpp_role) ?? 'guest';
-      setUser({ email, displayName, role });
+      const maxSetup = typeof match?.mpp_max_setup === 'number' ? match.mpp_max_setup : undefined;
+      setUser({ email, displayName, role, maxSetup });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to determine the current user — access defaults to Guest.');
       setUser(UNKNOWN_USER);
