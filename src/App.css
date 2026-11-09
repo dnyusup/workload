@@ -3742,6 +3742,8 @@
   color: #94a3b8;
   font-size: 0.72rem;
   font-variant-numeric: tabular-nums;
+  min-width: 22px;
+  text-align: right;
 }
 
 .canvas-legend-empty {
@@ -3795,6 +3797,17 @@
   font-size: 0.72rem;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  min-width: 42px;
+  text-align: right;
+}
+
+.canvas-legend-subdetail {
+  color: #94a3b8;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  min-width: 42px;
+  text-align: right;
 }
 
 .layout-select-count rect {

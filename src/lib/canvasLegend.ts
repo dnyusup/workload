@@ -10,8 +10,10 @@ export interface LegendEntry {
   color: string;
   /** How many machines this entry covers — shown next to the label. */
   count: number;
-  /** Optional extra value shown before the count (e.g. an operator's man occupation). */
+  /** Optional extra value shown before the count (e.g. an operator's forecast man occupation). */
   detail?: string;
+  /** Optional secondary value shown before the count (e.g. an operator's ideal demand man occupation). */
+  subDetail?: string;
 }
 
 export type LegendHover = { tab: LegendTab; id: string } | null;

@@ -1248,8 +1248,14 @@ function ProductionSetupEditor({
     <CanvasLegendPanel
       constructionEntries={legendData.constructionEntries}
       operatorEntries={legendData.operatorEntries.map((entry) => {
-        const forecast = operatorUtilizationFor(entry.id)?.forecastUtilizationPercent;
-        return forecast === undefined ? entry : { ...entry, detail: `${forecast.toFixed(1)}%` };
+        const opUtil = operatorUtilizationFor(entry.id);
+        const forecast = opUtil?.forecastUtilizationPercent;
+        const ideal = opUtil?.utilizationPercent;
+        return {
+          ...entry,
+          detail: forecast === undefined ? undefined : `${forecast.toFixed(1)}%`,
+          subDetail: ideal === undefined ? undefined : `${ideal.toFixed(1)}%`,
+        };
       })}
       groupEntries={legendData.groupEntries}
       initialTab={canvasView}

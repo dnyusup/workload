@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { LegendEntry, LegendHover, LegendTab } from '../../lib/canvasLegend';
 
-const DEFAULT_PANEL_WIDTH = 280;
-const MIN_PANEL_WIDTH = 220;
+const DEFAULT_PANEL_WIDTH = 320;
+const MIN_PANEL_WIDTH = 240;
 /** Space kept free between the panel's right edge and the canvas's right edge. */
 const CANVAS_EDGE_MARGIN = 16;
 
@@ -157,6 +157,32 @@ export function CanvasLegendPanel({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
+          {tab === 'operator' && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '4px 6px 0',
+                fontSize: '0.68rem',
+                color: '#64748b',
+                fontWeight: 600,
+              }}
+            >
+              <span style={{ flex: 1, paddingLeft: '20px' }}>Operator</span>
+              <span style={{ minWidth: '42px', textAlign: 'right', color: '#38bdf8' }} title="Forecast Man Occupation (with waiting model)">
+                Forecast
+              </span>
+              {activeTab.entries.some((e) => e.subDetail) && (
+                <span style={{ minWidth: '42px', textAlign: 'right', color: '#94a3b8' }} title="Ideal Demand Man Occupation">
+                  Ideal
+                </span>
+              )}
+              <span style={{ minWidth: '22px', textAlign: 'right' }} title="Machine count">
+                Mach
+              </span>
+            </div>
+          )}
           <ul className="canvas-legend-list" onMouseLeave={() => onHover(null)}>
             {filtered.length === 0 && <li className="canvas-legend-empty">No results found</li>}
             {filtered.map((entry) => (
@@ -168,7 +194,16 @@ export function CanvasLegendPanel({
               >
                 <span className="canvas-legend-swatch" style={{ background: entry.color }} />
                 <span className="canvas-legend-label">{entry.label}</span>
-                {entry.detail && <span className="canvas-legend-detail">{entry.detail}</span>}
+                {entry.detail && (
+                  <span className="canvas-legend-detail" title="Forecast Man Occ">
+                    {entry.detail}
+                  </span>
+                )}
+                {entry.subDetail && (
+                  <span className="canvas-legend-subdetail" title="Ideal Demand Man Occ">
+                    {entry.subDetail}
+                  </span>
+                )}
                 <span className="canvas-legend-count" title={`${entry.count} machine(s)`}>
                   {entry.count}
                 </span>
