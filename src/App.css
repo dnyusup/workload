@@ -3699,7 +3699,25 @@
   padding: 0;
   flex: 1 1 auto;
   min-height: 60px;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+}
+
+.canvas-legend-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #111827;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 6px;
+  border-bottom: 1px solid #1e293b;
+  font-size: 0.68rem;
+  color: #64748b;
+  font-weight: 600;
+  user-select: none;
 }
 
 /* .input-sm is a fixed 56px number box elsewhere — the legend search should span the panel. */

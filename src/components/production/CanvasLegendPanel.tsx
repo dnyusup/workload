@@ -157,33 +157,32 @@ export function CanvasLegendPanel({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
-          {tab === 'operator' && (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '4px 6px 0',
-                fontSize: '0.68rem',
-                color: '#64748b',
-                fontWeight: 600,
-              }}
-            >
-              <span style={{ flex: 1, paddingLeft: '20px' }}>Operator</span>
-              <span style={{ minWidth: '42px', textAlign: 'right', color: '#38bdf8' }} title="Forecast Man Occupation (with waiting model)">
-                Forecast
-              </span>
-              {activeTab.entries.some((e) => e.subDetail) && (
-                <span style={{ minWidth: '42px', textAlign: 'right', color: '#94a3b8' }} title="Ideal Demand Man Occupation">
-                  Ideal
-                </span>
-              )}
-              <span style={{ minWidth: '22px', textAlign: 'right' }} title="Machine count">
-                Mach
-              </span>
-            </div>
-          )}
           <ul className="canvas-legend-list" onMouseLeave={() => onHover(null)}>
+            {tab === 'operator' && (
+              <li className="canvas-legend-header">
+                <span style={{ width: '12px', height: '12px', flex: '0 0 auto' }} aria-hidden="true" />
+                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  Operator
+                </span>
+                <span
+                  style={{ minWidth: '42px', textAlign: 'right', color: '#38bdf8' }}
+                  title="Forecast Man Occupation (with waiting model)"
+                >
+                  Forecast
+                </span>
+                {activeTab.entries.some((e) => e.subDetail) && (
+                  <span
+                    style={{ minWidth: '42px', textAlign: 'right', color: '#94a3b8' }}
+                    title="Ideal Demand Man Occupation"
+                  >
+                    Ideal
+                  </span>
+                )}
+                <span style={{ minWidth: '22px', textAlign: 'right', color: '#94a3b8' }} title="Machine count">
+                  Mach
+                </span>
+              </li>
+            )}
             {filtered.length === 0 && <li className="canvas-legend-empty">No results found</li>}
             {filtered.map((entry) => (
               <li
