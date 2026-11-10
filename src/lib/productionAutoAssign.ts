@@ -50,14 +50,14 @@ export const SPLIT_PRESETS: SplitPreset[] = [
     groups: (b) => {
       const getReq = (key: ActivityTaskKey) => {
         const item = b?.activities.find((a) => a.key === key);
-        return item?.operators ? Math.max(1, Math.ceil(item.operators)) : 1;
+        return item?.operators ? Math.max(1, Math.round(item.operators)) : 1;
       };
       const getSum = (keys: ActivityTaskKey[]) => {
         const sum = keys.reduce((acc, k) => {
           const item = b?.activities.find((a) => a.key === k);
           return acc + (item?.operators ?? 0);
         }, 0);
-        return sum > 0 ? Math.max(1, Math.ceil(sum)) : 1;
+        return sum > 0 ? Math.max(1, Math.round(sum)) : 1;
       };
       return [
         { id: 'doffing', name: 'Doffing Operator', prefix: 'Opr', tasks: ['doffing'], count: getReq('doffing') },
@@ -79,7 +79,7 @@ export const SPLIT_PRESETS: SplitPreset[] = [
     groups: (b) => {
       const getReq = (key: ActivityTaskKey) => {
         const item = b?.activities.find((a) => a.key === key);
-        return item?.operators ? Math.max(1, Math.ceil(item.operators)) : 1;
+        return item?.operators ? Math.max(1, Math.round(item.operators)) : 1;
       };
       return [
         { id: 'doffing', name: 'Doffing Operator', prefix: 'Opr', tasks: ['doffing'], count: getReq('doffing') },
@@ -100,7 +100,7 @@ export const SPLIT_PRESETS: SplitPreset[] = [
           const item = b?.activities.find((a) => a.key === k);
           return acc + (item?.operators ?? 0);
         }, 0);
-        return sum > 0 ? Math.max(1, Math.ceil(sum)) : 1;
+        return sum > 0 ? Math.max(1, Math.round(sum)) : 1;
       };
       return [
         {
@@ -130,7 +130,7 @@ export const SPLIT_PRESETS: SplitPreset[] = [
           const item = b?.activities.find((a) => a.key === k);
           return acc + (item?.operators ?? 0);
         }, 0);
-        return sum > 0 ? Math.max(1, Math.ceil(sum)) : 1;
+        return sum > 0 ? Math.max(1, Math.round(sum)) : 1;
       };
       const diesReq = b?.activities.find((a) => a.key === 'diesChange')?.operators;
       return [
@@ -153,7 +153,7 @@ export const SPLIT_PRESETS: SplitPreset[] = [
           name: 'Dies Specialist',
           prefix: 'Opr',
           tasks: ['diesChange'],
-          count: diesReq ? Math.max(1, Math.ceil(diesReq)) : 1,
+          count: diesReq ? Math.max(1, Math.round(diesReq)) : 1,
         },
       ];
     },
@@ -288,7 +288,7 @@ export function computeAutoAssignPlan({
 
   if (options.mode === 'multi') {
     const rawReq = activityBreakdown?.allTask.operators;
-    const count = options.multiCount ?? (rawReq ? Math.max(1, Math.ceil(rawReq)) : Math.max(1, setup.operators.length || 10));
+    const count = options.multiCount ?? (rawReq ? Math.max(1, Math.round(rawReq)) : Math.max(1, setup.operators.length || 10));
     const prefix = options.multiPrefix?.trim() || 'Opr';
 
     const multiLabels = Array.from({ length: count }, () => getNextLabel(prefix));
@@ -411,7 +411,7 @@ export function computeAutoAssignPlan({
       });
 
       const totalDemand = groupData.reduce((sum, g) => sum + g.req, 0);
-      const targetTotal = options.splitTotalCount ?? Math.max(1, Math.ceil(totalDemand));
+      const targetTotal = options.splitTotalCount ?? Math.max(1, Math.round(totalDemand));
       const targetWorkloadPerOperator = totalDemand / targetTotal;
 
       // 2. Allocate primary operators to each group

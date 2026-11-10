@@ -53,10 +53,16 @@ export function AutoAssignOperatorsDialog({
   // Multi task state
   const rawMultiReq = activeBreakdown?.allTask.operators;
   const initialMultiCount = rawMultiReq
-    ? Math.max(1, Math.ceil(rawMultiReq))
-    : Math.max(1, scope === 'selection' ? Math.ceil(selectedMachineIds.length / 10) : setup.operators.length || 10);
+    ? Math.max(1, Math.round(rawMultiReq))
+    : Math.max(1, scope === 'selection' ? Math.round(selectedMachineIds.length / 10) : setup.operators.length || 10);
   const [multiCount, setMultiCount] = useState<number>(initialMultiCount);
   const [multiPrefix, setMultiPrefix] = useState<string>('Opr');
+
+  useEffect(() => {
+    if (rawMultiReq) {
+      setMultiCount(Math.max(1, Math.round(rawMultiReq)));
+    }
+  }, [rawMultiReq]);
 
   // Split task state
   const [splitPresetId, setSplitPresetId] = useState<SplitPresetId>('three_groups_dlr');
@@ -77,7 +83,7 @@ export function AutoAssignOperatorsDialog({
   }, [activeBreakdown]);
 
   const [splitTotalCount, setSplitTotalCount] = useState<number>(() => {
-    return rawSplitReq ? Math.max(1, Math.ceil(rawSplitReq)) : 6;
+    return rawSplitReq ? Math.max(1, Math.round(rawSplitReq)) : 6;
   });
 
   // Re-sync groups & counts when activeBreakdown or preset changes
@@ -92,7 +98,7 @@ export function AutoAssignOperatorsDialog({
       );
     }
     if (rawSplitReq) {
-      setSplitTotalCount(Math.max(1, Math.ceil(rawSplitReq)));
+      setSplitTotalCount(Math.max(1, Math.round(rawSplitReq)));
     }
   }, [splitPresetId, activeBreakdown, rawSplitReq]);
 
