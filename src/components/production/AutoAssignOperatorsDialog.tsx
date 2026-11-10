@@ -212,7 +212,7 @@ export function AutoAssignOperatorsDialog({
   };
 
   return createPortal(
-    <div className="modal-overlay om-detail-overlay" onClick={() => !executing && onClose()}>
+    <div className="modal-overlay om-detail-overlay" style={{ zIndex: 1100 }} onClick={() => !executing && onClose()}>
       <div
         className="om-detail auto-assign-dialog"
         role="dialog"
@@ -224,7 +224,7 @@ export function AutoAssignOperatorsDialog({
         <header className="om-detail-header">
           <div>
             <span className="om-detail-eyebrow">Production Simulation Optimizer</span>
-            <h3>✨ Auto Assign Operator</h3>
+            <h3>✨ Auto Assign Opr</h3>
             <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: '#94a3b8' }}>
               Alokasikan operator otomatis dengan prioritas pasangan Take Up (TU) saling berhadapan.
             </p>
@@ -690,11 +690,11 @@ export function AutoAssignOperatorsDialog({
             Batal
           </Button>
           <Button variant="primary" onClick={handleRun} disabled={executing || totalOperatorsToCreate === 0}>
-            {executing ? 'Sedang Memproses…' : `Terapkan Auto Assign (${totalOperatorsToCreate} Operator)`}
+            {executing ? 'Sedang Memproses…' : `Terapkan Auto Assign Opr (${totalOperatorsToCreate} Operator)`}
           </Button>
         </div>
       </div>
     </div>,
-    document.body,
+    document.fullscreenElement ?? document.body,
   );
 }

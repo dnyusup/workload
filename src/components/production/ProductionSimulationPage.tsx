@@ -1973,7 +1973,7 @@ function ProductionSetupEditor({
               fontWeight: 600,
             }}
           >
-            ⚡ Auto Assign
+            ⚡ Auto Assign Opr
           </Button>
           <Button variant="danger" onClick={unplanSelection} disabled={isReadOnly || selectedMachineIds.length === 0}>
             Unplan Selection

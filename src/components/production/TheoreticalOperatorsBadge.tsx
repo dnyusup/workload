@@ -118,7 +118,7 @@ export function TheoreticalOperatorsBadge({
                   }}
                   title="Auto assign operators based on theoretical required and facing TU pairs"
                 >
-                  <span>⚡ Auto Assign Operator</span>
+                  <span>⚡ Auto Assign Opr</span>
                 </button>
               )}
               <button
@@ -459,7 +459,7 @@ function TheoreticalOperatorsDialog({
                 }}
                 title="Auto assign operators based on theoretical required and facing TU pairs"
               >
-                <span>⚡ Auto Assign Operator</span>
+                <span>⚡ Auto Assign Opr</span>
               </button>
             )}
             <span className="theoretical-row-count">
