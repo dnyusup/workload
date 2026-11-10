@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ProductionSetup, ProductionOperator, ProductionMachineAssignment } from '../../types';
-import type { TheoreticalActivityBreakdown } from '../../lib/theoreticalOperators';
+import type { TheoreticalActivityBreakdown, TheoreticalOperatorRow } from '../../lib/theoreticalOperators';
 import {
   type AutoAssignMode,
   type SplitPresetId,
@@ -19,6 +19,7 @@ interface AutoAssignOperatorsDialogProps {
   selectedMachineIds?: string[];
   overallBreakdown?: TheoreticalActivityBreakdown | null;
   selectionBreakdown?: TheoreticalActivityBreakdown | null;
+  operatorRequirementRows?: TheoreticalOperatorRow[];
   onClose: () => void;
   onSuccess: (result: {
     newOperators: ProductionOperator[];
@@ -32,6 +33,7 @@ export function AutoAssignOperatorsDialog({
   selectedMachineIds = [],
   overallBreakdown,
   selectionBreakdown,
+  operatorRequirementRows,
   onClose,
   onSuccess,
 }: AutoAssignOperatorsDialogProps) {
@@ -158,6 +160,7 @@ export function AutoAssignOperatorsDialog({
           splitTotalCount: balanceFractional ? splitTotalCount : undefined,
           targetMachineIds: currentTargetMachineIds,
           onlyPlannedMachines: onlyPlanned,
+          operatorRequirementRows,
         },
         activityBreakdown: activeBreakdown,
       });
@@ -175,6 +178,7 @@ export function AutoAssignOperatorsDialog({
     splitTotalCount,
     currentTargetMachineIds,
     onlyPlanned,
+    operatorRequirementRows,
     activeBreakdown,
   ]);
 
@@ -210,6 +214,7 @@ export function AutoAssignOperatorsDialog({
           splitTotalCount: balanceFractional ? splitTotalCount : undefined,
           targetMachineIds: currentTargetMachineIds,
           onlyPlannedMachines: onlyPlanned,
+          operatorRequirementRows,
         },
         activityBreakdown: activeBreakdown,
         onProgress: (phase, done, total) => {

@@ -2600,6 +2600,7 @@ function ProductionSetupEditor({
           selectedMachineIds={selectedMachineIds}
           overallBreakdown={overallActivityBreakdown}
           selectionBreakdown={selectionActivityBreakdown}
+          operatorRequirementRows={operatorRequirement.rows}
           onClose={() => setAutoAssignOpen(false)}
           onSuccess={(result) => {
             onLocalChange({

@@ -1,6 +1,6 @@
 import type { LayoutMachine, ProductionMachineAssignment, ProductionOperator, ProductionSetup } from '../types';
 import { defaultAssignmentOrder } from './defaultAssignment';
-import type { TheoreticalActivityBreakdown } from './theoreticalOperators';
+import type { TheoreticalActivityBreakdown, TheoreticalOperatorRow } from './theoreticalOperators';
 import { Mpp_wl_productionsetupoperatorsesService } from '../generated/services/Mpp_wl_productionsetupoperatorsesService';
 import { fetchAllPages, escapeODataString, runWithConcurrency } from './dataversePaging';
 import { updateMachineAssignments } from './productionSetupsStore';
@@ -176,6 +176,8 @@ export interface AutoAssignOptions {
   targetMachineIds?: string[];
   /** Only assign machines that have a Construction Detail */
   onlyPlannedMachines?: boolean;
+  /** Theoretical operator requirement rows per Construction Detail to balance multi-task workload */
+  operatorRequirementRows?: TheoreticalOperatorRow[];
 }
 
 /** Finds the highest numeric suffix in existing operator labels for a given prefix.
@@ -294,10 +296,38 @@ export function computeAutoAssignPlan({
     const multiLabels = Array.from({ length: count }, () => getNextLabel(prefix));
     multiLabels.forEach((label) => operatorsToCreate.push({ label, groupKey: 'multi', description: 'Multi Task' }));
 
-    // Distribute machines evenly in facing TU order
-    const total = targetMachines.length;
+    // 1. Build workload weight per machine to avoid "jomplang" man occupation across operators
+    const cdWorkloadMap = new Map<string, number>();
+    if (options.operatorRequirementRows && options.operatorRequirementRows.length > 0) {
+      options.operatorRequirementRows.forEach((row) => {
+        if (row.machines > 0 && row.operators > 0) {
+          cdWorkloadMap.set(row.productId, row.operators / row.machines);
+        } else if (row.machinesPerOperator > 0) {
+          cdWorkloadMap.set(row.productId, 1 / row.machinesPerOperator);
+        }
+      });
+    }
+
+    const assignmentByMachine = new Map(setup.assignments.map((a) => [a.machineId, a]));
+
+    const machineWeights = targetMachines.map((m) => {
+      const cdId = assignmentByMachine.get(m.id)?.constructionDetailId;
+      if (cdId && cdWorkloadMap.has(cdId)) {
+        return Math.max(0.001, cdWorkloadMap.get(cdId)!);
+      }
+      return 1;
+    });
+
+    const totalWeight = machineWeights.reduce((sum, w) => sum + w, 0);
+
+    // Distribute machines along the facing TU sequence proportionally by cumulative workload
+    let cumulative = 0;
     targetMachines.forEach((m, index) => {
-      const opIndex = Math.min(count - 1, Math.floor((index * count) / total));
+      const w = machineWeights[index];
+      const midpoint = cumulative + w / 2;
+      cumulative += w;
+
+      const opIndex = Math.min(count - 1, Math.floor((midpoint / (totalWeight || 1)) * count));
       const opLabel = multiLabels[opIndex];
       machineAssignments.set(m.id, {
         assignedOperatorIds: [opLabel], // Temporary label, resolved to ID after creation

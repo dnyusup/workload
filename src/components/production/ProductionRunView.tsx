@@ -680,6 +680,17 @@ export function ProductionRunView({
     },
   );
 
+  // When machine timeline is filtered (by Construction Detail dropdown, by selected Operator timeline,
+  // or by machine number search), highlight those filtered machines on the machine layout canvas.
+  const isTimelineFiltered = Boolean(selectedConstructionDetail || selectedOperator || machineTimelineSearch.trim());
+  const timelineFilterHighlightedMachineIds = useMemo(() => {
+    if (!isTimelineFiltered) return null;
+    return new Set(machineTimelineRows.map((m) => m.id));
+  }, [isTimelineFiltered, machineTimelineRows]);
+
+  // Legend hover takes priority while mouse hovers the canvas legend; otherwise use the timeline filter highlight.
+  const effectiveHighlightedMachineIds = highlightedMachineIds ?? timelineFilterHighlightedMachineIds;
+
   const shownMachineSummary = selectedMachine
     ? summarizeMachineTimelineGroups([selectedMachine.timeline], timelineDuration)
     : machinesForSelectedOperator || selectedConstructionDetail
@@ -847,7 +858,7 @@ export function ProductionRunView({
                     constructionColorMap={constructionColorMap}
                     operatorLabelById={operatorLabelById}
                     isDetailed={isDetailed}
-                    highlightedMachineIds={highlightedMachineIds}
+                    highlightedMachineIds={effectiveHighlightedMachineIds}
                   />
                   <RemarksLayer remarks={setup.remarks} />
 

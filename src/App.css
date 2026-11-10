@@ -3608,6 +3608,11 @@
   filter: url(#machine-selection-glow);
 }
 
+.machine-highlighted .machine-label {
+  fill: #fef08a !important;
+  font-weight: 700 !important;
+}
+
 .machine-dimmed {
   opacity: 0.22;
 }
