@@ -19,11 +19,11 @@ export type ActivityTaskKey =
   | 'defectRepairing';
 
 export const ALL_ACTIVITY_TASKS: { key: ActivityTaskKey; label: string; defaultPrefix: string }[] = [
-  { key: 'doffing', label: 'Doffing', defaultPrefix: 'Doff' },
-  { key: 'loading', label: 'Loading', defaultPrefix: 'Load' },
-  { key: 'fractureRepairing', label: 'Fracture Repairing', defaultPrefix: 'Frac' },
-  { key: 'diesChange', label: 'Dies Change', defaultPrefix: 'Dies' },
-  { key: 'defectRepairing', label: 'Defect Repairing', defaultPrefix: 'Defect' },
+  { key: 'doffing', label: 'Doffing', defaultPrefix: 'Opr' },
+  { key: 'loading', label: 'Loading', defaultPrefix: 'Opr' },
+  { key: 'fractureRepairing', label: 'Fracture Repairing', defaultPrefix: 'Opr' },
+  { key: 'diesChange', label: 'Dies Change', defaultPrefix: 'Opr' },
+  { key: 'defectRepairing', label: 'Defect Repairing', defaultPrefix: 'Opr' },
 ];
 
 export interface TaskGroupConfig {
@@ -60,12 +60,12 @@ export const SPLIT_PRESETS: SplitPreset[] = [
         return sum > 0 ? Math.max(1, Math.ceil(sum)) : 1;
       };
       return [
-        { id: 'doffing', name: 'Doffing Operator', prefix: 'Doff', tasks: ['doffing'], count: getReq('doffing') },
-        { id: 'loading', name: 'Loading Operator', prefix: 'Load', tasks: ['loading'], count: getReq('loading') },
+        { id: 'doffing', name: 'Doffing Operator', prefix: 'Opr', tasks: ['doffing'], count: getReq('doffing') },
+        { id: 'loading', name: 'Loading Operator', prefix: 'Opr', tasks: ['loading'], count: getReq('loading') },
         {
           id: 'repairs',
           name: 'Fracture + Defect Repairing',
-          prefix: 'Repair',
+          prefix: 'Opr',
           tasks: ['fractureRepairing', 'defectRepairing', 'diesChange'],
           count: getSum(['fractureRepairing', 'defectRepairing', 'diesChange']),
         },
@@ -82,11 +82,11 @@ export const SPLIT_PRESETS: SplitPreset[] = [
         return item?.operators ? Math.max(1, Math.ceil(item.operators)) : 1;
       };
       return [
-        { id: 'doffing', name: 'Doffing Operator', prefix: 'Doff', tasks: ['doffing'], count: getReq('doffing') },
-        { id: 'loading', name: 'Loading Operator', prefix: 'Load', tasks: ['loading'], count: getReq('loading') },
-        { id: 'fractureRepairing', name: 'Fracture Repairing', prefix: 'Frac', tasks: ['fractureRepairing'], count: getReq('fractureRepairing') },
-        { id: 'diesChange', name: 'Dies Change', prefix: 'Dies', tasks: ['diesChange'], count: getReq('diesChange') },
-        { id: 'defectRepairing', name: 'Defect Repairing', prefix: 'Defect', tasks: ['defectRepairing'], count: getReq('defectRepairing') },
+        { id: 'doffing', name: 'Doffing Operator', prefix: 'Opr', tasks: ['doffing'], count: getReq('doffing') },
+        { id: 'loading', name: 'Loading Operator', prefix: 'Opr', tasks: ['loading'], count: getReq('loading') },
+        { id: 'fractureRepairing', name: 'Fracture Repairing', prefix: 'Opr', tasks: ['fractureRepairing'], count: getReq('fractureRepairing') },
+        { id: 'diesChange', name: 'Dies Change', prefix: 'Opr', tasks: ['diesChange'], count: getReq('diesChange') },
+        { id: 'defectRepairing', name: 'Defect Repairing', prefix: 'Opr', tasks: ['defectRepairing'], count: getReq('defectRepairing') },
       ];
     },
   },
@@ -106,14 +106,14 @@ export const SPLIT_PRESETS: SplitPreset[] = [
         {
           id: 'material',
           name: 'Material Handling (Doffing + Loading)',
-          prefix: 'Mat',
+          prefix: 'Opr',
           tasks: ['doffing', 'loading'],
           count: getSum(['doffing', 'loading']),
         },
         {
           id: 'repairs',
           name: 'Technical Repairs (Fracture + Defect + Dies)',
-          prefix: 'Rep',
+          prefix: 'Opr',
           tasks: ['fractureRepairing', 'defectRepairing', 'diesChange'],
           count: getSum(['fractureRepairing', 'defectRepairing', 'diesChange']),
         },
@@ -137,21 +137,21 @@ export const SPLIT_PRESETS: SplitPreset[] = [
         {
           id: 'material',
           name: 'Material Handling (Doffing + Loading)',
-          prefix: 'Mat',
+          prefix: 'Opr',
           tasks: ['doffing', 'loading'],
           count: getSum(['doffing', 'loading']),
         },
         {
           id: 'repairs',
           name: 'Break & Defect (Fracture + Defect)',
-          prefix: 'Rep',
+          prefix: 'Opr',
           tasks: ['fractureRepairing', 'defectRepairing'],
           count: getSum(['fractureRepairing', 'defectRepairing']),
         },
         {
           id: 'dies',
           name: 'Dies Specialist',
-          prefix: 'Dies',
+          prefix: 'Opr',
           tasks: ['diesChange'],
           count: diesReq ? Math.max(1, Math.ceil(diesReq)) : 1,
         },
@@ -176,6 +176,30 @@ export interface AutoAssignOptions {
   targetMachineIds?: string[];
   /** Only assign machines that have a Construction Detail */
   onlyPlannedMachines?: boolean;
+}
+
+/** Finds the highest numeric suffix in existing operator labels for a given prefix.
+ * e.g. If setup already has Opr_0001, Opr_0003, returns 3.
+ * If prefix is not found, returns 0.
+ */
+export function getHighestOperatorNumber(prefix: string, existingLabels: string[]): number {
+  const cleanPrefix = prefix.trim().toLowerCase();
+  if (!cleanPrefix) return 0;
+
+  const escaped = cleanPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`^${escaped}[_\\-\\s]?(\\d+)$`, 'i');
+
+  let maxNum = 0;
+  for (const label of existingLabels) {
+    const match = label.trim().match(regex);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      if (!isNaN(num) && num > maxNum) {
+        maxNum = num;
+      }
+    }
+  }
+  return maxNum;
 }
 
 /** Previews the assignment plan without saving to Dataverse */
@@ -221,12 +245,52 @@ export function computeAutoAssignPlan({
     return { operatorsToCreate, machineAssignments };
   }
 
+  // 2. Identify preserved operators that will remain in the setup
+  const preservedOperatorLabels = new Set<string>();
+
+  if (targetIdSet) {
+    const operatorsUsedInside = new Set<string>();
+    const operatorsUsedOutside = new Set<string>();
+
+    setup.assignments.forEach((a) => {
+      const isInside = targetIdSet.has(a.machineId);
+      const targetSet = isInside ? operatorsUsedInside : operatorsUsedOutside;
+      a.assignedOperatorIds?.forEach((id) => targetSet.add(id));
+      a.doffingOperatorIds?.forEach((id) => targetSet.add(id));
+      a.loadingOperatorIds?.forEach((id) => targetSet.add(id));
+      a.fractureRepairingOperatorIds?.forEach((id) => targetSet.add(id));
+      a.diesChangeOperatorIds?.forEach((id) => targetSet.add(id));
+      a.defectRepairingOperatorIds?.forEach((id) => targetSet.add(id));
+    });
+
+    // Operators in setup.operators that are NOT exclusively used on target machines are preserved
+    setup.operators.forEach((op) => {
+      const isExclusivelyInside = operatorsUsedInside.has(op.id) && !operatorsUsedOutside.has(op.id);
+      if (!isExclusivelyInside) {
+        preservedOperatorLabels.add(op.label);
+      }
+    });
+  }
+
+  // 3. Counter generator per prefix that continues from the highest existing ID
+  const prefixCounters = new Map<string, number>();
+  const getNextLabel = (rawPrefix: string) => {
+    const cleanPrefix = rawPrefix.trim() || 'Opr';
+    if (!prefixCounters.has(cleanPrefix)) {
+      const highest = getHighestOperatorNumber(cleanPrefix, Array.from(preservedOperatorLabels));
+      prefixCounters.set(cleanPrefix, highest + 1);
+    }
+    const current = prefixCounters.get(cleanPrefix)!;
+    prefixCounters.set(cleanPrefix, current + 1);
+    return `${cleanPrefix}_${String(current).padStart(4, '0')}`;
+  };
+
   if (options.mode === 'multi') {
     const rawReq = activityBreakdown?.allTask.operators;
     const count = options.multiCount ?? (rawReq ? Math.max(1, Math.ceil(rawReq)) : Math.max(1, setup.operators.length || 10));
     const prefix = options.multiPrefix?.trim() || 'Opr';
 
-    const multiLabels = Array.from({ length: count }, (_, i) => `${prefix}_${String(i + 1).padStart(4, '0')}`);
+    const multiLabels = Array.from({ length: count }, () => getNextLabel(prefix));
     multiLabels.forEach((label) => operatorsToCreate.push({ label, groupKey: 'multi', description: 'Multi Task' }));
 
     // Distribute machines evenly in facing TU order
@@ -258,7 +322,7 @@ export function computeAutoAssignPlan({
       groups.forEach((grp) => {
         const prefix = grp.prefix.trim() || 'Opr';
         const count = Math.max(1, grp.count);
-        const labels = Array.from({ length: count }, (_, i) => `${prefix}_${String(i + 1).padStart(4, '0')}`);
+        const labels = Array.from({ length: count }, () => getNextLabel(prefix));
         groupOperatorLabels.set(grp.id, labels);
         labels.forEach((label) => operatorsToCreate.push({ label, groupKey: grp.id, description: grp.name }));
 
@@ -353,7 +417,7 @@ export function computeAutoAssignPlan({
         });
       }
 
-      // 3. Create operator instances
+      // 3. Create operator instances with sequential IDs
       interface OperatorInstance {
         label: string;
         primaryGroupId: string;
@@ -365,7 +429,7 @@ export function computeAutoAssignPlan({
       groupData.forEach((g) => {
         const count = allocatedCounts.get(g.grp.id) ?? 0;
         for (let i = 0; i < count; i++) {
-          const label = `${g.prefix}_${String(i + 1).padStart(4, '0')}`;
+          const label = getNextLabel(g.prefix);
           operatorInstances.push({
             label,
             primaryGroupId: g.grp.id,
@@ -550,27 +614,34 @@ export async function executeAutoAssign({
     select: ['mpp_wl_productionsetupoperatorsid', 'mpp_name'],
   });
 
-  // Find operators that MUST be preserved because they are used on machines OUTSIDE targetMachineIds
-  const preservedOperatorIds = new Set<string>();
+  // Find operators that MUST be preserved vs deleted
+  const operatorsUsedOutside = new Set<string>();
+  const operatorsUsedInside = new Set<string>();
+
   if (targetIdSet) {
     setup.assignments.forEach((a) => {
-      if (!targetIdSet.has(a.machineId)) {
-        a.assignedOperatorIds?.forEach((id) => preservedOperatorIds.add(id));
-        a.doffingOperatorIds?.forEach((id) => preservedOperatorIds.add(id));
-        a.loadingOperatorIds?.forEach((id) => preservedOperatorIds.add(id));
-        a.fractureRepairingOperatorIds?.forEach((id) => preservedOperatorIds.add(id));
-        a.diesChangeOperatorIds?.forEach((id) => preservedOperatorIds.add(id));
-        a.defectRepairingOperatorIds?.forEach((id) => preservedOperatorIds.add(id));
-      }
+      const isInside = targetIdSet.has(a.machineId);
+      const targetSet = isInside ? operatorsUsedInside : operatorsUsedOutside;
+      a.assignedOperatorIds?.forEach((id) => targetSet.add(id));
+      a.doffingOperatorIds?.forEach((id) => targetSet.add(id));
+      a.loadingOperatorIds?.forEach((id) => targetSet.add(id));
+      a.fractureRepairingOperatorIds?.forEach((id) => targetSet.add(id));
+      a.diesChangeOperatorIds?.forEach((id) => targetSet.add(id));
+      a.defectRepairingOperatorIds?.forEach((id) => targetSet.add(id));
     });
   }
 
   // 3. Operators to delete:
   // If whole setup: delete all old operators.
-  // If subset: only delete operators that are NOT used on other machines.
+  // If subset: ONLY delete operators that were used on target machines AND NOT outside target machines.
   const operatorsToDelete = targetIdSet
-    ? oldOpRows.filter((row) => !preservedOperatorIds.has(row.mpp_wl_productionsetupoperatorsid))
+    ? oldOpRows.filter((row) => {
+        const id = row.mpp_wl_productionsetupoperatorsid;
+        return operatorsUsedInside.has(id) && !operatorsUsedOutside.has(id);
+      })
     : oldOpRows;
+
+  const deletedIdSet = new Set(operatorsToDelete.map((row) => row.mpp_wl_productionsetupoperatorsid));
 
   const deleteTotal = operatorsToDelete.length;
   if (deleteTotal > 0) {
@@ -615,7 +686,7 @@ export async function executeAutoAssign({
 
   // 5. Build preserved operators list
   const preservedOperators: ProductionOperator[] = setup.operators.filter((o) =>
-    preservedOperatorIds.has(o.id),
+    !deletedIdSet.has(o.id),
   );
 
   const allOperators = [...preservedOperators, ...createdOperators];
