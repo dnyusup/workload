@@ -152,59 +152,55 @@ export function ConstructionDetailFilterDropdown({
 
   return (
     <div className={`cd-filter-wrap ${className}`} ref={wrapRef}>
-      {selectedKey === null ? (
-        <button
-          ref={triggerRef}
-          type="button"
-          className="input input-sm cd-filter-trigger"
-          onClick={() => {
-            if (!open) {
-              setQuery('');
-              updatePosition();
-            }
-            setOpen((v) => !v);
-          }}
-          title="Filter machine timeline by Construction Detail"
+      <button
+        ref={triggerRef}
+        type="button"
+        className={`cd-filter-trigger ${selectedKey !== null ? 'cd-filter-trigger-active' : ''}`}
+        onClick={() => {
+          if (!open) {
+            setQuery('');
+            updatePosition();
+          }
+          setOpen((v) => !v);
+        }}
+        title={
+          selectedKey !== null
+            ? `Filtered: ${selectedRow?.label ?? selectedKey} (Click to change)`
+            : 'Filter machine timeline by Construction Detail'
+        }
+      >
+        <span className="cd-trigger-icon" aria-hidden="true">🏗️</span>
+        <span
+          className="cd-trigger-label"
+          title={selectedKey !== null ? (selectedRow?.label ?? selectedKey) : 'All Constructions'}
         >
-          <span className="cd-trigger-icon" aria-hidden="true">🏗️</span>
-          <span className="cd-trigger-label">All Constructions</span>
-          <span className="cd-trigger-caret" aria-hidden="true">▾</span>
-        </button>
-      ) : (
-        <div className="cd-filter-trigger-group">
-          <button
-            ref={triggerRef}
-            type="button"
-            className="input input-sm cd-filter-trigger cd-filter-trigger-active"
-            onClick={() => {
-              if (!open) {
-                setQuery('');
-                updatePosition();
-              }
-              setOpen((v) => !v);
-            }}
-            title={`Filtered: ${selectedRow?.label ?? selectedKey} (Click to change)`}
-          >
-            <span className="cd-trigger-icon" aria-hidden="true">🏗️</span>
-            <span className="cd-trigger-label">
-              {selectedRow?.label ?? selectedKey} ({fmt(selectedRow?.oeeSimulated ?? 0)}%)
-            </span>
-            <span className="cd-trigger-caret" aria-hidden="true">▾</span>
-          </button>
-          <button
-            type="button"
-            className="cd-filter-clear-btn"
+          {selectedKey === null
+            ? 'All Constructions'
+            : `${selectedRow?.label ?? selectedKey} (${fmt(selectedRow?.oeeSimulated ?? 0)}%)`}
+        </span>
+        {selectedKey !== null && (
+          <span
+            role="button"
+            tabIndex={0}
+            className="cd-trigger-clear-icon"
             onClick={(e) => {
               e.stopPropagation();
               onSelect(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.stopPropagation();
+                onSelect(null);
+              }
             }}
             title="Clear Construction Detail filter"
             aria-label="Clear filter"
           >
             ✕
-          </button>
-        </div>
-      )}
+          </span>
+        )}
+        <span className="cd-trigger-caret" aria-hidden="true">▾</span>
+      </button>
 
       {open && position && portalTarget &&
         createPortal(
