@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { FrequencyMode, LayoutMachine, ProductionMachineAssignment, ProductionSetup, TaskPriorityMode, WaitingModel } from '../../types';
 import { WAITING_MODEL_LABELS } from '../../lib/waitingModel';
 import { WaitingModelInfoDialog } from '../setup/WaitingModelInfoDialog';
@@ -13,6 +14,7 @@ import {
   duplicateProductionSetup,
   addProductionOperator,
   removeProductionOperator,
+  removeAllProductionOperators,
   updateMachineAssignments,
   type ProductionSetupSummary,
 } from '../../lib/productionSetupsStore';
@@ -1064,6 +1066,8 @@ function ProductionSetupEditor({
   const [waitingModelInfoOpen, setWaitingModelInfoOpen] = useState(false);
   const [autoAssignOpen, setAutoAssignOpen] = useState(false);
   const [autoAssignScope, setAutoAssignScope] = useState<'selection' | 'all'>('selection');
+  const [confirmDeleteAllOpen, setConfirmDeleteAllOpen] = useState(false);
+  const [deletingAllOperators, setDeletingAllOperators] = useState(false);
   const [plannedUtilizationFullscreen, setPlannedUtilizationFullscreen] = useState(false);
   const plannedUtilizationPanelRef = useRef<HTMLDivElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -1498,6 +1502,40 @@ function ProductionSetupEditor({
       onOperatorCountChange(-1);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Failed to remove operator.');
+    }
+  };
+
+  const removeAllOperators = async () => {
+    if (isReadOnly || setup.operators.length === 0) return;
+    setDeletingAllOperators(true);
+    setActionError(null);
+    try {
+      await removeAllProductionOperators(setup.id);
+      onLocalChange({
+        operators: [],
+        assignments: setup.assignments.map((a) => ({
+          ...a,
+          ...Object.fromEntries(Object.values(TASK_OPERATOR_FIELDS).map((field) => [field, undefined])),
+          assignedOperatorIds: undefined,
+        })),
+      });
+      const emptyLists: TaskOperatorLists = {
+        doffing: [],
+        loading: [],
+        fractureRepairing: [],
+        diesChange: [],
+        defectRepairing: [],
+      };
+      setBulkMultiTaskIds([]);
+      setAppliedMultiTaskIds([]);
+      setBulkTaskIds(emptyLists);
+      setAppliedTaskIds(emptyLists);
+      onOperatorCountChange(-setup.operators.length);
+      setConfirmDeleteAllOpen(false);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to delete all operators.');
+    } finally {
+      setDeletingAllOperators(false);
     }
   };
 
@@ -2298,14 +2336,26 @@ function ProductionSetupEditor({
         actions={
           <div className="production-csv-actions">
             {!isReadOnly && (
-              <Button
-                variant="secondary"
-                onClick={() => setStartTimesOpen(true)}
-                title="Custom Lunch / Meeting start per operator"
-                aria-label="Custom Lunch / Meeting start per operator"
-              >
-                ⚙️
-              </Button>
+              <>
+                <Button
+                  variant="secondary"
+                  onClick={() => setConfirmDeleteAllOpen(true)}
+                  title="Hapus semua operator"
+                  aria-label="Hapus semua operator"
+                  disabled={setup.operators.length === 0 || deletingAllOperators}
+                  style={{ color: setup.operators.length === 0 ? undefined : '#f87171' }}
+                >
+                  🗑️
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => setStartTimesOpen(true)}
+                  title="Custom Lunch / Meeting start per operator"
+                  aria-label="Custom Lunch / Meeting start per operator"
+                >
+                  ⚙️
+                </Button>
+              </>
             )}
             <Button
               variant="secondary"
@@ -2318,6 +2368,52 @@ function ProductionSetupEditor({
           </div>
         }
       >
+        {confirmDeleteAllOpen &&
+          createPortal(
+            <div
+              className="modal-overlay om-detail-overlay"
+              style={{ zIndex: 1200 }}
+              onClick={() => !deletingAllOperators && setConfirmDeleteAllOpen(false)}
+            >
+              <div
+                className="om-detail"
+                role="dialog"
+                aria-modal="true"
+                aria-label="Konfirmasi Hapus Semua Operator"
+                onClick={(e) => e.stopPropagation()}
+                style={{ maxWidth: '440px', padding: '20px' }}
+              >
+                <header className="om-detail-header" style={{ marginBottom: '16px' }}>
+                  <div>
+                    <span className="om-detail-eyebrow" style={{ color: '#f87171' }}>Peringatan Tindakan Permanen</span>
+                    <h3 style={{ margin: '4px 0 0', fontSize: '1.2rem', color: '#f1f5f9' }}>Hapus Semua Operator?</h3>
+                  </div>
+                </header>
+
+                <p style={{ color: '#94a3b8', fontSize: '0.88rem', lineHeight: '1.5', margin: '0 0 20px' }}>
+                  Apakah Anda yakin ingin menghapus seluruh <strong style={{ color: '#f1f5f9' }}>{setup.operators.length} operator</strong> dari setup ini? Tindakan ini juga akan mengosongkan penugasan operator pada seluruh mesin yang terkait.
+                </p>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                  <Button
+                    variant="secondary"
+                    onClick={() => setConfirmDeleteAllOpen(false)}
+                    disabled={deletingAllOperators}
+                  >
+                    Batal
+                  </Button>
+                  <Button
+                    variant="danger"
+                    onClick={removeAllOperators}
+                    disabled={deletingAllOperators}
+                  >
+                    {deletingAllOperators ? 'Menghapus…' : 'Ya, Hapus Semua'}
+                  </Button>
+                </div>
+              </div>
+            </div>,
+            document.fullscreenElement ?? document.body,
+          )}
         {startTimesOpen && (
           <OperatorStartTimesDialog
             setup={setup}
@@ -2349,19 +2445,20 @@ function ProductionSetupEditor({
             <div className="production-operator-add" style={{ marginTop: 10 }}>
               <input
                 className="input"
-                type="number"
-                min={1}
-                max={500}
-                value={bulkOperatorCount}
-                onChange={(e) => setBulkOperatorCount(Math.max(1, Number(e.target.value) || 1))}
-                disabled={addingOperator || addingBulkOperators}
-              />
-              <input
-                className="input"
                 placeholder="Prefix, e.g. Opr"
                 value={bulkOperatorPrefix}
                 onChange={(e) => setBulkOperatorPrefix(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && addBulkOperators()}
+                disabled={addingOperator || addingBulkOperators}
+              />
+              <input
+                className="input"
+                type="number"
+                min={1}
+                max={500}
+                placeholder="Jumlah"
+                value={bulkOperatorCount}
+                onChange={(e) => setBulkOperatorCount(Math.max(1, Number(e.target.value) || 1))}
                 disabled={addingOperator || addingBulkOperators}
               />
               <Button

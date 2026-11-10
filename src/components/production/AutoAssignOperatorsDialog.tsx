@@ -61,6 +61,7 @@ export function AutoAssignOperatorsDialog({
   // Split task state
   const [splitPresetId, setSplitPresetId] = useState<SplitPresetId>('three_groups_dlr');
   const [balanceFractional, setBalanceFractional] = useState<boolean>(true);
+  const [splitGlobalPrefix, setSplitGlobalPrefix] = useState<string>('Opr');
 
   // Groups config
   const [customGroups, setCustomGroups] = useState<TaskGroupConfig[]>(() => {
@@ -83,7 +84,12 @@ export function AutoAssignOperatorsDialog({
   useEffect(() => {
     const p = SPLIT_PRESETS.find((item) => item.id === splitPresetId);
     if (p && splitPresetId !== 'custom') {
-      setCustomGroups(p.groups(activeBreakdown));
+      const groups = p.groups(activeBreakdown);
+      setCustomGroups(
+        splitGlobalPrefix.trim()
+          ? groups.map((g) => ({ ...g, prefix: splitGlobalPrefix.trim() }))
+          : groups,
+      );
     }
     if (rawSplitReq) {
       setSplitTotalCount(Math.max(1, Math.ceil(rawSplitReq)));
@@ -102,9 +108,21 @@ export function AutoAssignOperatorsDialog({
     if (presetId !== 'custom') {
       const p = SPLIT_PRESETS.find((item) => item.id === presetId);
       if (p) {
-        setCustomGroups(p.groups(activeBreakdown));
+        const groups = p.groups(activeBreakdown);
+        setCustomGroups(
+          splitGlobalPrefix.trim()
+            ? groups.map((g) => ({ ...g, prefix: splitGlobalPrefix.trim() }))
+            : groups,
+        );
       }
     }
+  };
+
+  const handleGlobalPrefixChange = (val: string) => {
+    setSplitGlobalPrefix(val);
+    setCustomGroups((prev) =>
+      prev.map((g) => ({ ...g, prefix: val })),
+    );
   };
 
   const handleGroupCountChange = (groupId: string, newCount: number) => {
@@ -524,9 +542,25 @@ export function AutoAssignOperatorsDialog({
 
               {/* Group breakdown and counts */}
               <div style={{ marginTop: '4px' }}>
-                <span style={{ fontSize: '0.76rem', fontWeight: 600, color: '#cbd5e1', display: 'block', marginBottom: '8px' }}>
-                  Rincian Kelompok Tugas & Prefix:
-                </span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
+                  <span style={{ fontSize: '0.76rem', fontWeight: 600, color: '#cbd5e1' }}>
+                    Rincian Kelompok Tugas & Prefix:
+                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <label style={{ fontSize: '0.74rem', color: '#38bdf8', fontWeight: 500 }}>
+                      Global Prefix:
+                    </label>
+                    <input
+                      className="input"
+                      style={{ width: '80px', padding: '2px 8px', height: '26px', fontSize: '0.75rem' }}
+                      placeholder="e.g. Opr"
+                      value={splitGlobalPrefix}
+                      onChange={(e) => handleGlobalPrefixChange(e.target.value)}
+                      disabled={executing}
+                      title="Mengubah prefix ini akan mengubah prefix di seluruh kelompok"
+                    />
+                  </div>
+                </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '180px', overflowY: 'auto' }}>
                   {customGroups.map((grp) => {
                     const req = grp.tasks.reduce((sum, taskKey) => {

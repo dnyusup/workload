@@ -575,6 +575,45 @@ export async function removeProductionOperator(setupId: string, operatorId: stri
   await Mpp_wl_productionsetupoperatorsesService.delete(operatorId);
 }
 
+/** Removes all operators from a setup and clears all operator assignments across all machines in that setup. */
+export async function removeAllProductionOperators(setupId: string): Promise<void> {
+  const columns = ['mpp_assignedopr', ...TASK_OPERATOR_COLUMNS.map(([, column]) => column)] as const;
+  const filterExpr = `mpp_productionsetupid eq '${escapeODataString(setupId)}' and (${columns.map((column) => `${column} ne null`).join(' or ')})`;
+  const machineRows = await fetchAllPages(Mpp_wl_productionsetupmachinesesService.getAll, {
+    filter: filterExpr,
+    select: ['mpp_wl_productionsetupmachinesid'],
+  });
+
+  const clearFields: Record<string, null> = {
+    mpp_assignedopr: null,
+  };
+  TASK_OPERATOR_COLUMNS.forEach(([, column]) => {
+    clearFields[column] = null;
+  });
+
+  await runWithConcurrency(
+    machineRows,
+    async (row) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await Mpp_wl_productionsetupmachinesesService.update(row.mpp_wl_productionsetupmachinesid, clearFields as any);
+    },
+    BULK_CONCURRENCY,
+  );
+
+  const opRows = await fetchAllPages(Mpp_wl_productionsetupoperatorsesService.getAll, {
+    filter: `mpp_productionsetupid eq '${escapeODataString(setupId)}'`,
+    select: ['mpp_wl_productionsetupoperatorsid'],
+  });
+
+  await runWithConcurrency(
+    opRows,
+    async (row) => {
+      await Mpp_wl_productionsetupoperatorsesService.delete(row.mpp_wl_productionsetupoperatorsid);
+    },
+    BULK_CONCURRENCY,
+  );
+}
+
 /** Applies a bulk "Assign Selection" action (Construction / Multi Task / Split Task operators /
  * Unplan) or a CSV re-import — one Dataverse call per changed machine row, run with
  * limited concurrency (see BULK_CONCURRENCY) rather than fully sequential. */
