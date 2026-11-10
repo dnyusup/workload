@@ -215,8 +215,7 @@ export function computeAutoAssignPlan({
   operatorsToCreate: { label: string; groupKey?: string; description?: string }[];
   machineAssignments: Map<string, Partial<ProductionMachineAssignment>>;
 } {
-  // 1. Order machines using facing Take-Up pairs order
-  const orderedLayout = defaultAssignmentOrder(setup.layout, setup.movement?.pixelsPerMeter);
+  // 1. Filter target machines first so spatial ordering is performed directly on the active machines
   const targetIdSet = options.targetMachineIds && options.targetMachineIds.length > 0
     ? new Set(options.targetMachineIds)
     : null;
@@ -225,13 +224,15 @@ export function computeAutoAssignPlan({
     setup.assignments.filter((a) => a.constructionDetailId).map((a) => a.machineId),
   );
 
-  let targetMachines: LayoutMachine[] = orderedLayout;
+  let candidateMachines = setup.layout;
   if (targetIdSet) {
-    targetMachines = targetMachines.filter((m) => targetIdSet.has(m.id));
+    candidateMachines = candidateMachines.filter((m) => targetIdSet.has(m.id));
   }
   if (options.onlyPlannedMachines !== false) {
-    targetMachines = targetMachines.filter((m) => plannedMachineIds.has(m.id));
+    candidateMachines = candidateMachines.filter((m) => plannedMachineIds.has(m.id));
   }
+
+  const targetMachines = defaultAssignmentOrder(candidateMachines, setup.movement?.pixelsPerMeter);
 
   const operatorsToCreate: { label: string; groupKey?: string; description?: string }[] = [];
   const machineAssignments = new Map<string, Partial<ProductionMachineAssignment>>();
@@ -355,6 +356,10 @@ export function computeAutoAssignPlan({
       // while prioritizing dedicated primary groups.
       const totalMachines = targetMachines.length;
 
+      // Track assigned machines per operator to compute spatial proximity for overflow assignments
+      const assignedMachinesByOp = new Map<string, Set<string>>();
+      const layoutMachineMap = new Map(setup.layout.map((m) => [m.id, m]));
+
       // Helper to assign task to machine
       const assignTask = (machineId: string, task: ActivityTaskKey, label: string) => {
         const existing = machineAssignments.get(machineId) || {};
@@ -368,6 +373,27 @@ export function computeAutoAssignPlan({
         if (task === 'diesChange') patch.diesChangeOperatorIds = [label];
         if (task === 'defectRepairing') patch.defectRepairingOperatorIds = [label];
         machineAssignments.set(machineId, patch);
+
+        if (!assignedMachinesByOp.has(label)) {
+          assignedMachinesByOp.set(label, new Set());
+        }
+        assignedMachinesByOp.get(label)!.add(machineId);
+      };
+
+      const getMinDistanceToOp = (opLabel: string, targetMachine: LayoutMachine): number => {
+        const assignedSet = assignedMachinesByOp.get(opLabel);
+        if (!assignedSet || assignedSet.size === 0) return 0;
+        let minDist = Infinity;
+        for (const mId of assignedSet) {
+          const m = layoutMachineMap.get(mId);
+          if (m) {
+            const dx = m.x - targetMachine.x;
+            const dy = m.y - targetMachine.y;
+            const dist = Math.hypot(dx, dy);
+            if (dist < minDist) minDist = dist;
+          }
+        }
+        return minDist;
       };
 
       // 1. Calculate demand for each group
@@ -516,14 +542,29 @@ export function computeAutoAssignPlan({
         let demandToCover = slice.remainingDemand;
 
         while (machinesToAssign.length > 0) {
-          // Find operators with remaining capacity
+          const firstMachine = machinesToAssign[0];
+          // Find operators with remaining capacity, sorted primarily by physical proximity to the machine slice
           const helpers = operatorInstances
             .filter((op) => op.capacityRemaining > 0.001)
-            .sort((a, b) => b.capacityRemaining - a.capacityRemaining);
+            .sort((a, b) => {
+              const distA = getMinDistanceToOp(a.label, firstMachine);
+              const distB = getMinDistanceToOp(b.label, firstMachine);
+              if (Math.abs(distA - distB) > 5) {
+                return distA - distB;
+              }
+              return b.capacityRemaining - a.capacityRemaining;
+            });
 
           if (helpers.length === 0) {
-            // All operators full: assign the rest to the operator with the lowest assigned load
-            const fallbackOp = [...operatorInstances].sort((a, b) => a.assignedLoad - b.assignedLoad)[0];
+            // All operators full: assign the rest to the operator closest to firstMachine
+            const fallbackOp = [...operatorInstances].sort((a, b) => {
+              const distA = getMinDistanceToOp(a.label, firstMachine);
+              const distB = getMinDistanceToOp(b.label, firstMachine);
+              if (Math.abs(distA - distB) > 5) {
+                return distA - distB;
+              }
+              return a.assignedLoad - b.assignedLoad;
+            })[0];
             machinesToAssign.forEach((m) => {
               slice.tasks.forEach((t) => assignTask(m.id, t, fallbackOp.label));
             });
@@ -553,26 +594,28 @@ export function computeAutoAssignPlan({
 
       // 6. Pass 3: Safety verification sweep (Guarantees NO machine is left unassigned)
       groupData.forEach((g) => {
-        const defaultOpLabel = operatorInstances.find((op) => op.primaryGroupId === g.grp.id)?.label
-          ?? operatorInstances[0]?.label;
+        targetMachines.forEach((m) => {
+          const assignment = machineAssignments.get(m.id);
+          g.grp.tasks.forEach((t) => {
+            let isSet = false;
+            if (t === 'doffing' && assignment?.doffingOperatorIds?.length) isSet = true;
+            if (t === 'loading' && assignment?.loadingOperatorIds?.length) isSet = true;
+            if (t === 'fractureRepairing' && assignment?.fractureRepairingOperatorIds?.length) isSet = true;
+            if (t === 'diesChange' && assignment?.diesChangeOperatorIds?.length) isSet = true;
+            if (t === 'defectRepairing' && assignment?.defectRepairingOperatorIds?.length) isSet = true;
 
-        if (defaultOpLabel) {
-          targetMachines.forEach((m) => {
-            const assignment = machineAssignments.get(m.id);
-            g.grp.tasks.forEach((t) => {
-              let isSet = false;
-              if (t === 'doffing' && assignment?.doffingOperatorIds?.length) isSet = true;
-              if (t === 'loading' && assignment?.loadingOperatorIds?.length) isSet = true;
-              if (t === 'fractureRepairing' && assignment?.fractureRepairingOperatorIds?.length) isSet = true;
-              if (t === 'diesChange' && assignment?.diesChangeOperatorIds?.length) isSet = true;
-              if (t === 'defectRepairing' && assignment?.defectRepairingOperatorIds?.length) isSet = true;
-
-              if (!isSet) {
-                assignTask(m.id, t, defaultOpLabel);
+            if (!isSet) {
+              const primaries = operatorInstances.filter((op) => op.primaryGroupId === g.grp.id);
+              const pool = primaries.length > 0 ? primaries : operatorInstances;
+              const closestOp = [...pool].sort(
+                (a, b) => getMinDistanceToOp(a.label, m) - getMinDistanceToOp(b.label, m),
+              )[0];
+              if (closestOp) {
+                assignTask(m.id, t, closestOp.label);
               }
-            });
+            }
           });
-        }
+        });
       });
     }
   }
