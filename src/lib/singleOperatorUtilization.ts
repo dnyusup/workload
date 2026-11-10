@@ -638,7 +638,15 @@ export function recommendedMachineCountForForecast(config: AppConfig): number {
 
   if (config.operator.manOcc100Percent) {
     if (recommended > 0 && recommendedOccupation < 99.99 && recommended < MAX_RECOMMENDED_MACHINES) {
-      return recommended + 1;
+      const candidateCount = recommended + 1;
+      const candidateForecast = calculateSingleOperatorForecast({
+        ...config,
+        operator: { ...config.operator, machHandled: candidateCount },
+      });
+      const maxIdealDemand = config.operator.maxIdealDemandPercent ?? 120;
+      if (candidateForecast.utilizationPercent < maxIdealDemand) {
+        return candidateCount;
+      }
     }
     if (recommended === 0) return 1;
     return recommended;

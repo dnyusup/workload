@@ -61,6 +61,9 @@ export interface OperatorConfig {
   /** Setting → Default Values "Man Occ 100%": true = adjustment #machine assigned must reach 100%
    * Man Occupation (adds 1 more machine if Man Occ < 100%, even if Ideal Demand > 100%). */
   manOcc100Percent?: boolean;
+  /** Setting → Default Values "Max Ideal Demand (%)": when Man Occ 100% is true, stepping up is only
+   * allowed if candidate's Ideal Demand is below this maximum threshold (default 120%). */
+  maxIdealDemandPercent?: number;
   /** Optimize takes one more machine when its count leaves Forecast Man Occupation below this (%),
    * 0 = off; from Default Values. undefined = the built-in default. */
   optimizeStepUpBelow?: number;
@@ -505,6 +508,8 @@ export interface ProductionSetup {
   /** Not stored with the setup: Setting → Default Values "Man Occ 100%" when it was loaded.
    * true = adjustment #machine assigned must reach 100% Man Occ. */
   manOcc100Percent?: boolean;
+  /** Not stored with the setup: Setting → Default Values "Max Ideal Demand (%)" when it was loaded. */
+  maxIdealDemandPercent?: number;
   /** 'manual' = from WL_Products; 'historical' = from WL_Frequency (falls back to WL_Products if missing). */
   frequencyMode?: FrequencyMode;
   frequencyStartDate?: string;

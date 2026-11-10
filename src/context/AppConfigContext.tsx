@@ -45,6 +45,7 @@ function defaultConfig(): AppConfig {
       waitingModel: BUILT_IN_DEFAULTS.waitingModel,
       useWaitingModel: BUILT_IN_DEFAULTS.useWaitingModel,
       manOcc100Percent: BUILT_IN_DEFAULTS.manOcc100Percent,
+      maxIdealDemandPercent: BUILT_IN_DEFAULTS.maxIdealDemandPercent,
       optimizeStepUpBelow: BUILT_IN_DEFAULTS.optimizeStepUpBelow,
     },
     activities: defaultActivities(derived.spoolWeight, defaultSpec.fracturePerTon),

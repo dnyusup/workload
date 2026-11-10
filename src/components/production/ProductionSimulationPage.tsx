@@ -355,6 +355,7 @@ export function ProductionSimulationPage() {
           ...setup,
           useWaitingModel: defaults.useWaitingModel,
           manOcc100Percent: defaults.manOcc100Percent,
+          maxIdealDemandPercent: defaults.maxIdealDemandPercent,
           ...(isAdmin ? {} : { waitingModel: defaults.waitingModel }),
         };
       })

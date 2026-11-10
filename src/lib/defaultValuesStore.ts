@@ -30,6 +30,8 @@ export interface DefaultValues {
   waitingModel: WaitingModel;
   /** Setting → Default Values "Man Occ 100%": true = adjustment #machine assigned must reach 100% Man Occ. */
   manOcc100Percent: boolean;
+  /** Setting → Default Values "Max Ideal Demand (%)": when Man Occ 100% is true, max ideal demand limit (> 100). */
+  maxIdealDemandPercent: number;
   /** Off: no waiting model anywhere — forecasts work as None and the model isn't shown. */
   useWaitingModel: boolean;
   /** Optimize adds one machine when Forecast Man Occupation stays below this (%); 0 = off. */
@@ -87,6 +89,7 @@ export const BUILT_IN_DEFAULTS: DefaultValues = {
   minRemainForDoffPriority: 5,
   waitingModel: DEFAULT_WAITING_MODEL,
   manOcc100Percent: false,
+  maxIdealDemandPercent: 120,
   useWaitingModel: true,
   optimizeStepUpBelow: DEFAULT_OPTIMIZE_STEP_UP_BELOW,
 
@@ -124,6 +127,7 @@ const PARAMETER_NAMES: Record<keyof DefaultValues, string> = {
   minRemainForDoffPriority: 'MinRemainTaskForDoffPriority',
   waitingModel: 'WaitingModel',
   manOcc100Percent: 'ManOcc100Percent',
+  maxIdealDemandPercent: 'MaxIdealDemandPercent',
   useWaitingModel: 'UseWaitingModel',
   optimizeStepUpBelow: 'OptimizeStepUpBelow',
 
@@ -166,6 +170,10 @@ function parseValue<K extends keyof DefaultValues>(key: K, raw: string | undefin
     return (flag === 'yes' ? true : flag === 'no' ? false : undefined) as DefaultValues[K] | undefined;
   }
   if (key === 'waitingModel') return parseWaitingModel(text) as DefaultValues[K] | undefined;
+  if (key === 'maxIdealDemandPercent') {
+    const n = Number(text);
+    return (text !== '' && Number.isFinite(n) && n > 100 ? n : 120) as DefaultValues[K];
+  }
   if (key === 'taskPriority') {
     const mode = text.toLowerCase();
     return (mode === 'nearest' || mode === 'quickest' ? mode : undefined) as DefaultValues[K] | undefined;

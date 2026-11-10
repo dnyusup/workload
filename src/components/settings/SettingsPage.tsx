@@ -82,7 +82,8 @@ function DefaultValuesCard() {
     | 'defaultFracturePerTon'
     | 'defaultDefectPerTon'
     | 'defaultDiesPerTon'
-    | 'defaultWwdPoLength1';
+    | 'defaultWwdPoLength1'
+    | 'maxIdealDemandPercent';
   const setNumber = (key: NumberKey, value: number) => set(key, Number.isFinite(value) ? value : 0);
 
   const computedRange = useMemo(() => {
@@ -115,7 +116,16 @@ FILTER(
     setTimeout(() => setCopiedDax(false), 2500);
   };
 
+  const isInvalidMaxIdealDemand = draft.manOcc100Percent && (draft.maxIdealDemandPercent == null || draft.maxIdealDemandPercent <= 100);
+
   const save = async () => {
+    if (draft.manOcc100Percent) {
+      const maxDemand = draft.maxIdealDemandPercent;
+      if (maxDemand == null || !Number.isFinite(maxDemand) || maxDemand <= 100) {
+        setError('Max Ideal Demand (%) must be greater than 100%.');
+        return;
+      }
+    }
     setSaving(true);
     setError(null);
     setMessage(null);
@@ -139,7 +149,7 @@ FILTER(
           <Button variant="ghost" onClick={() => saved && setDraft(saved)} disabled={!dirty || saving}>
             Discard
           </Button>
-          <Button variant="primary" onClick={save} disabled={!dirty || saving}>
+          <Button variant="primary" onClick={save} disabled={!dirty || saving || isInvalidMaxIdealDemand}>
             {saving ? 'Saving…' : 'Save'}
           </Button>
         </div>
@@ -423,10 +433,30 @@ FILTER(
           <SettingGroup title="Forecast & Optimize">
             <SettingRow
               label="Man Occ 100%"
-              tooltip="Yes: Optimize Man Occupation adjusts #machine assigned to ensure Man Occupation reaches 100% (adds 1 more machine if Man Occ < 100%, even if Ideal Demand exceeds 100%). Also impacts Theoretical Operator Required in Production Setup. No: standard optimization procedure."
+              tooltip="Yes: Optimize Man Occupation adjusts #machine assigned to ensure Man Occupation reaches 100% (adds 1 more machine if Man Occ < 100%, provided candidate Ideal Demand stays below Max Ideal Demand). Also impacts Theoretical Operator Required in Production Setup. No: standard optimization procedure."
             >
               <Toggle checked={draft.manOcc100Percent} onChange={(v) => set('manOcc100Percent', v)} ariaLabel="Man Occ 100%" />
             </SettingRow>
+            {draft.manOcc100Percent && (
+              <SettingRow
+                label="Max Ideal Demand (%)"
+                tooltip="When Man Occ 100% is Yes, adding 1 more machine to reach 100% Man Occupation is only allowed if that candidate's Ideal Demand is below this maximum percentage (default 120%). If Ideal Demand is greater than or equal to this limit, it remains at the lower machine count (cannot step up). Value must be greater than 100%."
+              >
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <NumberInput
+                    value={draft.maxIdealDemandPercent}
+                    min={100.1}
+                    step={1}
+                    onChange={(v) => setNumber('maxIdealDemandPercent', v)}
+                  />
+                  {draft.maxIdealDemandPercent <= 100 && (
+                    <span style={{ color: '#ef4444', fontSize: '0.75rem', fontWeight: 500 }}>
+                      Validation: value must be &gt; 100%
+                    </span>
+                  )}
+                </div>
+              </SettingRow>
+            )}
             <SettingRow
               label="Use Waiting Model"
               tooltip="Yes: forecasts estimate machines waiting because they need the operator at the same time, with the Waiting Model below (Admins can change it per setup). No: no waiting model anywhere — forecasts and Optimize work as None (machines only wait for the backlog), and the Waiting Model field and its calculation are hidden in the Work Load Simulator and Production Setup."

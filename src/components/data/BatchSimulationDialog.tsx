@@ -246,7 +246,7 @@ export function BatchSimulationDialog({
                   <strong>Optimize Setting (Default Values):</strong>{' '}
                   {defaultValues?.manOcc100Percent ? (
                     <span style={{ color: '#4ade80', fontWeight: 600 }}>
-                      Man Occ 100% Aktif (jumlah mesin disesuaikan agar Man Occ mencapai 100%)
+                      Man Occ 100% Aktif (jumlah mesin disesuaikan agar Man Occ mencapai 100%, Max Ideal Demand: {defaultValues?.maxIdealDemandPercent ?? 120}%)
                     </span>
                   ) : (
                     <span style={{ color: '#94a3b8' }}>

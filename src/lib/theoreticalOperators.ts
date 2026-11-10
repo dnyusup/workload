@@ -64,6 +64,7 @@ export interface SetupOperatorSettings {
   waitingModel: ProductionSetup['waitingModel'];
   useWaitingModel?: boolean;
   manOcc100Percent?: boolean;
+  maxIdealDemandPercent?: number;
   frequencyMode?: FrequencyMode;
   frequencyStartDate?: string;
   frequencyEndDate?: string;
@@ -84,6 +85,7 @@ export function setupOperatorSettings(setup: ProductionSetup): SetupOperatorSett
     waitingModel: setup.waitingModel,
     useWaitingModel: setup.useWaitingModel,
     manOcc100Percent: setup.manOcc100Percent,
+    maxIdealDemandPercent: setup.maxIdealDemandPercent,
     frequencyMode: setup.frequencyMode ?? 'manual',
     frequencyStartDate: setup.frequencyStartDate,
     frequencyEndDate: setup.frequencyEndDate,
@@ -134,6 +136,7 @@ export function optimizeConfigFor(
       waitingModel: settings.waitingModel,
       useWaitingModel: settings.useWaitingModel,
       manOcc100Percent: settings.manOcc100Percent ?? inputs.defaults.manOcc100Percent,
+      maxIdealDemandPercent: settings.maxIdealDemandPercent ?? inputs.defaults.maxIdealDemandPercent,
     },
     movement: { ...built.movement, walkingSpeed: settings.walkingSpeed },
     rpcPercent: settings.rpc,

@@ -103,6 +103,7 @@ export function buildConstructionConfig({
       waitingModel: defaults.waitingModel,
       useWaitingModel: defaults.useWaitingModel,
       manOcc100Percent: defaults.manOcc100Percent,
+      maxIdealDemandPercent: defaults.maxIdealDemandPercent,
       optimizeStepUpBelow: defaults.optimizeStepUpBelow,
     },
     movement: { walkingSpeed: defaults.walkingSpeed, pixelsPerMeter: DEFAULT_PIXELS_PER_METER },

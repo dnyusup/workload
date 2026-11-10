@@ -286,6 +286,7 @@ export async function createProductionSetup(
     waitingModel: defaults.waitingModel,
     useWaitingModel: defaults.useWaitingModel,
     manOcc100Percent: defaults.manOcc100Percent,
+    maxIdealDemandPercent: defaults.maxIdealDemandPercent,
     frequencyMode: defaults.frequencyMode ?? 'manual',
     frequencyStartDate: defaultDates.startDate,
     frequencyEndDate: defaultDates.endDate,
