@@ -3901,14 +3901,18 @@
 }
 
 .timeline-list-toolbar .production-timeline-search {
+  width: 200px;
+  min-width: 160px;
+  height: 30px;
   margin: 0;
+  font-size: 0.82rem;
 }
 
 .timeline-toolbar-left {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 
 /* ---- Construction Detail Timeline Filter Dropdown ---- */
