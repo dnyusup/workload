@@ -24,6 +24,9 @@ import { machineOperatorIds, operatorAssignmentLines } from '../../lib/productio
 import { buildCanvasLegendData, type LegendHover } from '../../lib/canvasLegend';
 import { CanvasLegendPanel } from './CanvasLegendPanel';
 import { ProductionReportView } from './ProductionReportView';
+import { ConstructionDetailFilterDropdown, type ConstructionDetailMetricRow } from './ConstructionDetailFilterDropdown';
+import { buildMachineFacts, buildOperatorFacts, groupMachines } from '../../lib/productionReport';
+import { calculatePlannedUtilization } from '../../lib/productionUtilization';
 import { WallsLayer } from '../ui/WallsLayer';
 import { RemarksLayer } from '../ui/RemarksLayer';
 import { machineLabelFontSize } from '../../lib/machineLabel';
@@ -169,6 +172,7 @@ export function ProductionRunView({
   // so skipping them there also cuts per-machine DOM nodes roughly in half while zoomed out.
   const isDetailed = zoom >= 0.4;
   const [machineTimelineSearch, setMachineTimelineSearch] = useState('');
+  const [selectedConstructionDetail, setSelectedConstructionDetail] = useState<string | null>(null);
   // At real-factory scale (~1300+ machines) this list alone is a heavy render (each row can carry
   // many timeline segments) and, being part of the same component as the canvas, would otherwise
   // re-render on every pan/zoom tick too — letting it be hidden entirely removes that cost when
@@ -589,6 +593,74 @@ export function ProductionRunView({
     ? selectedOperator.timeline[selectedOperatorHighlight.index] ?? null
     : null;
 
+  // Construction Detail facts and groups — following the exact procedure from Production Report
+  const machineFacts = useMemo(
+    () => buildMachineFacts(state, setup, resolved, activityLabel),
+    [state, setup, resolved, activityLabel],
+  );
+  const operatorFacts = useMemo(
+    () => buildOperatorFacts(state, setup, activityLabel),
+    [state, setup, activityLabel],
+  );
+  const cdGroups = useMemo(
+    () => groupMachines(machineFacts, operatorFacts, 'constructionDetail', quality, shiftHours),
+    [machineFacts, operatorFacts, quality, shiftHours],
+  );
+  const plannedUtilization = useMemo(
+    () => calculatePlannedUtilization(setup, resolved),
+    [setup, resolved],
+  );
+  const plannedMachineMap = useMemo(
+    () => new Map(plannedUtilization.machines.map((pm) => [pm.machineId, pm])),
+    [plannedUtilization],
+  );
+
+  // Map each machine id to its constructionDetail key
+  const machineCdMap = useMemo(() => {
+    const map = new Map<string, string>();
+    machineFacts.forEach((f) => {
+      const cd = f.attributes?.constructionDetail || f.label;
+      map.set(f.id, cd);
+    });
+    return map;
+  }, [machineFacts]);
+
+  const cdMetricRows: ConstructionDetailMetricRow[] = useMemo(() => {
+    return cdGroups.map((g) => {
+      const sumFcOee = g.machineIds.reduce((sum, mId) => {
+        const pm = plannedMachineMap.get(mId);
+        return sum + ((pm?.oee ?? 0) * 100 * quality);
+      }, 0);
+      const oeeForecast = g.machineIds.length > 0 ? sumFcOee / g.machineIds.length : 0;
+      const oeeSimulated = metrics.clockMin > 0 ? g.oee * 100 : 0;
+      const gap = metrics.clockMin > 0 ? oeeSimulated - oeeForecast : 0;
+      return {
+        key: g.key,
+        label: g.label,
+        machineCount: g.machines,
+        oeeForecast,
+        oeeSimulated,
+        gap,
+        machineIds: g.machineIds,
+      };
+    });
+  }, [cdGroups, plannedMachineMap, quality, metrics.clockMin]);
+
+  const totalConstructionRow: ConstructionDetailMetricRow = useMemo(() => {
+    const allFcOee = fcOeeWithQuality;
+    const allSimOee = metrics.clockMin > 0 ? oee : 0;
+    const allGap = metrics.clockMin > 0 ? allSimOee - allFcOee : 0;
+    return {
+      key: '__ALL__',
+      label: 'All Constructions',
+      machineCount: plannedMachines.length,
+      oeeForecast: allFcOee,
+      oeeSimulated: allSimOee,
+      gap: allGap,
+      machineIds: plannedMachines.map((m) => m.id),
+    };
+  }, [fcOeeWithQuality, metrics.clockMin, oee, plannedMachines]);
+
   // Clicking a segment on an operator's timeline doesn't just mark the matching time range on
   // every machine row (selectedOperatorRange above) — it also narrows the Machine Timeline list
   // down to only the machines that operator is actually assigned to handle (any activity), so a
@@ -599,12 +671,18 @@ export function ProductionRunView({
       )
     : null;
   const machineTimelineRows = (machinesForSelectedOperator ? plannedMachines.filter((m) => machinesForSelectedOperator.has(m.id)) : plannedMachines).filter(
-    (m) => m.label.toLowerCase().includes(machineTimelineSearch.trim().toLowerCase()),
+    (m) => {
+      if (selectedConstructionDetail) {
+        const cdKey = machineCdMap.get(m.id);
+        if (cdKey !== selectedConstructionDetail) return false;
+      }
+      return m.label.toLowerCase().includes(machineTimelineSearch.trim().toLowerCase());
+    },
   );
 
   const shownMachineSummary = selectedMachine
     ? summarizeMachineTimelineGroups([selectedMachine.timeline], timelineDuration)
-    : machinesForSelectedOperator
+    : machinesForSelectedOperator || selectedConstructionDetail
       ? summarizeMachineTimelineGroups(machineTimelineRows.map((m) => m.timeline), timelineDuration)
       : totalMachineSummary;
 
@@ -909,13 +987,20 @@ export function ProductionRunView({
 
           <div className="machine-timelines">
             <div className="timeline-heading">
-              <strong>Machine Timeline{selectedOperator ? ` — ${selectedOperator.label} (${machineTimelineRows.length} machines)` : ''}</strong>
+              <strong>
+                Machine Timeline
+                {selectedOperator ? ` — ${selectedOperator.label}` : ''}
+                {selectedConstructionDetail ? ` — ${selectedConstructionDetail}` : ''}
+                {` (${machineTimelineRows.length} machines)`}
+              </strong>
               <span className="production-timeline-heading-actions">
                 {!showMachineTimeline
                   ? ''
                   : selectedOperator
                     ? 'Click the operator segment again to return to all machines'
-                    : 'Click a bar to view the machine summary'}
+                    : selectedConstructionDetail
+                      ? 'Filtered by Construction Detail'
+                      : 'Click a bar to view the machine summary'}
                 <button
                   type="button"
                   className="production-timeline-toggle"
@@ -928,12 +1013,20 @@ export function ProductionRunView({
             {showMachineTimeline && (
               <>
                 <div className="timeline-list-toolbar">
-                  <input
-                    className="input input-sm production-timeline-search"
-                    placeholder="Search machine number…"
-                    value={machineTimelineSearch}
-                    onChange={(e) => setMachineTimelineSearch(e.target.value)}
-                  />
+                  <div className="timeline-toolbar-left">
+                    <input
+                      className="input input-sm production-timeline-search"
+                      placeholder="Search machine number…"
+                      value={machineTimelineSearch}
+                      onChange={(e) => setMachineTimelineSearch(e.target.value)}
+                    />
+                    <ConstructionDetailFilterDropdown
+                      rows={cdMetricRows}
+                      totalRow={totalConstructionRow}
+                      selectedKey={selectedConstructionDetail}
+                      onSelect={setSelectedConstructionDetail}
+                    />
+                  </div>
                 </div>
                 <MachineTimelineRows
                   zoom={machineTimelineZoom}
