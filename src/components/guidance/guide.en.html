@@ -12,269 +12,591 @@
   </ol>
 </nav>
 <article class="guide-article">
-    <section>
-      <p class="lede">This app simulates operator workload on the production floor: how many machines one operator can handle, their man occupation, and the output of one shift.</p>
-    </section>
+  <section>
+    <p class="lede">This app simulates operator workload on the production floor: how many machines one operator can
+      handle, their man occupation, and the output of one shift.</p>
+  </section>
 
-    <section>
-      <h2 id="en-overview">Overview &amp; roles</h2>
-      <p>There are two simulators. The <span class="ui">Work Load Simulator</span> models one operator handling a set of machines that all run one Construction Detail. <span class="ui">Production Simulation</span> models many operators and many Constructions at once on a plant layout.</p>
-      <p>The sidebar shows menus according to your role:</p>
-      <div class="table-wrap"><table>
-        <thead><tr><th>Menu</th><th>Purpose</th><th>Roles</th></tr></thead>
+  <section>
+    <h2 id="en-overview">Overview &amp; roles</h2>
+    <p>There are two simulators. The <span class="ui">Work Load Simulator</span> models one operator handling a set of
+      machines that all run one Construction Detail. <span class="ui">Production Simulation</span> models many operators
+      and many Constructions at once on a plant layout.</p>
+    <p>The sidebar shows menus according to your role:</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Menu</th>
+            <th>Purpose</th>
+            <th>Roles</th>
+          </tr>
+        </thead>
         <tbody>
-          <tr><td>Work Load Simulator</td><td>Set up and run a single-operator simulation</td><td>Admin, Contribute, Guest</td></tr>
-          <tr><td>Layout Builder</td><td>Create and save machine layouts</td><td>Admin, Contribute</td></tr>
-          <tr><td>Production Simulation</td><td>Multi-operator Production Setups and their simulation</td><td>Admin, Contribute</td></tr>
-          <tr><td>WL_Products</td><td>Product / Construction Detail specifications</td><td>Admin</td></tr>
-          <tr><td>WL_Activities</td><td>Activity times and frequencies per Construction</td><td>Admin</td></tr>
-          <tr><td>MES_Frequency</td><td>Historical frequency data from Power BI Semantic Model via Power Automate</td><td>Admin, Contribute</td></tr>
-          <tr><td>WL_Outputmodels</td><td>Saved simulation results (WLM)</td><td>Admin</td></tr>
-          <tr><td>Manage Users</td><td>Grant Admin / Contribute access</td><td>Admin</td></tr>
-          <tr><td>Setting</td><td>Default values for new setups</td><td>Admin</td></tr>
+          <tr>
+            <td>Work Load Simulator</td>
+            <td>Set up and run a single-operator simulation</td>
+            <td>Admin, Contribute, Guest</td>
+          </tr>
+          <tr>
+            <td>Layout Builder</td>
+            <td>Create and save machine layouts</td>
+            <td>Admin, Contribute</td>
+          </tr>
+          <tr>
+            <td>Production Simulation</td>
+            <td>Multi-operator Production Setups and their simulation</td>
+            <td>Admin, Contribute</td>
+          </tr>
+          <tr>
+            <td>WL_Products</td>
+            <td>Product / Construction Detail specifications</td>
+            <td>Admin</td>
+          </tr>
+          <tr>
+            <td>WL_Activities</td>
+            <td>Activity times and frequencies per Construction</td>
+            <td>Admin</td>
+          </tr>
+          <tr>
+            <td>MES_Frequency</td>
+            <td>Historical frequency data from Power BI Semantic Model via Power Automate</td>
+            <td>Admin, Contribute</td>
+          </tr>
+          <tr>
+            <td>WL_Outputmodels</td>
+            <td>Saved simulation results (WLM)</td>
+            <td>Admin</td>
+          </tr>
+          <tr>
+            <td>Manage Users</td>
+            <td>Grant Admin / Contribute access</td>
+            <td>Admin</td>
+          </tr>
+          <tr>
+            <td>Setting</td>
+            <td>Default values for new setups</td>
+            <td>Admin</td>
+          </tr>
         </tbody>
-      </table></div>
-      <p>Anyone signed in who isn't listed in Manage Users is a <span class="ui">Guest</span>.</p>
-    </section>
+      </table>
+    </div>
+    <p>Anyone signed in who isn't listed in Manage Users is a <span class="ui">Guest</span>.</p>
+  </section>
 
-    <section>
-      <h2 id="en-workload">Work Load Simulator</h2>
-      <p>The flow has two stages: <span class="ui">1. Setup</span> then <span class="ui">2. Simulation</span>. Setup has two steps: <span class="ui">Setup</span> and <span class="ui">Machine Layout</span>.</p>
+  <section>
+    <h2 id="en-workload">Work Load Simulator</h2>
+    <p>The flow has two stages: <span class="ui">1. Setup</span> then <span class="ui">2. Simulation</span>. Setup has
+      two steps: <span class="ui">Setup</span> and <span class="ui">Machine Layout</span>.</p>
 
-      <h3>Step 1 — Setup</h3>
-      <ol class="steps">
-        <li><strong>Pick a Construction Detail &amp; Frequency Source</strong> at the top (filter by Area, Mach, Product). The <em>Frequency Source</em> option chooses the source for Fracture, Dies, and Defect per Ton: <em>Manual (WL_Products)</em> uses the manual rates in master product data, while <em>Historical (MES_Frequency)</em> pulls actual frequency rates from the Power BI Semantic Model (with weighted-average aggregation by TonProduced). If a product does not have historical data, the system automatically falls back to manual WL_Products values. The app fills Machine Specification from WL_Products / MES_Frequency and the Activity Table from WL_Activities. Operator settings (Task Priority, shift, lunch, meeting, RPC, Walking Speed, Doff Priority) come from <span class="ui">Setting → Default Values</span>, except Task Priority, Doff Priority and Min Remain Task where the Construction Detail fills them in on WL_Products. If the Construction's Area has a default layout (<span class="ui">Setting → Default Layouts</span>), that layout is loaded too.</li>
-        <li><strong>Machine Specification</strong>: LayLength, NoOfWires, Speed, SpoolLength, LinearDensity, Fracture/Dies/Defect per ton, POlength. Spool Weight and Runtime/spool are derived from these.</li>
-        <li><strong>Operator Activities</strong>: Task Priority, Shift Time, Lunch/Meeting (duration and start minute), extra breaks (<span class="ui">+ Add activity</span>), Available Time with Walking Speed (m/min) beside it, and at the bottom <span class="ui">Doff Priority</span> and <span class="ui">Min Remain Task for Doff Priority</span>.</li>
-        <li><strong>Output Estimate</strong>: estimated output and man occupation before running. Set <span class="ui"># Assigned Machines</span>, or click <span class="ui">Optimize Man Occupation</span> to find the most machines the operator can keep up with (Forecast Man Occupation up to 100%, no backlog). If <span class="ui">Man Occ 100%</span> (Setting → Default Values) is enabled (Yes), Optimize adds 1 more machine if Forecast Man Occupation is below 100% (e.g. 98%), ensuring Man Occupation reaches 100% even though Ideal Demand exceeds 100% (backlog) — provided that candidate machine count's Ideal Demand stays below <span class="ui">Max Ideal Demand (%)</span> (Setting → Default Values, 120% by default; if Ideal Demand is &ge; 120%, it remains at the lower machine count without stepping up). If No, it follows <span class="ui">Optimize Step-Up Below</span> (Setting → Default Values, 89% by default; 0 turns it off) to take one more machine if occupation remains below that threshold. Machines still wait even below 100% man occupation, whenever several need the operator at once (machine interference); the dropdown before Optimize (Admin only; everyone else follows Setting → Default Values) picks how that's estimated: <em>Wright</em>'s formula, the <em>Finite source</em> queue (M/M/1//N), or <em>None</em> (no interference: machines only wait for the backlog). When Setting → Default Values sets <span class="ui">Use Waiting Model</span> to No, there is no waiting model at all: the dropdown, its ⓘ and the model part of the fx calculation are hidden, and forecasts and Optimize work as None — in the Production Setup too. Changing it re-runs Optimize, and Save WLM stores it (OptimizeModel). Waiting for Operator is the larger of that interference and the backlog. It lowers OEE, and spools per machine (Shift × OEE ÷ runtime) and so the operator's work follow from that OEE, solved together because less production also means less work and less waiting. The <span class="ui"><i>f</i>x</span> button next to Forecast Man Occupation shows the calculation step by step: available time, machine availability, every activity's demand, walking, the interference and machine downtime.</li>
-        <li><strong>Activity Table</strong>: Time, Frequency Type, Numerator, Denominator and Mach Condition per activity. <span class="ui">RPC %</span> sits right of the table title. Add sub-activities with <span class="ui">+ Sub Doffing</span> or <span class="ui">+ Sub Loading</span>.</li>
-      </ol>
-      <div class="note"><p>The circular-arrow button resets every field to how it was when the Construction Detail was picked.</p></div>
+    <h3>Step 1 — Setup</h3>
+    <ol class="steps">
+      <li><strong>Pick a Construction Detail &amp; Frequency Source</strong> at the top (filter by Area, Mach, Product).
+        The <em>Frequency Source</em> option chooses the source for Fracture, Dies, and Defect per Ton: <em>Manual
+          (WL_Products)</em> uses the manual rates in master product data, while <em>Historical (MES_Frequency)</em>
+        pulls actual frequency rates from the Power BI Semantic Model (with weighted-average aggregation by
+        TonProduced). If a product does not have historical data, the system automatically falls back to manual
+        WL_Products values. The app fills Machine Specification from WL_Products / MES_Frequency and the Activity Table
+        from WL_Activities. Operator settings (Task Priority, shift, lunch, meeting, RPC, Walking Speed, Doff Priority)
+        come from <span class="ui">Setting → Default Values</span>, except Task Priority, Doff Priority and Min Remain
+        Task where the Construction Detail fills them in on WL_Products. If the Construction's Area has a default layout
+        (<span class="ui">Setting → Default Layouts</span>), that layout is loaded too.</li>
+      <li><strong>Machine Specification</strong>: LayLength, NoOfWires, Speed, SpoolLength, LinearDensity,
+        Fracture/Dies/Defect per ton, POlength. Spool Weight and Runtime/spool are derived from these.</li>
+      <li><strong>Operator Activities</strong>: Task Priority, Shift Time, Lunch/Meeting (duration and start minute),
+        extra breaks (<span class="ui">+ Add activity</span>), Available Time with Walking Speed (m/min) beside it, and
+        at the bottom <span class="ui">Doff Priority</span> and <span class="ui">Min Remain Task for Doff
+          Priority</span>.</li>
+      <li><strong>Output Estimate</strong>: estimated output and man occupation before running. Set <span class="ui">#
+          Assigned Machines</span>, or click <span class="ui">Optimize Man Occupation</span> to find the most machines
+        the operator can keep up with (Forecast Man Occupation up to 100%, no backlog). If <span class="ui">Man Occ
+          100%</span> (Setting → Default Values) is enabled (Yes), Optimize adds 1 more machine if Forecast Man
+        Occupation is below 100% (e.g. 98%), ensuring Man Occupation reaches 100% even though Ideal Demand exceeds 100%
+        (backlog) — provided that candidate machine count's Ideal Demand stays below <span class="ui">Max Ideal Demand
+          (%)</span> (Setting → Default Values, 120% by default; if Ideal Demand is &ge; 120%, it remains at the lower
+        machine count without stepping up). If No, it follows <span class="ui">Optimize Step-Up Below</span> (Setting →
+        Default Values, 89% by default; 0 turns it off) to take one more machine if occupation remains below that
+        threshold. Machines still wait even below 100% man occupation, whenever several need the operator at once
+        (machine interference); the dropdown before Optimize (Admin only; everyone else follows Setting → Default
+        Values) picks how that's estimated: <em>Wright</em>'s formula, the <em>Finite source</em> queue (M/M/1//N), or
+        <em>None</em> (no interference: machines only wait for the backlog). When Setting → Default Values sets <span
+          class="ui">Use Waiting Model</span> to No, there is no waiting model at all: the dropdown, its ⓘ and the model
+        part of the fx calculation are hidden, and forecasts and Optimize work as None — in the Production Setup too.
+        Changing it re-runs Optimize, and Save WLM stores it (OptimizeModel). Waiting for Operator is the larger of that
+        interference and the backlog. It lowers OEE, and spools per machine (Shift × OEE ÷ runtime) and so the
+        operator's work follow from that OEE, solved together because less production also means less work and less
+        waiting. The <span class="ui"><i>f</i>x</span> button next to Forecast Man Occupation shows the calculation step
+        by step: available time, machine availability, every activity's demand, walking, the interference and machine
+        downtime.</li>
+      <li><strong>Activity Table</strong>: Time, Frequency Type, Numerator, Denominator and Mach Condition per activity.
+        <span class="ui">RPC %</span> sits right of the table title. Add sub-activities with <span class="ui">+ Sub
+          Doffing</span> or <span class="ui">+ Sub Loading</span>.</li>
+    </ol>
+    <div class="note">
+      <p>The circular-arrow button resets every field to how it was when the Construction Detail was picked.</p>
+    </div>
 
-      <h3>Step 2 — Machine Layout</h3>
-      <ol class="steps">
-        <li>Pick a saved layout from Layout Builder, or build one on the canvas.</li>
-        <li>Select machines and <span class="ui">Assign</span>. The number assigned must equal # Assigned Machines.</li>
-        <li>Optional: set an operator start point. Without one, the operator starts at the first machine.</li>
-        <li>Click <span class="ui">Validate &amp; Start Simulation</span>.</li>
-      </ol>
+    <h3>Step 2 — Machine Layout</h3>
+    <ol class="steps">
+      <li>Pick a saved layout from Layout Builder, or build one on the canvas.</li>
+      <li>Select machines and <span class="ui">Assign</span>. The number assigned must equal # Assigned Machines.</li>
+      <li>Optional: set an operator start point. Without one, the operator starts at the first machine.</li>
+      <li>Click <span class="ui">Validate &amp; Start Simulation</span>.</li>
+    </ol>
 
-      <h3>Simulation stage</h3>
-      <ul>
-        <li><span class="ui">▶ Play</span>, <span class="ui">⏸ Pause</span>, speed buttons and <span class="ui">Reset</span>. # Mach Assigned and Fracture per Ton can only be changed after a Reset.</li>
-        <li>The <strong>Operator Timeline</strong> and <strong>Machine Timeline</strong> show what happened each minute. Click an operator segment to highlight the related machines; click a machine row for that machine's summary.</li>
-        <li><strong>Dashboard</strong>: Output (Running Time), Output, Man Occupation, OEE &amp; Downtime, Completed Activities, Activity Log. Each value is followed by <code>/ ~</code> and the setup's forecast for the full shift (the Output Estimate), so actual and forecast can be compared. Drag the panel's left edge to make it wider or narrower.</li>
-        <li><span class="ui">Save WLM</span> saves the result to WL_Outputmodels. If that Construction Detail already has a saved result, you'll see a comparison with the old version and can replace it or save a new version (a Version remark is required for a new version).</li>
-        <li>After the shift ends: view the output details, or <span class="ui">Copy output</span> (tab-separated, pastes into Excel).</li>
-      </ul>
-    </section>
+    <h3>Simulation stage</h3>
+    <ul>
+      <li><span class="ui">▶ Play</span>, <span class="ui">⏸ Pause</span>, speed buttons and <span
+          class="ui">Reset</span>. # Mach Assigned and Fracture per Ton can only be changed after a Reset.</li>
+      <li>The <strong>Operator Timeline</strong> and <strong>Machine Timeline</strong> show what happened each minute.
+        Click an operator segment to highlight the related machines; click a machine row for that machine's summary.
+      </li>
+      <li><strong>Dashboard</strong>: Output (Running Time), Output, Man Occupation, OEE &amp; Downtime, Completed
+        Activities, Activity Log. Each value is followed by <code>/ ~</code> and the setup's forecast for the full shift
+        (the Output Estimate), so actual and forecast can be compared. Drag the panel's left edge to make it wider or
+        narrower.</li>
+      <li><span class="ui">Save WLM</span> saves the result to WL_Outputmodels. If that Construction Detail already has
+        a saved result, you'll see a comparison with the old version and can replace it or save a new version (a Version
+        remark is required for a new version).</li>
+      <li>After the shift ends: view the output details, or <span class="ui">Copy output</span> (tab-separated, pastes
+        into Excel).</li>
+    </ul>
+  </section>
 
-    <section>
-      <h2 id="en-layout">Layout Builder</h2>
-      <p>Where you build machine layouts to reuse in both simulators.</p>
-      <ul>
-        <li><strong>Add Group Machine</strong>: create a block of machines by rows, columns, orientation (Vertical: PO top, TU bottom; Horizontal: PO left, TU right), Pair/Single, and machine size in meters.</li>
-        <li>Select machines to copy/paste (Ctrl+C / Ctrl+V, including repeated paste left/right), flip orientation, toggle type BF/X, resize, or renumber.</li>
-        <li><strong>Walls</strong>: operators must walk around them. <strong>Remarks</strong>: text notes that don't block walking.</li>
-        <li><strong>Measure distance</strong> to measure, and the <strong>operator start point</strong> for where operators begin.</li>
-      </ul>
-    </section>
+  <section>
+    <h2 id="en-layout">Layout Builder</h2>
+    <p>Where you build machine layouts to reuse in both simulators.</p>
+    <ul>
+      <li><strong>Add Group Machine</strong>: create a block of machines by rows, columns, orientation (Vertical: PO
+        top, TU bottom; Horizontal: PO left, TU right), Pair/Single, and machine size in meters.</li>
+      <li>Select machines to copy/paste (Ctrl+C / Ctrl+V, including repeated paste left/right), flip orientation, toggle
+        type BF/X, resize, or renumber.</li>
+      <li><strong>Walls</strong>: operators must walk around them. <strong>Remarks</strong>: text notes that don't block
+        walking.</li>
+      <li><strong>Measure distance</strong> to measure, and the <strong>operator start point</strong> for where
+        operators begin.</li>
+    </ul>
+  </section>
 
-    <section>
-      <h2 id="en-production">Production Simulation</h2>
-      <h3>Creating a Production Setup</h3>
-      <ol class="steps">
-        <li>Pick a Layout, type a setup name, click <span class="ui">+ New Setup</span>. The layout is copied into the setup (later layout edits don't carry over). Shift and movement values start from Setting → Default Values.</li>
-        <li>Fill <strong>Shift &amp; Movement Settings</strong>: Task Priority, Shift/Lunch/Meeting, RPC %, Doff Priority, Min Remain Task, Waiting Model (Admin only — everyone else follows Setting → Default Values; how the man occupation forecast estimates machines waiting for an operator; the <span class="ui">ⓘ</span> button explains each), Walking Speed, and <strong>Frequency Source</strong> (Manual from WL_Products or Historical from MES_Frequency, with automatic fallback to manual if a product lacks historical records).</li>
-        <li>Add operators in the <strong>Operators</strong> card: one at a time, or in bulk with a prefix and count (e.g. <code>Opr_0001</code>). The number next to each name is that operator's forecast man occupation.</li>
-      </ol>
+  <section>
+    <h2 id="en-production">Production Simulation</h2>
+    <h3>Creating a Production Setup</h3>
+    <ol class="steps">
+      <li>Pick a Layout, type a setup name, click <span class="ui">+ New Setup</span>. The layout is copied into the
+        setup (later layout edits don't carry over). Shift and movement values start from Setting → Default Values.</li>
+      <li>Fill <strong>Shift &amp; Movement Settings</strong>: Task Priority, Shift/Lunch/Meeting, RPC %, Doff Priority,
+        Min Remain Task, Waiting Model (Admin only — everyone else follows Setting → Default Values; how the man
+        occupation forecast estimates machines waiting for an operator; the <span class="ui">ⓘ</span> button explains
+        each), Walking Speed, and <strong>Frequency Source</strong> (Manual from WL_Products or Historical from
+        MES_Frequency, with automatic fallback to manual if a product lacks historical records).</li>
+      <li>Add operators in the <strong>Operators</strong> card: one at a time, or in bulk with a prefix and count (e.g.
+        <code>Opr_0001</code>). The number next to each name is that operator's forecast man occupation.</li>
+    </ol>
 
-      <h3>Assign Selection</h3>
-      <p>Select machines on the canvas (click or drag), then work down the panel. Each field has an <span class="ui">Apply</span> button and a remove button. An Apply button turns yellow when its field has changes not yet applied.</p>
-      <ol class="steps">
-        <li><strong>Construction Detail</strong> of the machines.</li>
-        <li><strong>Group Name</strong>: a free-text label for reporting machines together.</li>
-        <li><strong>Assign Type</strong> tabs: only pick which operator fields show; it isn't saved.
-          <ul>
-            <li><em>Multi Task</em> → add one or more operators. Any of them may do any task on those machines.</li>
-            <li><em>Split Task</em> → add one or more operators per activity: Doff, Load, Fract, Dies, Defect. They only do that activity.</li>
-          </ul>
-        </li>
-        <li><strong>Doff Priority</strong> (optional): a toggle and Min Remain Task for the selected machines only. The remove button sets them back to follow the setup.</li>
-      </ol>
-      <div class="note"><p>A machine can have Multi Task and Split Task operators at once. Switching Assign Type keeps the other type's operators; a hint below lists them. An operator is one or the other on a machine: someone already Multi Task on the selection isn't offered in Split Task, and the other way round. A machine with no operator yet opens as Multi Task.</p></div>
-      <p>Each operator box shows the selection's <strong>man occupation</strong> if one operator handled that work: the Multi Task box for all tasks, each Split Task box for its activity, with the ideal demand next to it. The selection box on the canvas lists All Task and every activity.</p>
-
-      <h3>Operators card</h3>
-      <ul>
-        <li><span class="ui">⚙️</span>: a per-operator Lunch/Meeting start minute. Blank = follow the setup. Durations always follow the setup.</li>
-        <li><span class="ui">📊</span>: fullscreen Planned Man Occupation, including demand with no operator yet.</li>
-      </ul>
-
-      <h3>Canvas &amp; Machine Assignments</h3>
-      <ul>
-        <li><strong>Construction Detail View</strong> colors machines by Construction. <strong>Operator View</strong> splits each machine body by operator. Hover a legend entry to highlight its machines; the legend has Construction, Operator and Machine Group tabs.</li>
-        <li>The <strong>Machine Assignments</strong> table lists every column per machine: Construction, Group Name, Multi Task, the operators per activity (hover a count to see the names), and the machine's Doff Priority ("—" = follows the setup). The row above the headers totals each column (machines, distinct Constructions, groups and operators). <span class="ui">Group by</span> Construction, Group Name or Operator rolls the table up: per group, how many machines, Constructions, groups and operators (in total, Multi Task and per activity) it has. Under Operator, a machine counts toward every operator working it. Click any column header to sort; click again to reverse. <span class="ui">Search</span> keeps only machines with that text in any column (machine, Construction, Group Name, any operator, Doff Priority); totals and Group by then cover just those.</li>
-        <li>Use <span class="ui">⚡ Import from MES</span> to pull actual production output from the Power BI Semantic Model (<code>MES_ActualOutput</code>) for a specified plant, date (H-1), and shift. The system matches layout machines with the highest-volume product run on that machine during the shift based on the <strong>Output Volume</strong> column (actual total kilograms <code>TotalProducedKG</code> from MES). Active machines matching registered products are directly assigned (<strong>✅ Matched in Catalog</strong>), while idle machines or unregistered codes are set to Unassigned (blank) with a full audit log and a button to copy missing codes.
-        <br/><br/>
-        <strong>Special Handling for WWD Machines (Area WW)</strong>: If a WWD machine is running a construction not yet registered in <code>WL_Products</code>, the system dynamically synthesizes its specifications from MES Actual Output and validates them against <code>WL_Activities</code>. A dedicated card and tab <strong>⚡ WWD (MES Output)</strong> appear (automatically hidden when the count is 0) along with a <strong>💾 Save to WL_Products</strong> button to register the new WWD product into Dataverse complete with Mach (<code>WWD</code>), Product (wire diameter specification), uppercase Construction code, historical rates from <code>MES_Frequency</code>, number of wires (<code>NoOfWires</code> from <code>DimProduct[NumberOfWires]</code>), and default PO weight in kg (<code>Default WWD PO Length 1 (kg)</code>).
-        <br/><br/>
-        Only the Construction column is updated; operator assignments, groups, and doff priorities remain completely untouched.</li>
-        <li>Use <span class="ui">Export CSV</span>, edit in Excel, then <span class="ui">Import CSV</span>. The Multi Task and activity columns take operator names separated by <code>;</code>. Doff Priority takes <code>Yes</code>, <code>No</code> or blank; Min Remain Task takes minutes or blank (blank = follow the setup).</li>
-      </ul>
-
-      <h3>Running the simulation</h3>
-      <p>Click <span class="ui">▶ Run Simulation</span>. The result page has operator and machine timelines (click an operator's name to filter the Man Occupation card), the Operator List, Output (split into Finish Product and Semi Finish Product by SpoolType BS…), Reject % for OEE Quality, a Downtime Pareto, and the Production Report button. Every card value is followed by <code>/ ~</code> and its full-shift forecast, worked out per machine with its own Construction at its forecast OEE (same formulas as the Work Load Simulator); drag the panel's left edge to resize it. The Production Report can group results by any WL_Products column or by <strong>Machine Group</strong> (the machines' Group Name).</p>
-      <p><strong>Theoretical Operator Required</strong> (top-right of the setup's layout): every planned machine needs 1 ÷ <em># Assigned Machines</em> of an operator, where # Assigned Machines is what Optimize Man Occupation finds for its Construction Detail with this setup's Shift &amp; Movement Settings (shift, breaks, RPC, walking speed, Task/Doff Priority, waiting model; the product's own Task/Doff Priority still wins), the Area's Default Layout (a stand-in grid when there is none) and Optimize Step-Up from Default Values. Changing a setting works it out again. It is worked out in the background; click it for the breakdown per Construction Detail.</p>
-    </section>
-
-    <section>
-      <h2 id="en-data">Master data &amp; MES Data</h2>
-      <h3>WL_Products</h3>
-      <p>One row per Construction Detail: Area, Mach, Product, machine specification, POlength1–3, Fracture/Dies/Defect per ton. The <strong>Fr/T (Hist)</strong>, <strong>Dies/T (Hist)</strong>, and <strong>Def/T (Hist)</strong> columns provide a direct comparison with actual historical frequencies from Power BI (matched by Mach = McGroup, Product = Construction, LayLength, and TensileGroup). The <span class="ui">🔄 MES_Frequency</span> button at the top right re-synchronizes Power BI data. Double-click a Construction cell to open that Construction's WL_Activities. For WWD machines (Area WW), PO Length is expressed in kilograms (kg) rather than meters, with a default configurable in Setting → Default Values (480 kg).</p>
-      <p><strong>TaskPriority, DoffPriority, MinRemainTaskForDoffPriority</strong> are optional — leave them blank (<em>— Default —</em>) to follow Setting → Default Values in the Work Load Simulator and Batch Simulation, or the Production Setup in Production Simulation. Filled in, they apply to that Construction Detail only. In Production Simulation a machine's own Doff Priority (Machine Assignments) still comes first; an operator uses the products' Task Priority when all of its machines come to the same one, otherwise the setup's.</p>
-      <p><strong>Batch Simulation</strong>: tick Construction Details (the header box ticks every row shown), then click <span class="ui">Batch Simulation</span>. In the confirmation dialog prior to running, you can select the <em>Frequency Source</em> to use (Manual or Historical). Each one is set up like picking it in the Work Load Simulator — Default Values and its Area's Default Layout — then Optimize Man Occupation runs, one shift is simulated, and the result is saved to WL_Outputmodels as version 0001 (replacing it when it exists). A progress bar shows how far it is; keep the page open until it finishes (Cancel stops after the current item; saved results stay). Afterwards the log lists every item as Success or Failed with the reason — e.g. no Default Layout for the Area, missing spec in WL_Products, no or incomplete WL_Activities, more machines needed than the layout has — and can be exported to CSV. Unsaved edits on a row aren't used. Roughly 0.5–1 s per item, so 2000 items take about 20–40 minutes.</p>
-
-      <h3>MES_Frequency</h3>
-      <p>Displays actual historical event rates (Fracture/Ton, Defect/Ton, Dies/Ton, and TonProduced) retrieved directly from the Power BI Semantic Model via the Power Automate cloud flow <code>MES_Frequency</code>.</p>
-      <ul>
-        <li><strong>Summary KPIs</strong>: Computes total production volume (Ton Produced) and weighted averages for Fr/T, Def/T, and Dies/T using the SumProduct method: <code>Σ (Rate × TonProduced) ÷ Total TonProduced</code>.</li>
-        <li><strong>Search &amp; Filters</strong>: Filters rows by Area, Machine Type Group (SAP), McGroup, and Construction, plus free-text search matching Group_Product_Info combinations.</li>
-        <li><strong>Export CSV &amp; DAX Info</strong>: The <span class="ui">Export CSV</span> button downloads all filtered rows to a spreadsheet. The <span class="ui">DAX &amp; Flow Info</span> button displays integration architecture and active DAX query evaluation.</li>
-      </ul>
-
-      <h3>MES_ActualOutput</h3>
-      <p>Displays actual production output and machine productivity records retrieved directly from the Power BI Semantic Model via the Power Automate cloud flow <code>MES_ActualOutput</code>.</p>
-      <ul>
-        <li><strong>Summary KPIs</strong>: Tracks Total Produced (KG), Ton Produced, Quality A (KG), Reject (KG &amp; %), Doffed Spools, Effective Hours, Scheduled Hours, Overall Equipment Effectiveness (OEE % = <code>(EffectiveHours ÷ 60) ÷ ScheduledHours × 100</code>), Fracture/Ton (FR / T), Defect/Ton (DEF / T), and Dies/Ton (DIES / T = <code>(DiesCount + HeadDiesCount) ÷ TonProduced</code>).</li>
-        <li><strong>Number of Wires (DimProduct[NumberOfWires])</strong>: The DAX query includes <code>DimProduct[NumberOfWires]</code> to precisely identify the wire count per product, which directly determines the spool weight: <code>Spool Weight (kg) = SpoolLength × LinearDensity × NoOfWires ÷ 1000</code>.</li>
-        <li><strong>Shift Parameters</strong>: Evaluates shift data by Plant Name, Production Date (H-1), Shift (1, 2, 3), Area, Group, and Machine Type.</li>
-        <li><strong>DAX Query &amp; CSV Export</strong>: View the underlying DAX template executed against Power BI and export filtered actual output records to CSV.</li>
-      </ul>
-      <h3>WL_Activities</h3>
-      <p>One row per Task/SubTask per Construction. A blank SubTask is the parent activity.</p>
-      <div class="table-wrap"><table>
-        <thead><tr><th>Column</th><th>Meaning</th></tr></thead>
-        <tbody>
-          <tr><td>Task / SubTask</td><td>Doffing, Loading, FractureRepairing, DiesChange, DefectRepairing; SubTask for sub-activities (e.g. ScanMES, Partial1)</td></tr>
-          <tr><td>Time</td><td>The activity's work time (minutes), before RPC</td></tr>
-          <tr><td>FrequencyType</td><td>Doffing sub-tasks only. When set, the frequency doesn't come from Num/Dem (see Simulation rules)</td></tr>
-          <tr><td>Num / Dem</td><td>Numerator / Denominator: happens Num times every Dem spools. Blank for activities with their own frequency rule</td></tr>
-          <tr><td>MachCondition</td><td>Stop = the machine stops while it's done; Run = the machine keeps running</td></tr>
-          <tr><td>Product, Mach, SpoolType, TG, LayLength</td><td>Derived from the Construction text (read-only)</td></tr>
-        </tbody>
-      </table></div>
-      <h3>WL_Outputmodels</h3>
-      <p>Results saved with Save WLM, with versions. Double-click a row for details. <span class="ui">Use inherited machine condition</span> reloads the layout, operator settings, assigned machines, starting machine conditions and seed, so the same simulation replays exactly.</p>
-    </section>
-
-    <section>
-      <h2 id="en-admin">Admin menus</h2>
-      <h3>Manage Users</h3>
-      <p>Search people by email and give them the Admin or Contribute role.</p>
-      <h3>Setting → Default Values</h3>
-      <p>Starting values for new Production Setups, and for the Work Load Simulator each time a Construction Detail is picked: Task Priority, Shift Time, Lunch Time, Lunch starts at, Meeting Time, Meeting starts at, RPC %, Walking Speed, Doff Priority, Min Remain Task for Doff Priority and Waiting Model (Work Load Simulator).</p>
-      <p><strong>Historical Frequency &amp; Power BI</strong>: Configure default parameters for the Power BI Semantic Model connection:
+    <h3>Assign Selection</h3>
+    <p>Select machines on the canvas (click or drag), then work down the panel. Each field has an <span
+        class="ui">Apply</span> button and a remove button. An Apply button turns yellow when its field has changes not
+      yet applied.</p>
+    <ol class="steps">
+      <li><strong>Construction Detail</strong> of the machines.</li>
+      <li><strong>Group Name</strong>: a free-text label for reporting machines together.</li>
+      <li><strong>Assign Type</strong> tabs: only pick which operator fields show; it isn't saved.
         <ul>
-          <li><em>Default Frequency Source</em>: Initial frequency mode (Manual or Historical).</li>
-          <li><em>Plant Name</em>: Target plant name filtered via <code>TREATAS</code> in the DAX query (e.g., <code>PTBI</code>).</li>
-          <li><em>Date Range Filter</em>: Dynamic preset (Last 7 Days, Last 14 Days, or Last 30 Days) or Custom date pickers for Start Date &amp; End Date. These filters are passed automatically to the Power Automate flow during synchronization.</li>
-          <li><em>Default Fallback Rates</em>: Fallback baseline values (Fr/T, Def/T, Dies/T) applied if a product has no manual or historical rates recorded.</li>
-          <li><em>Live DAX Filter Preview</em>: Real-time preview of the resulting DAX query filter snippet with a one-click copy button.</li>
+          <li><em>Multi Task</em> → add one or more operators. Any of them may do any task on those machines.</li>
+          <li><em>Split Task</em> → add one or more operators per activity: Doff, Load, Fract, Dies, Defect. They only
+            do that activity.</li>
         </ul>
-      </p>
-      <p>Click <span class="ui">Save</span> to save to the Dataverse table <code>WL_DefaultValues</code>.</p>
-      <p><strong>Default Layouts</strong>: a layout per Area (every Area in WL_Products), stored as <code>Layout-&lt;Area&gt;</code> rows (e.g. <code>Layout-BU</code>) holding the layout's id. Picking a Construction Detail in the Work Load Simulator loads its Area's layout; it can still be changed in Machine Layout. Machines are assigned from the top-left corner, two rows at a time whose Take Ups face each other, column by column (upper, then lower): 4 machines on rows 1001… / 2001… are 1001, 2001, 1002, 2002; when those two rows are full it carries on with the next facing pair. An Area with no default layout keeps the layout picked in the simulator.</p>
-    </section>
+      </li>
+      <li><strong>Doff Priority</strong> (optional): a toggle and Min Remain Task for the selected machines only. The
+        remove button sets them back to follow the setup.</li>
+    </ol>
+    <div class="note">
+      <p>A machine can have Multi Task and Split Task operators at once. Switching Assign Type keeps the other type's
+        operators; a hint below lists them. An operator is one or the other on a machine: someone already Multi Task on
+        the selection isn't offered in Split Task, and the other way round. A machine with no operator yet opens as
+        Multi Task.</p>
+    </div>
+    <p>Each operator box shows the selection's <strong>man occupation</strong> if one operator handled that work: the
+      Multi Task box for all tasks, each Split Task box for its activity, with the ideal demand next to it. The
+      selection box on the canvas lists All Task and every activity.</p>
 
-    <section>
-      <h2 id="en-rules">Simulation rules</h2>
+    <h3>Operators card</h3>
+    <ul>
+      <li><span class="ui">⚙️</span>: a per-operator Lunch/Meeting start minute. Blank = follow the setup. Durations
+        always follow the setup.</li>
+      <li><span class="ui">📊</span>: fullscreen Planned Man Occupation, including demand with no operator yet.</li>
+    </ul>
 
-      <h3>Task Priority</h3>
-      <p><em>Nearest Task</em>: the operator goes to the queued machine with the shortest walk. <em>Quickest Task</em>: the operator picks the machine whose work would be finished soonest (walk plus all work time).</p>
+    <h3>Canvas &amp; Machine Assignments</h3>
+    <ul>
+      <li><strong>Construction Detail View</strong> colors machines by Construction. <strong>Operator View</strong>
+        splits each machine body by operator. Hover a legend entry to highlight its machines; the legend has
+        Construction, Operator and Machine Group tabs.</li>
+      <li>The <strong>Machine Assignments</strong> table lists every column per machine: Construction, Group Name, Multi
+        Task, the operators per activity (hover a count to see the names), and the machine's Doff Priority ("—" =
+        follows the setup). The row above the headers totals each column (machines, distinct Constructions, groups and
+        operators). <span class="ui">Group by</span> Construction, Group Name or Operator rolls the table up: per group,
+        how many machines, Constructions, groups and operators (in total, Multi Task and per activity) it has. Under
+        Operator, a machine counts toward every operator working it. Click any column header to sort; click again to
+        reverse. <span class="ui">Search</span> keeps only machines with that text in any column (machine, Construction,
+        Group Name, any operator, Doff Priority); totals and Group by then cover just those.</li>
+      <li>Use <span class="ui">⚡ Import from MES</span> to pull actual production output from the Power BI Semantic
+        Model (<code>MES_ActualOutput</code>) for a specified plant, date (H-1), and shift. The system matches layout
+        machines with the highest-volume product run on that machine during the shift based on the <strong>Output
+          Volume</strong> column (actual total kilograms <code>TotalProducedKG</code> from MES). Active machines
+        matching registered products are directly assigned (<strong>✅ Matched in Catalog</strong>), while idle machines
+        or unregistered codes are set to Unassigned (blank) with a full audit log and a button to copy missing codes.
+        <br /><br />
+        <strong>Special Handling for WWD Machines (Area WW)</strong>: If a WWD machine is running a construction not yet
+        registered in <code>WL_Products</code>, the system dynamically synthesizes its specifications from MES Actual
+        Output and validates them against <code>WL_Activities</code>. A dedicated card and tab <strong>⚡ WWD (MES
+          Output)</strong> appear (automatically hidden when the count is 0) along with a <strong>💾 Save to
+          WL_Products</strong> button to register the new WWD product into Dataverse complete with Mach
+        (<code>WWD</code>), Product (wire diameter specification), uppercase Construction code, historical rates from
+        <code>MES_Frequency</code>, number of wires (<code>NoOfWires</code> from
+        <code>DimProduct[NumberOfWires]</code>), and default PO weight in kg
+        (<code>Default WWD PO Length 1 (kg)</code>).
+        <br /><br />
+        Only the Construction column is updated; operator assignments, groups, and doff priorities remain completely
+        untouched.
+      </li>
+      <li>Use <span class="ui">Export CSV</span>, edit in Excel, then <span class="ui">Import CSV</span>. The Multi Task
+        and activity columns take operator names separated by <code>;</code>. Doff Priority takes <code>Yes</code>,
+        <code>No</code> or blank; Min Remain Task takes minutes or blank (blank = follow the setup).</li>
+    </ul>
 
-      <h3>Mach Condition: Run and Stop</h3>
-      <ul>
-        <li>A <strong>Stop</strong> activity stops the machine while it's done; the machine is also stopped while waiting for the operator.</li>
-        <li>A <strong>Run</strong> activity is done while the machine keeps running.</li>
-        <li>A Run activity directly followed by a Stop activity stops the machine too. This also applies when the following Stop activity belongs to another operator and is still waiting on that machine.</li>
-      </ul>
+    <h3>Running the simulation</h3>
+    <p>Click <span class="ui">▶ Run Simulation</span>. The result page has operator and machine timelines (click an
+      operator's name to filter the Man Occupation card), the Operator List, Output (split into Finish Product and Semi
+      Finish Product by SpoolType BS…), Reject % for OEE Quality, a Downtime Pareto, and the Production Report button.
+      Every card value is followed by <code>/ ~</code> and its full-shift forecast, worked out per machine with its own
+      Construction at its forecast OEE (same formulas as the Work Load Simulator); drag the panel's left edge to resize
+      it. The Production Report can group results by any WL_Products column or by <strong>Machine Group</strong> (the
+      machines' Group Name).</p>
+    <p><strong>Theoretical Operator Required</strong> (top-right of the setup's layout): every planned machine needs 1 ÷
+      <em># Assigned Machines</em> of an operator, where # Assigned Machines is what Optimize Man Occupation finds for
+      its Construction Detail with this setup's Shift &amp; Movement Settings (shift, breaks, RPC, walking speed,
+      Task/Doff Priority, waiting model; the product's own Task/Doff Priority still wins), the Area's Default Layout (a
+      stand-in grid when there is none) and Optimize Step-Up from Default Values. Changing a setting works it out again.
+      It is worked out in the background; click it for the breakdown per Construction Detail.</p>
+  </section>
 
-      <h3>RPC (Rest &amp; Personal Care)</h3>
-      <p>Every activity gets extra time equal to RPC % of its time. For example, 12% RPC turns a 10-minute activity into 10 + 1.2 minutes. RPC time shows as its own segment in the timelines (legend "RPC") and as <em>Others (RPC)</em> in Man Occupation. RPC behaves like a Run activity: it only keeps the machine stopped when the next activity is Stop, and that time then counts as downtime of its parent activity.</p>
+  <section>
+    <h2 id="en-data">Master data &amp; MES Data</h2>
+    <h3>WL_Products</h3>
+    <p>One row per Construction Detail: Area, Mach, Product, machine specification, POlength1–3, Fracture/Dies/Defect
+      per ton. The <strong>Fr/T (Hist)</strong>, <strong>Dies/T (Hist)</strong>, and <strong>Def/T (Hist)</strong>
+      columns provide a direct comparison with actual historical frequencies from Power BI (matched by Mach = McGroup,
+      Product = Construction, LayLength, and TensileGroup). The <span class="ui">🔄 MES_Frequency</span> button at the
+      top right re-synchronizes Power BI data. Double-click a Construction cell to open that Construction's
+      WL_Activities. For WWD machines (Area WW), PO Length is expressed in kilograms (kg) rather than meters, with a
+      default configurable in Setting → Default Values (480 kg).</p>
+    <p><strong>TaskPriority, DoffPriority, MinRemainTaskForDoffPriority</strong> are optional — leave them blank (<em>—
+        Default —</em>) to follow Setting → Default Values in the Work Load Simulator and Batch Simulation, or the
+      Production Setup in Production Simulation. Filled in, they apply to that Construction Detail only. In Production
+      Simulation a machine's own Doff Priority (Machine Assignments) still comes first; an operator uses the products'
+      Task Priority when all of its machines come to the same one, otherwise the setup's.</p>
+    <p><strong>Batch Simulation</strong>: tick Construction Details (the header box ticks every row shown), then click
+      <span class="ui">Batch Simulation</span>. In the confirmation dialog prior to running, you can select the
+      <em>Frequency Source</em> to use (Manual or Historical). Each one is set up like picking it in the Work Load
+      Simulator — Default Values and its Area's Default Layout — then Optimize Man Occupation runs, one shift is
+      simulated, and the result is saved to WL_Outputmodels as version 0001 (replacing it when it exists). A progress
+      bar shows how far it is; keep the page open until it finishes (Cancel stops after the current item; saved results
+      stay). Afterwards the log lists every item as Success or Failed with the reason — e.g. no Default Layout for the
+      Area, missing spec in WL_Products, no or incomplete WL_Activities, more machines needed than the layout has — and
+      can be exported to CSV. Unsaved edits on a row aren't used. Roughly 0.5–1 s per item, so 2000 items take about
+      20–40 minutes.</p>
 
-      <h3>Doffing, Loading and sub-activities</h3>
-      <ul>
-        <li><strong>Loading</strong> follows POlength in WL_Products when it's filled. Areas WW, BA, CA, IS, IP use weight-based Loading done at the Pay Off.</li>
-        <li>When <strong>Loading Partial1 and Partial2</strong> come due together, one Loading Partial3 replaces both.</li>
-        <li>When a machine's Doffing and Loading belong to different operators, Loading waits until Doffing is done; that gap counts as waiting.</li>
-      </ul>
+    <h3>MES_Frequency</h3>
+    <p>Displays actual historical event rates (Fracture/Ton, Defect/Ton, Dies/Ton, and TonProduced) retrieved directly
+      from the Power BI Semantic Model via the Power Automate cloud flow <code>MES_Frequency</code>.</p>
+    <ul>
+      <li><strong>Summary KPIs</strong>: Computes total production volume (Ton Produced) and weighted averages for Fr/T,
+        Def/T, and Dies/T using the SumProduct method: <code>Σ (Rate × TonProduced) ÷ Total TonProduced</code>.</li>
+      <li><strong>Search &amp; Filters</strong>: Filters rows by Area, Machine Type Group (SAP), McGroup, and
+        Construction, plus free-text search matching Group_Product_Info combinations.</li>
+      <li><strong>Export CSV &amp; DAX Info</strong>: The <span class="ui">Export CSV</span> button downloads all
+        filtered rows to a spreadsheet. The <span class="ui">DAX &amp; Flow Info</span> button displays integration
+        architecture and active DAX query evaluation.</li>
+    </ul>
 
-      <h3>Fracture Repairing, Dies Change, Defect Repairing</h3>
-      <p>These are counted per Construction, not per machine: once the combined spools of the machines on one Construction reach the cycle, the event lands on a random running machine. Dies Change applies to Areas WW, BA, CA, with 7 or 26 dies per event. Defect Repairing applies to Areas CB, BU, SP, CH, CR and is done at the Take Up.</p>
-
-      <h3>Frequency Type (Doffing sub-tasks)</h3>
-      <div class="table-wrap"><table>
-        <thead><tr><th>Frequency Type</th><th>Done on…</th></tr></thead>
+    <h3>MES_ActualOutput</h3>
+    <p>Displays actual production output and machine productivity records retrieved directly from the Power BI Semantic
+      Model via the Power Automate cloud flow <code>MES_ActualOutput</code>.</p>
+    <ul>
+      <li><strong>Summary KPIs</strong>: Tracks Total Produced (KG), Ton Produced, Quality A (KG), Reject (KG &amp; %),
+        Doffed Spools, Effective Hours, Scheduled Hours, Overall Equipment Effectiveness (OEE % =
+        <code>(EffectiveHours ÷ 60) ÷ ScheduledHours × 100</code>), Fracture/Ton (FR / T), Defect/Ton (DEF / T), and
+        Dies/Ton (DIES / T = <code>(DiesCount + HeadDiesCount) ÷ TonProduced</code>).</li>
+      <li><strong>Number of Wires (DimProduct[NumberOfWires])</strong>: The DAX query includes
+        <code>DimProduct[NumberOfWires]</code> to precisely identify the wire count per product, which directly
+        determines the spool weight: <code>Spool Weight (kg) = SpoolLength × LinearDensity × NoOfWires ÷ 1000</code>.
+      </li>
+      <li><strong>Shift Parameters</strong>: Evaluates shift data by Plant Name, Production Date (H-1), Shift (1, 2, 3),
+        Area, Group, and Machine Type.</li>
+      <li><strong>DAX Query &amp; CSV Export</strong>: View the underlying DAX template executed against Power BI and
+        export filtered actual output records to CSV.</li>
+    </ul>
+    <h3>WL_Activities</h3>
+    <p>One row per Task/SubTask per Construction. A blank SubTask is the parent activity.</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Column</th>
+            <th>Meaning</th>
+          </tr>
+        </thead>
         <tbody>
-          <tr><td>(blank)</td><td>Num/Dem as usual</td></tr>
-          <tr><td><code>FirstDoffAfterLoading</code></td><td>The first Doffing after a Loading (main or partial)</td></tr>
-          <tr><td><code>FirstDoffAfterLoadingAll</code></td><td>The first Doffing after a main Loading</td></tr>
-          <tr><td><code>FirstDoffAfterLoadingPartial</code></td><td>The first Doffing after a partial Loading</td></tr>
-          <tr><td><code>FirstDoffAfterFractureRepairing</code></td><td>The first Doffing after a Fracture Repairing</td></tr>
-          <tr><td><code>FirstDoffAfterDefectRepairing</code></td><td>The first Doffing after a Defect Repairing</td></tr>
-          <tr><td><code>FirstDoffAfterDiesChange</code></td><td>The first Doffing after a Dies Change</td></tr>
-          <tr><td><code>FirstDoffAfterInteruptions</code></td><td>The first Doffing after any of the events above</td></tr>
-          <tr><td><code>FirstDoffOnShift</code></td><td>The machine's first Doffing of the shift</td></tr>
+          <tr>
+            <td>Task / SubTask</td>
+            <td>Doffing, Loading, FractureRepairing, DiesChange, DefectRepairing; SubTask for sub-activities (e.g.
+              ScanMES, Partial1)</td>
+          </tr>
+          <tr>
+            <td>Time</td>
+            <td>The activity's work time (minutes), before RPC</td>
+          </tr>
+          <tr>
+            <td>FrequencyType</td>
+            <td>Doffing sub-tasks only. When set, the frequency doesn't come from Num/Dem (see Simulation rules)</td>
+          </tr>
+          <tr>
+            <td>Num / Dem</td>
+            <td>Numerator / Denominator: happens Num times every Dem spools. Blank for activities with their own
+              frequency rule</td>
+          </tr>
+          <tr>
+            <td>MachCondition</td>
+            <td>Stop = the machine stops while it's done; Run = the machine keeps running</td>
+          </tr>
+          <tr>
+            <td>Product, Mach, SpoolType, TG, LayLength</td>
+            <td>Derived from the Construction text (read-only)</td>
+          </tr>
         </tbody>
-      </table></div>
-      <p>An event counts when it's finished, on the same machine. Several events before one Doffing still give the sub-task once.</p>
+      </table>
+    </div>
+    <h3>WL_Outputmodels</h3>
+    <p>Results saved with Save WLM, with versions. Double-click a row for details. <span class="ui">Use inherited
+        machine condition</span> reloads the layout, operator settings, assigned machines, starting machine conditions
+      and seed, so the same simulation replays exactly.</p>
+  </section>
 
-      <h3>Multi Task vs Split Task</h3>
-      <p>A task on a machine may be done by the machine's Multi Task operators and by that activity's Split Task operators, whoever is free first (by Task Priority). Only one operator works a machine at a time. Sub-tasks (e.g. ScanMES, Loading Partial) follow their parent activity. Loading waits until the Doffing is done when the operator can't do the Doffing too. Dies Change and Defect Repairing use their own operators; with none set they fall back to the Fracture Repairing operators. In the forecast, an activity's workload is split evenly across everyone who may do it.</p>
+  <section>
+    <h2 id="en-admin">Admin menus</h2>
+    <h3>Manage Users</h3>
+    <p>Search people by email and give them the Admin or Contribute role.</p>
+    <h3>Setting → Default Values</h3>
+    <p>Starting values for new Production Setups, and for the Work Load Simulator each time a Construction Detail is
+      picked: Task Priority, Shift Time, Lunch Time, Lunch starts at, Meeting Time, Meeting starts at, RPC %, Walking
+      Speed, Doff Priority, Min Remain Task for Doff Priority and Waiting Model (Work Load Simulator).</p>
+    <p><strong>Historical Frequency &amp; Power BI</strong>: Configure default parameters for the Power BI Semantic
+      Model connection:
+    <ul>
+      <li><em>Default Frequency Source</em>: Initial frequency mode (Manual or Historical).</li>
+      <li><em>Plant Name</em>: Target plant name filtered via <code>TREATAS</code> in the DAX query (e.g.,
+        <code>PTBI</code>).</li>
+      <li><em>Date Range Filter</em>: Dynamic preset (Last 7 Days, Last 14 Days, or Last 30 Days) or Custom date pickers
+        for Start Date &amp; End Date. These filters are passed automatically to the Power Automate flow during
+        synchronization.</li>
+      <li><em>Default Fallback Rates</em>: Fallback baseline values (Fr/T, Def/T, Dies/T) applied if a product has no
+        manual or historical rates recorded.</li>
+      <li><em>Live DAX Filter Preview</em>: Real-time preview of the resulting DAX query filter snippet with a one-click
+        copy button.</li>
+    </ul>
+    </p>
+    <p>Click <span class="ui">Save</span> to save to the Dataverse table <code>WL_DefaultValues</code>.</p>
+    <p><strong>Default Layouts</strong>: a layout per Area (every Area in WL_Products), stored as
+      <code>Layout-&lt;Area&gt;</code> rows (e.g. <code>Layout-BU</code>) holding the layout's id. Picking a
+      Construction Detail in the Work Load Simulator loads its Area's layout; it can still be changed in Machine Layout.
+      Machines are assigned from the top-left corner, two rows at a time whose Take Ups face each other, column by
+      column (upper, then lower): 4 machines on rows 1001… / 2001… are 1001, 2001, 1002, 2002; when those two rows are
+      full it carries on with the next facing pair. An Area with no default layout keeps the layout picked in the
+      simulator.</p>
+  </section>
 
-      <h3>Breaks (Lunch, Meeting, Other)</h3>
-      <p>When a break is due, the operator first finishes the visit they're on, then takes the full break. Machines that need work wait during the break. In Production Simulation, start minutes can differ per operator (the ⚙️ button).</p>
+  <section>
+    <h2 id="en-rules">Simulation rules</h2>
 
-      <h3>Doff Priority</h3>
-      <p>When <strong>Yes</strong>: if the operator is working a machine and another machine needs Doffing while at least <em>Min Remain Task</em> minutes of the visit are left, that work is paused. The operator does all waiting Doffings (by Task Priority), then picks again by Task Priority. Paused work is judged by its remaining time and resumes where it stopped. Doffing work itself is never paused.</p>
-      <p>In Production Simulation each machine can have its own Doff Priority and Min Remain Task (in Assign Selection). The setting of the machine that <em>needs Doffing</em> is used; when it's blank, the setup's applies. A machine with Doff Priority No never interrupts other work and isn't put first.</p>
-      <div class="note"><p>Doff Priority cuts Doffing waiting time but adds operator walking. Raise Min Remain Task if pauses happen too often.</p></div>
-    </section>
+    <h3>Task Priority</h3>
+    <p><em>Nearest Task</em>: the operator goes to the queued machine with the shortest walk. <em>Quickest Task</em>:
+      the operator picks the machine whose work would be finished soonest (walk plus all work time).</p>
 
-    <section>
-      <h2 id="en-glossary">Glossary</h2>
-      <dl class="glossary">
-        <dt>Construction</dt><dd>The product construction code; its text holds Mach-Product-LayLength-TG-SpoolType.</dd>
-        <dt>Construction Detail</dt><dd>One WL_Products row; the basis for the machine spec and Activity Table.</dd>
-        <dt>Area</dt><dd>Production area (BU, CB, SP, CH, CR, WW, IS, IP, CA, BA); decides the Loading, Dies Change and Defect Repairing rules.</dd>
-        <dt>Spool</dt><dd>One reel a machine produces. Spool Weight = SpoolLength × LinearDensity × NoOfWires ÷ 1000 (kg).</dd>
-        <dt>Runtime/spool</dt><dd>Time a machine takes to produce one spool.</dd>
-        <dt>Doffing</dt><dd>Taking a finished spool off the machine, at the Take Up.</dd>
-        <dt>Loading</dt><dd>Replacing/feeding raw material; Loading Partial is a partial load.</dd>
-        <dt>Fracture Repairing</dt><dd>Repairing a broken wire.</dd>
-        <dt>Dies Change</dt><dd>Changing dies.</dd>
-        <dt>Defect Repairing</dt><dd>Repairing a product defect.</dd>
-        <dt>Pay Off / Cradle / Take Up</dt><dd>Work zones on a machine where the operator stands (PO, cradle, TU).</dd>
-        <dt>Mach Condition</dt><dd>Stop (machine stops) or Run (machine keeps running) while the activity is done.</dd>
-        <dt>Num / Dem</dt><dd>Numerator / Denominator: the activity happens Num times every Dem spools.</dd>
-        <dt>Frequency Type</dt><dd>An event-based frequency rule for Doffing sub-tasks.</dd>
-        <dt>RPC</dt><dd>Rest &amp; Personal Care: an extra % of time for rest and personal needs.</dd>
-        <dt>Task Priority</dt><dd>How the operator picks the next machine: Nearest or Quickest.</dd>
-        <dt>Available Time</dt><dd>Shift Time minus Lunch, Meeting and other breaks.</dd>
-        <dt>Man Occupation</dt><dd>(Walking + Handling) ÷ net working time, in %.</dd>
-        <dt>Ideal demand / Forecast</dt><dd>Theoretical workload vs the estimate after machine stops and walking.</dd>
-        <dt>Others (RPC)</dt><dd>The RPC share of time in Man Occupation.</dd>
-        <dt>Idle</dt><dd>The operator has nothing to do.</dd>
-        <dt>Downtime / Waiting</dt><dd>The machine is stopped: for a Stop activity, or waiting for an operator.</dd>
-        <dt>OEE Availability</dt><dd>(Planned production time − downtime) ÷ planned production time.</dd>
-        <dt>Reject % / Quality</dt><dd>Share of reject tonnage; reduces good tonnage and OEE (Production Simulation).</dd>
-        <dt>Manhour/ton, Machhours/ton</dt><dd>Operator hours or machine hours per ton of output.</dd>
-        <dt>Multi Task / Split Task</dt><dd>Operators who may do every task on a machine / only one activity on it.</dd>
-        <dt>Group Name</dt><dd>A free-text label for reporting machines together.</dd>
-        <dt>Doff Priority / Min Remain Task</dt><dd>Pausing work for Doffing when at least Min Remain Task minutes of the visit are left. Set per setup, and in Production Simulation per machine too.</dd>
-        <dt>WLM / Output model</dt><dd>A simulation result saved in WL_Outputmodels, with versions.</dd>
-        <dt>Inherited condition</dt><dd>Starting machine conditions + seed from a saved result, to replay a simulation.</dd>
-      </dl>
-    </section>
-  </article>
+    <h3>Mach Condition: Run and Stop</h3>
+    <ul>
+      <li>A <strong>Stop</strong> activity stops the machine while it's done; the machine is also stopped while waiting
+        for the operator.</li>
+      <li>A <strong>Run</strong> activity is done while the machine keeps running.</li>
+      <li>A Run activity directly followed by a Stop activity stops the machine too. This also applies when the
+        following Stop activity belongs to another operator and is still waiting on that machine.</li>
+    </ul>
+
+    <h3>RPC (Rest &amp; Personal Care)</h3>
+    <p>Every activity gets extra time equal to RPC % of its time. For example, 12% RPC turns a 10-minute activity into
+      10 + 1.2 minutes. RPC time shows as its own segment in the timelines (legend "RPC") and as <em>Others (RPC)</em>
+      in Man Occupation. RPC behaves like a Run activity: it only keeps the machine stopped when the next activity is
+      Stop, and that time then counts as downtime of its parent activity.</p>
+
+    <h3>Doffing, Loading and sub-activities</h3>
+    <ul>
+      <li><strong>Loading</strong> follows POlength in WL_Products when it's filled. Areas WW, BA, CA, IS, IP use
+        weight-based Loading done at the Pay Off.</li>
+      <li>When <strong>Loading Partial1 and Partial2</strong> come due together, one Loading Partial3 replaces both.
+      </li>
+      <li>When a machine's Doffing and Loading belong to different operators, Loading waits until Doffing is done; that
+        gap counts as waiting.</li>
+    </ul>
+
+    <h3>Fracture Repairing, Dies Change, Defect Repairing</h3>
+    <p>These are counted per Construction, not per machine: once the combined spools of the machines on one Construction
+      reach the cycle, the event lands on a random running machine. Dies Change applies to Areas WW, BA, CA, with 7 or
+      26 dies per event. Defect Repairing applies to Areas CB, BU, SP, CH, CR and is done at the Take Up.</p>
+
+    <h3>Frequency Type (Doffing sub-tasks)</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Frequency Type</th>
+            <th>Done on…</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>(blank)</td>
+            <td>Num/Dem as usual</td>
+          </tr>
+          <tr>
+            <td><code>FirstDoffAfterLoading</code></td>
+            <td>The first Doffing after a Loading (main or partial)</td>
+          </tr>
+          <tr>
+            <td><code>FirstDoffAfterLoadingAll</code></td>
+            <td>The first Doffing after a main Loading</td>
+          </tr>
+          <tr>
+            <td><code>FirstDoffAfterLoadingPartial</code></td>
+            <td>The first Doffing after a partial Loading</td>
+          </tr>
+          <tr>
+            <td><code>FirstDoffAfterFractureRepairing</code></td>
+            <td>The first Doffing after a Fracture Repairing</td>
+          </tr>
+          <tr>
+            <td><code>FirstDoffAfterDefectRepairing</code></td>
+            <td>The first Doffing after a Defect Repairing</td>
+          </tr>
+          <tr>
+            <td><code>FirstDoffAfterDiesChange</code></td>
+            <td>The first Doffing after a Dies Change</td>
+          </tr>
+          <tr>
+            <td><code>FirstDoffAfterInteruptions</code></td>
+            <td>The first Doffing after any of the events above</td>
+          </tr>
+          <tr>
+            <td><code>FirstDoffOnShift</code></td>
+            <td>The machine's first Doffing of the shift</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>An event counts when it's finished, on the same machine. Several events before one Doffing still give the
+      sub-task once.</p>
+
+    <h3>Multi Task vs Split Task</h3>
+    <p>A task on a machine may be done by the machine's Multi Task operators and by that activity's Split Task
+      operators, whoever is free first (by Task Priority). Only one operator works a machine at a time. Sub-tasks (e.g.
+      ScanMES, Loading Partial) follow their parent activity. Loading waits until the Doffing is done when the operator
+      can't do the Doffing too. Dies Change and Defect Repairing use their own operators; with none set they fall back
+      to the Fracture Repairing operators. In the forecast, an activity's workload is split evenly across everyone who
+      may do it.</p>
+
+    <h3>Breaks (Lunch, Meeting, Other)</h3>
+    <p>When a break is due, the operator first finishes the visit they're on, then takes the full break. Machines that
+      need work wait during the break. In Production Simulation, start minutes can differ per operator (the ⚙️ button).
+    </p>
+
+    <h3>Doff Priority</h3>
+    <p>When <strong>Yes</strong>: if the operator is working a machine and another machine needs Doffing while at least
+      <em>Min Remain Task</em> minutes of the visit are left, that work is paused. The operator does all waiting
+      Doffings (by Task Priority), then picks again by Task Priority. Paused work is judged by its remaining time and
+      resumes where it stopped. Doffing work itself is never paused.</p>
+    <p>In Production Simulation each machine can have its own Doff Priority and Min Remain Task (in Assign Selection).
+      The setting of the machine that <em>needs Doffing</em> is used; when it's blank, the setup's applies. A machine
+      with Doff Priority No never interrupts other work and isn't put first.</p>
+    <div class="note">
+      <p>Doff Priority cuts Doffing waiting time but adds operator walking. Raise Min Remain Task if pauses happen too
+        often.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2 id="en-glossary">Glossary</h2>
+    <dl class="glossary">
+      <dt>Construction</dt>
+      <dd>The product construction code; its text holds Mach-Product-LayLength-TG-SpoolType.</dd>
+      <dt>Construction Detail</dt>
+      <dd>One WL_Products row; the basis for the machine spec and Activity Table.</dd>
+      <dt>Area</dt>
+      <dd>Production area (BU, CB, SP, CH, CR, WW, IS, IP, CA, BA); decides the Loading, Dies Change and Defect
+        Repairing rules.</dd>
+      <dt>Spool</dt>
+      <dd>One reel a machine produces. Spool Weight = SpoolLength × LinearDensity × NoOfWires ÷ 1000 (kg).</dd>
+      <dt>Runtime/spool</dt>
+      <dd>Time a machine takes to produce one spool.</dd>
+      <dt>Doffing</dt>
+      <dd>Taking a finished spool off the machine, at the Take Up.</dd>
+      <dt>Loading</dt>
+      <dd>Replacing/feeding raw material; Loading Partial is a partial load.</dd>
+      <dt>Fracture Repairing</dt>
+      <dd>Repairing a broken wire.</dd>
+      <dt>Dies Change</dt>
+      <dd>Changing dies.</dd>
+      <dt>Defect Repairing</dt>
+      <dd>Repairing a product defect.</dd>
+      <dt>Pay Off / Cradle / Take Up</dt>
+      <dd>Work zones on a machine where the operator stands (PO, cradle, TU).</dd>
+      <dt>Mach Condition</dt>
+      <dd>Stop (machine stops) or Run (machine keeps running) while the activity is done.</dd>
+      <dt>Num / Dem</dt>
+      <dd>Numerator / Denominator: the activity happens Num times every Dem spools.</dd>
+      <dt>Frequency Type</dt>
+      <dd>An event-based frequency rule for Doffing sub-tasks.</dd>
+      <dt>RPC</dt>
+      <dd>Rest &amp; Personal Care: an extra % of time for rest and personal needs.</dd>
+      <dt>Task Priority</dt>
+      <dd>How the operator picks the next machine: Nearest or Quickest.</dd>
+      <dt>Available Time</dt>
+      <dd>Shift Time minus Lunch, Meeting and other breaks.</dd>
+      <dt>Man Occupation</dt>
+      <dd>(Walking + Handling) ÷ net working time, in %.</dd>
+      <dt>Ideal demand / Forecast</dt>
+      <dd>Theoretical workload vs the estimate after machine stops and walking.</dd>
+      <dt>Others (RPC)</dt>
+      <dd>The RPC share of time in Man Occupation.</dd>
+      <dt>Idle</dt>
+      <dd>The operator has nothing to do.</dd>
+      <dt>Downtime / Waiting</dt>
+      <dd>The machine is stopped: for a Stop activity, or waiting for an operator.</dd>
+      <dt>OEE Availability</dt>
+      <dd>(Planned production time − downtime) ÷ planned production time.</dd>
+      <dt>Reject % / Quality</dt>
+      <dd>Share of reject tonnage; reduces good tonnage and OEE (Production Simulation).</dd>
+      <dt>Manhour/ton, Machhours/ton</dt>
+      <dd>Operator hours or machine hours per ton of output.</dd>
+      <dt>Multi Task / Split Task</dt>
+      <dd>Operators who may do every task on a machine / only one activity on it.</dd>
+      <dt>Group Name</dt>
+      <dd>A free-text label for reporting machines together.</dd>
+      <dt>Doff Priority / Min Remain Task</dt>
+      <dd>Pausing work for Doffing when at least Min Remain Task minutes of the visit are left. Set per setup, and in
+        Production Simulation per machine too.</dd>
+      <dt>WLM / Output model</dt>
+      <dd>A simulation result saved in WL_Outputmodels, with versions.</dd>
+      <dt>Inherited condition</dt>
+      <dd>Starting machine conditions + seed from a saved result, to replay a simulation.</dd>
+    </dl>
+  </section>
+</article>
