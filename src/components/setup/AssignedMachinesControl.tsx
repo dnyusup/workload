@@ -27,7 +27,9 @@ export function AssignedMachinesControl({
   const waitingModel = config.operator.waitingModel ?? DEFAULT_WAITING_MODEL;
   // Default Values can switch the waiting model off: then there's nothing to pick (forecast = None).
   const showWaitingModel = config.operator.useWaitingModel !== false;
-  const canChangeWaitingModel = useAuth().user.role === 'admin';
+  const { user } = useAuth();
+  const canChangeWaitingModel = user.role === 'admin';
+  const isGuest = user.role === 'guest';
   const [showCalculation, setShowCalculation] = useState(false);
   const [showModelInfo, setShowModelInfo] = useState(false);
   const highBacklogAtCapacity =
@@ -53,16 +55,18 @@ export function AssignedMachinesControl({
         <span>Forecast Man Occupation</span>
         <strong>{forecast.forecastUtilizationPercent.toFixed(1)}%</strong>
       </div>
-      <Button
-        type="button"
-        variant="ghost"
-        className="forecast-fx-button"
-        onClick={() => setShowCalculation(true)}
-        title="Show how the Forecast Man Occupation is calculated"
-        aria-label="Show Forecast Man Occupation calculation"
-      >
-        <i>f</i>x
-      </Button>
+      {!isGuest && (
+        <Button
+          type="button"
+          variant="ghost"
+          className="forecast-fx-button"
+          onClick={() => setShowCalculation(true)}
+          title="Show how the Forecast Man Occupation is calculated"
+          aria-label="Show Forecast Man Occupation calculation"
+        >
+          <i>f</i>x
+        </Button>
+      )}
       {showWaitingModel && (
       <select
         className="input waiting-model-select"
@@ -106,7 +110,9 @@ export function AssignedMachinesControl({
         </svg>
         Optimize Man Occupation
       </Button>
-      {showCalculation && <ForecastCalculationDialog config={config} forecast={forecast} onClose={() => setShowCalculation(false)} />}
+      {!isGuest && showCalculation && (
+        <ForecastCalculationDialog config={config} forecast={forecast} onClose={() => setShowCalculation(false)} />
+      )}
       {showWaitingModel && showModelInfo && <WaitingModelInfoDialog selected={waitingModel} onClose={() => setShowModelInfo(false)} />}
     </div>
   );

@@ -33,6 +33,7 @@ export function SetupWizard({ onStart }: { onStart: () => void }) {
   );
   const { user, loading: authLoading } = useAuth();
   const isAdmin = user.role === 'admin';
+  const isGuest = user.role === 'guest';
   // Only an Admin picks the waiting model; everyone else follows Default Values — also for a setup
   // kept in the browser from before an Admin changed it.
   useEffect(() => {
@@ -175,16 +176,18 @@ export function SetupWizard({ onStart }: { onStart: () => void }) {
                   />
                 }
               />
-              <ActivityTable
-                activities={config.activities}
-                spoolWeight={derived.spoolWeight}
-                fracturePerTon={config.spec.fracturePerTon}
-                diesPerTon={config.spec.diesPerTon}
-                defectsPerTon={config.spec.defectsPerTon}
-                rpcPercent={config.rpcPercent ?? 12}
-                onChange={(activities) => setConfig((prev) => ({ ...prev, activities }))}
-                onRpcPercentChange={(rpcPercent) => setConfig((prev) => ({ ...prev, rpcPercent }))}
-              />
+              {!isGuest && (
+                <ActivityTable
+                  activities={config.activities}
+                  spoolWeight={derived.spoolWeight}
+                  fracturePerTon={config.spec.fracturePerTon}
+                  diesPerTon={config.spec.diesPerTon}
+                  defectsPerTon={config.spec.defectsPerTon}
+                  rpcPercent={config.rpcPercent ?? 12}
+                  onChange={(activities) => setConfig((prev) => ({ ...prev, activities }))}
+                  onRpcPercentChange={(rpcPercent) => setConfig((prev) => ({ ...prev, rpcPercent }))}
+                />
+              )}
             </div>
           </div>
         )}
