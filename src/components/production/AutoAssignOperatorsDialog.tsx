@@ -159,7 +159,10 @@ export function AutoAssignOperatorsDialog({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !executing) onClose();
+      if (e.key === 'Escape' && !executing) {
+        e.stopPropagation();
+        onClose();
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
@@ -167,18 +170,6 @@ export function AutoAssignOperatorsDialog({
 
   const handleRun = async () => {
     if (!planPreview || planPreview.operatorsToCreate.length === 0) return;
-
-    const confirmMsg = scope === 'selection'
-      ? `Konfirmasi Auto Assign:\n` +
-        `Akan meregenerasi operator untuk ${totalMachinesAssigned} mesin terpilih (${totalOperatorsToCreate} operator baru).\n\n` +
-        `Operator yang bertugas di mesin lain TIDAK akan terpengaruh. Lanjutkan?`
-      : `Konfirmasi Auto Assign:\n` +
-        `Akan meregenerasi operator untuk seluruh setup (${totalMachinesAssigned} mesin, ${totalOperatorsToCreate} operator baru).\n\n` +
-        `Operator lama pada setup ini akan digantikan. Lanjutkan?`;
-
-    if (!window.confirm(confirmMsg)) {
-      return;
-    }
 
     setExecuting(true);
     setError(null);

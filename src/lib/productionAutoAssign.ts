@@ -286,32 +286,10 @@ export function computeAutoAssignPlan({
         });
       });
     } else {
-      // Balanced Split: optimizes total operators to ceil(totalRequired)
-      // and balances fractional demand (< 1.0) to operators with remaining capacity.
+      // Balanced Split: distributes workload proportionally across operators
+      // to keep man occupation balanced without leaves/spikes ("tidak jomplang"),
+      // while prioritizing dedicated primary groups.
       const totalMachines = targetMachines.length;
-
-      // 1. Calculate continuous requirement for each group
-      const groupStats = groups.map((grp) => {
-        const theoreticalReq = grp.tasks.reduce((sum, taskKey) => {
-          const act = activityBreakdown?.activities.find((a) => a.key === taskKey);
-          return sum + (act?.operators ?? 0);
-        }, 0);
-        const req = theoreticalReq > 0 ? theoreticalReq : grp.count;
-        const dedicatedCount = Math.floor(req);
-        const fractional = req - dedicatedCount;
-        return {
-          grp,
-          req,
-          dedicatedCount,
-          fractional,
-          prefix: grp.prefix.trim() || 'Opr',
-        };
-      });
-
-      const totalReq = groupStats.reduce((sum, g) => sum + g.req, 0);
-      const targetTotal = options.splitTotalCount ?? Math.max(1, Math.ceil(totalReq));
-      const totalDedicated = groupStats.reduce((sum, g) => sum + g.dedicatedCount, 0);
-      const flexCount = Math.max(0, targetTotal - totalDedicated);
 
       // Helper to assign task to machine
       const assignTask = (machineId: string, task: ActivityTaskKey, label: string) => {
@@ -328,154 +306,210 @@ export function computeAutoAssignPlan({
         machineAssignments.set(machineId, patch);
       };
 
-      // 2. Assign dedicated operators to the first portion of machines
-      interface RemainderWork {
-        grp: TaskGroupConfig;
-        tasks: ActivityTaskKey[];
-        remainingMachines: LayoutMachine[];
-        fractionalDemand: number;
-        prefix: string;
+      // 1. Calculate demand for each group
+      const groupData = groups.map((grp) => {
+        const theoreticalReq = grp.tasks.reduce((sum, taskKey) => {
+          const act = activityBreakdown?.activities.find((a) => a.key === taskKey);
+          return sum + (act?.operators ?? 0);
+        }, 0);
+        const req = theoreticalReq > 0 ? theoreticalReq : grp.count;
+        return {
+          grp,
+          req,
+          prefix: grp.prefix.trim() || 'Opr',
+        };
+      });
+
+      const totalDemand = groupData.reduce((sum, g) => sum + g.req, 0);
+      const targetTotal = options.splitTotalCount ?? Math.max(1, Math.ceil(totalDemand));
+      const targetWorkloadPerOperator = totalDemand / targetTotal;
+
+      // 2. Allocate primary operators to each group
+      // Each group gets at least 1 operator if targetTotal >= groups.length,
+      // with remaining operators allocated according to Hamilton largest-remainder method.
+      const allocatedCounts = new Map<string, number>();
+      if (targetTotal >= groupData.length) {
+        groupData.forEach((g) => allocatedCounts.set(g.grp.id, 1));
+        const remainingToAllocate = targetTotal - groupData.length;
+
+        const remainders = groupData.map((g) => {
+          const ideal = (g.req / totalDemand) * targetTotal;
+          return {
+            id: g.grp.id,
+            remainder: ideal - 1,
+          };
+        });
+        remainders.sort((a, b) => b.remainder - a.remainder);
+
+        for (let i = 0; i < remainingToAllocate; i++) {
+          const targetId = remainders[i % remainders.length].id;
+          allocatedCounts.set(targetId, (allocatedCounts.get(targetId) ?? 1) + 1);
+        }
+      } else {
+        // Fewer operators than groups: give to top groups with largest demand
+        const sorted = [...groupData].sort((a, b) => b.req - a.req);
+        sorted.forEach((g, idx) => {
+          allocatedCounts.set(g.grp.id, idx < targetTotal ? 1 : 0);
+        });
       }
-      const remainders: RemainderWork[] = [];
 
-      groupStats.forEach((g) => {
-        if (g.dedicatedCount > 0) {
-          // Dedicated portion
-          const dedicatedFraction = Math.min(1.0, g.dedicatedCount / g.req);
-          // If fractional remainder is negligible (< 0.05) or flexCount is 0, give all machines
-          const dedicatedMachineCount = (g.fractional < 0.05 || flexCount === 0)
-            ? totalMachines
-            : Math.min(totalMachines, Math.max(g.dedicatedCount, Math.round(totalMachines * dedicatedFraction)));
+      // 3. Create operator instances
+      interface OperatorInstance {
+        label: string;
+        primaryGroupId: string;
+        capacityRemaining: number;
+        assignedLoad: number;
+      }
+      const operatorInstances: OperatorInstance[] = [];
 
-          const dedicatedMachines = targetMachines.slice(0, dedicatedMachineCount);
-          const remainingMachines = targetMachines.slice(dedicatedMachineCount);
-
-          // Create dedicated operator labels
-          const dedicatedLabels = Array.from(
-            { length: g.dedicatedCount },
-            (_, i) => `${g.prefix}_${String(i + 1).padStart(4, '0')}`,
-          );
-
-          dedicatedLabels.forEach((label) => {
-            operatorsToCreate.push({
-              label,
-              groupKey: g.grp.id,
-              description: `${g.grp.name} (Dedicated)`,
-            });
+      groupData.forEach((g) => {
+        const count = allocatedCounts.get(g.grp.id) ?? 0;
+        for (let i = 0; i < count; i++) {
+          const label = `${g.prefix}_${String(i + 1).padStart(4, '0')}`;
+          operatorInstances.push({
+            label,
+            primaryGroupId: g.grp.id,
+            capacityRemaining: targetWorkloadPerOperator,
+            assignedLoad: 0,
           });
-
-          // Partition dedicated machines
-          dedicatedMachines.forEach((m, idx) => {
-            const opIdx = Math.min(g.dedicatedCount - 1, Math.floor((idx * g.dedicatedCount) / dedicatedMachines.length));
-            const opLabel = dedicatedLabels[opIdx];
-            g.grp.tasks.forEach((t) => assignTask(m.id, t, opLabel));
-          });
-
-          if (remainingMachines.length > 0 && g.fractional >= 0.05) {
-            remainders.push({
-              grp: g.grp,
-              tasks: g.grp.tasks,
-              remainingMachines,
-              fractionalDemand: g.fractional,
-              prefix: g.prefix,
-            });
-          }
-        } else {
-          // No dedicated operators for this group (demand < 1.0)
-          remainders.push({
-            grp: g.grp,
-            tasks: g.grp.tasks,
-            remainingMachines: [...targetMachines],
-            fractionalDemand: g.req,
-            prefix: g.prefix,
+          operatorsToCreate.push({
+            label,
+            groupKey: g.grp.id,
+            description: `${g.grp.name} (Primary)`,
           });
         }
       });
 
-      // 3. Assign remainders to flex operators (or if flexCount === 0, to last dedicated operators)
-      if (flexCount === 0) {
-        // Fallback: assign remaining machines to the last dedicated operator of each group
-        remainders.forEach((rem) => {
-          const lastDedicated = operatorsToCreate.filter((o) => o.groupKey === rem.grp.id).pop()?.label;
-          if (lastDedicated) {
-            rem.remainingMachines.forEach((m) => {
-              rem.tasks.forEach((t) => assignTask(m.id, t, lastDedicated));
-            });
-          }
-        });
-      } else {
-        // Create flex operators with capacity
-        interface FlexOperatorState {
-          label: string;
-          capacityRemaining: number;
-          assignedGroups: string[];
-        }
-
-        // Sort remainders descending by demand to pack larger chunks first
-        remainders.sort((a, b) => b.fractionalDemand - a.fractionalDemand);
-
-        const totalRemDemand = remainders.reduce((s, r) => s + r.fractionalDemand, 0);
-        const capacityPerFlex = Math.max(0.1, totalRemDemand / flexCount);
-
-        const flexOperators: FlexOperatorState[] = [];
-        for (let k = 0; k < flexCount; k++) {
-          // Choose a descriptive prefix based on the remaining task or generic
-          const primaryRemainder = remainders[k % remainders.length];
-          const dedicatedForThisGroup = groupStats.find((gs) => gs.grp.id === primaryRemainder?.grp.id)?.dedicatedCount ?? 0;
-          const flexLabel = primaryRemainder
-            ? `${primaryRemainder.prefix}_${String(dedicatedForThisGroup + 1 + Math.floor(k / remainders.length)).padStart(4, '0')}`
-            : `Opr_${String(totalDedicated + k + 1).padStart(4, '0')}`;
-
-          flexOperators.push({
-            label: flexLabel,
-            capacityRemaining: capacityPerFlex,
-            assignedGroups: [],
-          });
-          operatorsToCreate.push({
-            label: flexLabel,
-            groupKey: 'flex',
-            description: 'Balanced / Shared Task',
-          });
-        }
-
-        // Distribute remainder tasks among flex operators
-        remainders.forEach((rem) => {
-          let remMachines = rem.remainingMachines;
-          let remainingDemand = rem.fractionalDemand;
-
-          while (remMachines.length > 0 && remainingDemand > 0) {
-            // Find flex operator with highest remaining capacity
-            flexOperators.sort((a, b) => b.capacityRemaining - a.capacityRemaining);
-            const targetFlex = flexOperators[0];
-
-            if (targetFlex.capacityRemaining <= 0 || flexOperators.every((f) => f.capacityRemaining <= 0)) {
-              // All capacity filled, assign the rest to the first flex operator
-              remMachines.forEach((m) => rem.tasks.forEach((t) => assignTask(m.id, t, targetFlex.label)));
-              targetFlex.assignedGroups.push(rem.grp.name);
-              break;
-            }
-
-            const takeDemand = Math.min(remainingDemand, targetFlex.capacityRemaining);
-            const machineCountToTake = Math.min(
-              remMachines.length,
-              Math.max(1, Math.round(remMachines.length * (takeDemand / remainingDemand))),
-            );
-
-            const machinesForThisOp = remMachines.slice(0, machineCountToTake);
-            remMachines = remMachines.slice(machineCountToTake);
-
-            machinesForThisOp.forEach((m) => {
-              rem.tasks.forEach((t) => assignTask(m.id, t, targetFlex.label));
-            });
-
-            targetFlex.capacityRemaining -= takeDemand;
-            remainingDemand -= takeDemand;
-            if (!targetFlex.assignedGroups.includes(rem.grp.name)) {
-              targetFlex.assignedGroups.push(rem.grp.name);
-            }
-          }
-        });
+      // 4. Pass 1: Assign each group's tasks to its primary operators
+      interface GroupRemainingMachines {
+        grp: TaskGroupConfig;
+        tasks: ActivityTaskKey[];
+        remainingMachines: LayoutMachine[];
+        remainingDemand: number;
       }
+      const unassignedSlices: GroupRemainingMachines[] = [];
+
+      groupData.forEach((g) => {
+        const primaryOps = operatorInstances.filter((op) => op.primaryGroupId === g.grp.id);
+        const totalCapacityOfPrimaries = primaryOps.reduce((sum, op) => sum + op.capacityRemaining, 0);
+
+        if (primaryOps.length > 0 && totalCapacityOfPrimaries >= g.req) {
+          // Primary operators can absorb 100% of this group's machines
+          const totalOps = primaryOps.length;
+          targetMachines.forEach((m, idx) => {
+            const opIdx = Math.min(totalOps - 1, Math.floor((idx * totalOps) / totalMachines));
+            const op = primaryOps[opIdx];
+            g.grp.tasks.forEach((t) => assignTask(m.id, t, op.label));
+          });
+
+          const loadPerOp = g.req / totalOps;
+          primaryOps.forEach((op) => {
+            op.assignedLoad += loadPerOp;
+            op.capacityRemaining = Math.max(0, targetWorkloadPerOperator - op.assignedLoad);
+          });
+        } else if (primaryOps.length > 0) {
+          // Primary operators take machines up to their full capacity
+          const fraction = Math.min(1.0, totalCapacityOfPrimaries / g.req);
+          const coveredMachineCount = Math.min(totalMachines, Math.max(primaryOps.length, Math.round(totalMachines * fraction)));
+
+          const coveredMachines = targetMachines.slice(0, coveredMachineCount);
+          const remainingMachines = targetMachines.slice(coveredMachineCount);
+
+          const totalOps = primaryOps.length;
+          coveredMachines.forEach((m, idx) => {
+            const opIdx = Math.min(totalOps - 1, Math.floor((idx * totalOps) / coveredMachines.length));
+            const op = primaryOps[opIdx];
+            g.grp.tasks.forEach((t) => assignTask(m.id, t, op.label));
+          });
+
+          primaryOps.forEach((op) => {
+            op.assignedLoad += targetWorkloadPerOperator;
+            op.capacityRemaining = 0;
+          });
+
+          if (remainingMachines.length > 0) {
+            unassignedSlices.push({
+              grp: g.grp,
+              tasks: g.grp.tasks,
+              remainingMachines,
+              remainingDemand: g.req * (remainingMachines.length / totalMachines),
+            });
+          }
+        } else {
+          // No primary operators for this group (e.g. if targetTotal was small)
+          unassignedSlices.push({
+            grp: g.grp,
+            tasks: g.grp.tasks,
+            remainingMachines: [...targetMachines],
+            remainingDemand: g.req,
+          });
+        }
+      });
+
+      // 5. Pass 2: Distribute remaining machines to operators with capacityRemaining > 0
+      unassignedSlices.forEach((slice) => {
+        let machinesToAssign = slice.remainingMachines;
+        let demandToCover = slice.remainingDemand;
+
+        while (machinesToAssign.length > 0) {
+          // Find operators with remaining capacity
+          const helpers = operatorInstances
+            .filter((op) => op.capacityRemaining > 0.001)
+            .sort((a, b) => b.capacityRemaining - a.capacityRemaining);
+
+          if (helpers.length === 0) {
+            // All operators full: assign the rest to the operator with the lowest assigned load
+            const fallbackOp = [...operatorInstances].sort((a, b) => a.assignedLoad - b.assignedLoad)[0];
+            machinesToAssign.forEach((m) => {
+              slice.tasks.forEach((t) => assignTask(m.id, t, fallbackOp.label));
+            });
+            fallbackOp.assignedLoad += demandToCover;
+            break;
+          }
+
+          const targetOp = helpers[0];
+          const takeDemand = Math.min(demandToCover, targetOp.capacityRemaining);
+          const machineCount = Math.min(
+            machinesToAssign.length,
+            Math.max(1, Math.round(machinesToAssign.length * (takeDemand / demandToCover))),
+          );
+
+          const assignedSubslice = machinesToAssign.slice(0, machineCount);
+          machinesToAssign = machinesToAssign.slice(machineCount);
+
+          assignedSubslice.forEach((m) => {
+            slice.tasks.forEach((t) => assignTask(m.id, t, targetOp.label));
+          });
+
+          targetOp.capacityRemaining -= takeDemand;
+          targetOp.assignedLoad += takeDemand;
+          demandToCover -= takeDemand;
+        }
+      });
+
+      // 6. Pass 3: Safety verification sweep (Guarantees NO machine is left unassigned)
+      groupData.forEach((g) => {
+        const defaultOpLabel = operatorInstances.find((op) => op.primaryGroupId === g.grp.id)?.label
+          ?? operatorInstances[0]?.label;
+
+        if (defaultOpLabel) {
+          targetMachines.forEach((m) => {
+            const assignment = machineAssignments.get(m.id);
+            g.grp.tasks.forEach((t) => {
+              let isSet = false;
+              if (t === 'doffing' && assignment?.doffingOperatorIds?.length) isSet = true;
+              if (t === 'loading' && assignment?.loadingOperatorIds?.length) isSet = true;
+              if (t === 'fractureRepairing' && assignment?.fractureRepairingOperatorIds?.length) isSet = true;
+              if (t === 'diesChange' && assignment?.diesChangeOperatorIds?.length) isSet = true;
+              if (t === 'defectRepairing' && assignment?.defectRepairingOperatorIds?.length) isSet = true;
+
+              if (!isSet) {
+                assignTask(m.id, t, defaultOpLabel);
+              }
+            });
+          });
+        }
+      });
     }
   }
 
