@@ -214,7 +214,7 @@ export function AutoAssignOperatorsDialog({
       onSuccess(result);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Gagal menjalankan Auto Assign.');
+      setError(err instanceof Error ? err.message : 'Failed to execute Auto Assign.');
       setExecuting(false);
       setProgressState(null);
     }
@@ -235,7 +235,7 @@ export function AutoAssignOperatorsDialog({
             <span className="om-detail-eyebrow">Production Simulation Optimizer</span>
             <h3>✨ Auto Assign Opr</h3>
             <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: '#94a3b8' }}>
-              Alokasikan operator otomatis dengan prioritas pasangan Take Up (TU) saling berhadapan.
+              Automatically assign operators with facing Take-Up (TU) pair priority and compact machine routing.
             </p>
           </div>
           <button
@@ -255,7 +255,7 @@ export function AutoAssignOperatorsDialog({
           {hasSelection && (
             <div>
               <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#f1f5f9', marginBottom: '6px' }}>
-                Cakupan Mesin:
+                Machine Scope:
               </label>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                 <button
@@ -276,7 +276,7 @@ export function AutoAssignOperatorsDialog({
                     gap: '6px',
                   }}
                 >
-                  <span>🎯 Mesin Terpilih ({selectedMachineIds.length})</span>
+                  <span>🎯 Selected Machines ({selectedMachineIds.length})</span>
                 </button>
                 <button
                   type="button"
@@ -296,7 +296,7 @@ export function AutoAssignOperatorsDialog({
                     gap: '6px',
                   }}
                 >
-                  <span>🌐 Seluruh Setup ({setup.layout.length})</span>
+                  <span>🌐 Entire Setup ({setup.layout.length})</span>
                 </button>
               </div>
             </div>
@@ -305,7 +305,7 @@ export function AutoAssignOperatorsDialog({
           {/* Mode Selection */}
           <div>
             <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#f1f5f9', marginBottom: '8px' }}>
-              Pilih Tipe Penugasan:
+              Assignment Mode:
             </label>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
               <div
@@ -334,7 +334,7 @@ export function AutoAssignOperatorsDialog({
                   </strong>
                 </div>
                 <span style={{ fontSize: '0.74rem', color: '#94a3b8', paddingLeft: '24px' }}>
-                  Setiap mesin dikerjakan oleh 1 operator untuk seluruh aktivitas.
+                  Each machine is assigned to 1 operator for all activity tasks.
                 </span>
               </div>
 
@@ -364,7 +364,7 @@ export function AutoAssignOperatorsDialog({
                   </strong>
                 </div>
                 <span style={{ fontSize: '0.74rem', color: '#94a3b8', paddingLeft: '24px' }}>
-                  Tugas dibagi per kelompok aktivitas (Doffing, Loading, Fracture+Defect).
+                  Tasks are split by activity group (Doffing, Loading, Repairs, etc.).
                 </span>
               </div>
             </div>
@@ -385,7 +385,7 @@ export function AutoAssignOperatorsDialog({
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                 <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#f1f5f9' }}>
-                  Konfigurasi Multi Task:
+                  Multi Task Configuration:
                 </span>
                 {rawMultiReq && (
                   <span style={{ fontSize: '0.74rem', color: '#38bdf8', background: 'rgba(56, 189, 248, 0.12)', padding: '2px 8px', borderRadius: '4px' }}>
@@ -397,7 +397,7 @@ export function AutoAssignOperatorsDialog({
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', marginBottom: '4px' }}>
-                    Jumlah Operator yang Dibuat:
+                    Operator Count:
                   </label>
                   <input
                     type="number"
@@ -411,7 +411,7 @@ export function AutoAssignOperatorsDialog({
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', marginBottom: '4px' }}>
-                    Prefix Nama Operator:
+                    Operator Prefix:
                   </label>
                   <input
                     type="text"
@@ -437,7 +437,7 @@ export function AutoAssignOperatorsDialog({
               }}
             >
               <label style={{ fontSize: '0.82rem', fontWeight: 600, color: '#f1f5f9' }}>
-                Pilih Pola Pembagian Split Task (Optimal Preset):
+                Split Task Preset:
               </label>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -494,10 +494,10 @@ export function AutoAssignOperatorsDialog({
                 />
                 <div style={{ flex: 1 }}>
                   <label htmlFor="chkBalanceFractional" style={{ fontSize: '0.82rem', fontWeight: 600, color: '#f1f5f9', cursor: 'pointer', display: 'block' }}>
-                    ⚡ Optimalkan Beban Pecahan (Operator Balancing)
+                    ⚡ Optimize Fractional Workload (Operator Balancing)
                   </label>
                   <span style={{ fontSize: '0.73rem', color: '#94a3b8', lineHeight: 1.45, display: 'block', marginTop: '2px' }}>
-                    Mengalihkan sisa kebutuhan aktivitas pecahan (&lt; 1.0 orang, misal 0.5 Doffing) ke operator lain yang masih kekurangan mesin, sehingga total operator sesuai kebutuhan teoritis tanpa membengkak.
+                    Reallocates fractional activity demands (&lt; 1.0 person, e.g. 0.5 Doffing) to operators with spare capacity to match theoretical demand without excess headcount.
                   </span>
                 </div>
               </div>
@@ -516,11 +516,11 @@ export function AutoAssignOperatorsDialog({
                 >
                   <div>
                     <strong style={{ fontSize: '0.82rem', color: '#f8fafc', display: 'block' }}>
-                      Target Total Operator:
+                      Target Total Operators:
                     </strong>
                     {rawSplitReq !== undefined && (
                       <span style={{ fontSize: '0.74rem', color: '#38bdf8' }}>
-                        Kebutuhan Teoritis: {rawSplitReq.toFixed(2)} orang
+                        Theoretical Required: {rawSplitReq.toFixed(2)} ops
                       </span>
                     )}
                   </div>
@@ -535,7 +535,7 @@ export function AutoAssignOperatorsDialog({
                       onChange={(e) => setSplitTotalCount(Math.max(1, Number(e.target.value) || 1))}
                       disabled={executing}
                     />
-                    <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Operator</span>
+                    <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Operators</span>
                   </div>
                 </div>
               ) : null}
@@ -544,7 +544,7 @@ export function AutoAssignOperatorsDialog({
               <div style={{ marginTop: '4px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
                   <span style={{ fontSize: '0.76rem', fontWeight: 600, color: '#cbd5e1' }}>
-                    Rincian Kelompok Tugas & Prefix:
+                    Task Groups & Prefixes:
                   </span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <label style={{ fontSize: '0.74rem', color: '#38bdf8', fontWeight: 500 }}>
@@ -557,7 +557,7 @@ export function AutoAssignOperatorsDialog({
                       value={splitGlobalPrefix}
                       onChange={(e) => handleGlobalPrefixChange(e.target.value)}
                       disabled={executing}
-                      title="Mengubah prefix ini akan mengubah prefix di seluruh kelompok"
+                      title="Changing this prefix updates all task groups below"
                     />
                   </div>
                 </div>
@@ -584,7 +584,7 @@ export function AutoAssignOperatorsDialog({
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <strong style={{ color: '#f1f5f9', display: 'block' }}>{grp.name}</strong>
                           <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
-                            {req > 0 ? `Teoritis: ${req.toFixed(2)} orang · ` : ''}
+                            {req > 0 ? `Theoretical: ${req.toFixed(2)} ops · ` : ''}
                             {grp.tasks.map((t) => ALL_ACTIVITY_TASKS.find((a) => a.key === t)?.label ?? t).join(', ')}
                           </span>
                         </div>
@@ -599,7 +599,7 @@ export function AutoAssignOperatorsDialog({
                           />
                           {!balanceFractional && (
                             <>
-                              <span style={{ fontSize: '0.72rem', color: '#94a3b8', marginLeft: '4px' }}>Jumlah:</span>
+                              <span style={{ fontSize: '0.72rem', color: '#94a3b8', marginLeft: '4px' }}>Count:</span>
                               <input
                                 type="number"
                                 min={1}
@@ -633,7 +633,7 @@ export function AutoAssignOperatorsDialog({
               lineHeight: 1.45,
             }}
           >
-            <strong>ℹ️ Pola Alokasi TU Berhadapan:</strong> Mesin diurutkan berpasangan Take-Up (TU) atas dan bawah sepanjang lorong kerja, sehingga setiap operator memegang blok mesin yang kompak tanpa harus bolak-balik lorong.
+            <strong>ℹ️ Facing TU Allocation:</strong> Machines are ordered in facing Take-Up (TU) pairs along the working aisle in a continuous serpentine path, ensuring each operator handles a compact, contiguous machine block without walking back and forth.
           </div>
 
           {/* Preview of Operators to be Generated */}
@@ -641,7 +641,7 @@ export function AutoAssignOperatorsDialog({
             <div style={{ padding: '10px 12px', background: '#0b1120', border: '1px solid #1e293b', borderRadius: '6px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                 <span style={{ fontSize: '0.76rem', fontWeight: 600, color: '#f1f5f9' }}>
-                  Preview Operator ({planPreview.operatorsToCreate.length} orang untuk {totalMachinesAssigned} mesin):
+                  Operator Preview ({planPreview.operatorsToCreate.length} operators for {totalMachinesAssigned} machines):
                 </span>
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', maxHeight: '100px', overflowY: 'auto' }}>
@@ -677,7 +677,7 @@ export function AutoAssignOperatorsDialog({
               style={{ cursor: 'pointer' }}
             />
             <label htmlFor="chkOnlyPlanned" style={{ fontSize: '0.78rem', color: '#cbd5e1', cursor: 'pointer' }}>
-              Hanya alokasikan mesin yang terencana (sudah memiliki Construction Detail).
+              Only assign planned machines (machines with a Construction Detail assigned).
             </label>
           </div>
 
@@ -712,10 +712,10 @@ export function AutoAssignOperatorsDialog({
 
         <div className="operator-start-actions" style={{ borderTop: '1px solid #1e293b', paddingTop: '12px' }}>
           <Button variant="ghost" onClick={onClose} disabled={executing}>
-            Batal
+            Cancel
           </Button>
           <Button variant="primary" onClick={handleRun} disabled={executing || totalOperatorsToCreate === 0}>
-            {executing ? 'Sedang Memproses…' : `Terapkan Auto Assign Opr (${totalOperatorsToCreate} Operator)`}
+            {executing ? 'Processing…' : `Apply Auto Assign Opr (${totalOperatorsToCreate} Operators)`}
           </Button>
         </div>
       </div>

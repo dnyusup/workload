@@ -2340,8 +2340,8 @@ function ProductionSetupEditor({
                 <Button
                   variant="secondary"
                   onClick={() => setConfirmDeleteAllOpen(true)}
-                  title="Hapus semua operator"
-                  aria-label="Hapus semua operator"
+                  title="Remove all operators"
+                  aria-label="Remove all operators"
                   disabled={setup.operators.length === 0 || deletingAllOperators}
                   style={{ color: setup.operators.length === 0 ? undefined : '#f87171' }}
                 >
@@ -2379,19 +2379,19 @@ function ProductionSetupEditor({
                 className="om-detail"
                 role="dialog"
                 aria-modal="true"
-                aria-label="Konfirmasi Hapus Semua Operator"
+                aria-label="Confirm Remove All Operators"
                 onClick={(e) => e.stopPropagation()}
                 style={{ maxWidth: '440px', padding: '20px' }}
               >
                 <header className="om-detail-header" style={{ marginBottom: '16px' }}>
                   <div>
-                    <span className="om-detail-eyebrow" style={{ color: '#f87171' }}>Peringatan Tindakan Permanen</span>
-                    <h3 style={{ margin: '4px 0 0', fontSize: '1.2rem', color: '#f1f5f9' }}>Hapus Semua Operator?</h3>
+                    <span className="om-detail-eyebrow" style={{ color: '#f87171' }}>Permanent Action Warning</span>
+                    <h3 style={{ margin: '4px 0 0', fontSize: '1.2rem', color: '#f1f5f9' }}>Remove All Operators?</h3>
                   </div>
                 </header>
 
                 <p style={{ color: '#94a3b8', fontSize: '0.88rem', lineHeight: '1.5', margin: '0 0 20px' }}>
-                  Apakah Anda yakin ingin menghapus seluruh <strong style={{ color: '#f1f5f9' }}>{setup.operators.length} operator</strong> dari setup ini? Tindakan ini juga akan mengosongkan penugasan operator pada seluruh mesin yang terkait.
+                  Are you sure you want to remove all <strong style={{ color: '#f1f5f9' }}>{setup.operators.length} operators</strong> from this setup? This will also unassign operators across all machines in this setup.
                 </p>
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
@@ -2400,14 +2400,14 @@ function ProductionSetupEditor({
                     onClick={() => setConfirmDeleteAllOpen(false)}
                     disabled={deletingAllOperators}
                   >
-                    Batal
+                    Cancel
                   </Button>
                   <Button
                     variant="danger"
                     onClick={removeAllOperators}
                     disabled={deletingAllOperators}
                   >
-                    {deletingAllOperators ? 'Menghapus…' : 'Ya, Hapus Semua'}
+                    {deletingAllOperators ? 'Deleting…' : 'Yes, Delete All'}
                   </Button>
                 </div>
               </div>
@@ -2456,7 +2456,7 @@ function ProductionSetupEditor({
                 type="number"
                 min={1}
                 max={500}
-                placeholder="Jumlah"
+                placeholder="Count"
                 value={bulkOperatorCount}
                 onChange={(e) => setBulkOperatorCount(Math.max(1, Number(e.target.value) || 1))}
                 disabled={addingOperator || addingBulkOperators}

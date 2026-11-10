@@ -45,8 +45,8 @@ export interface SplitPreset {
 export const SPLIT_PRESETS: SplitPreset[] = [
   {
     id: 'three_groups_dlr',
-    label: '3 Kelompok: Doffing, Loading, Fracture + Defect (Rekomendasi)',
-    description: 'Doffing dan Loading dipisah masing-masing. Tugas teknis/perbaikan (Fracture, Defect, & Dies Change) digabung dalam 1 kelompok.',
+    label: '3 Groups: Doffing, Loading, Fracture + Defect (Recommended)',
+    description: 'Doffing and Loading are separated. Technical repairs (Fracture, Defect, & Dies Change) are combined into 1 group.',
     groups: (b) => {
       const getReq = (key: ActivityTaskKey) => {
         const item = b?.activities.find((a) => a.key === key);
@@ -74,8 +74,8 @@ export const SPLIT_PRESETS: SplitPreset[] = [
   },
   {
     id: 'full_split',
-    label: 'Full Split (5 Kelompok Terpisah)',
-    description: 'Setiap aktivitas (Doffing, Loading, Fracture, Dies, Defect) ditangani oleh pool operator terpisah.',
+    label: 'Full Split (5 Dedicated Groups)',
+    description: 'Each activity (Doffing, Loading, Fracture, Dies, Defect) is handled by a separate operator pool.',
     groups: (b) => {
       const getReq = (key: ActivityTaskKey) => {
         const item = b?.activities.find((a) => a.key === key);
@@ -92,8 +92,8 @@ export const SPLIT_PRESETS: SplitPreset[] = [
   },
   {
     id: 'two_groups',
-    label: '2 Kelompok: Material Handling vs Technical / Quality',
-    description: 'Doffing & Loading digabung (penanganan bobbin/spool fisik). Fracture, Defect & Dies digabung (penanganan mutu & teknis).',
+    label: '2 Groups: Material Handling vs Technical / Quality',
+    description: 'Doffing & Loading are combined (physical bobbin/spool handling). Fracture, Defect & Dies are combined (quality & technical repairs).',
     groups: (b) => {
       const getSum = (keys: ActivityTaskKey[]) => {
         const sum = keys.reduce((acc, k) => {
@@ -122,8 +122,8 @@ export const SPLIT_PRESETS: SplitPreset[] = [
   },
   {
     id: 'three_groups',
-    label: '3 Kelompok: Material, Repairs, Dies Specialist',
-    description: 'Doffing + Loading (Material), Fracture + Defect (Breaks/Defects), dan Dies Change (Tooling mandiri).',
+    label: '3 Groups: Material, Repairs, Dies Specialist',
+    description: 'Doffing + Loading (Material), Fracture + Defect (Breaks & Defects), and Dies Change (Specialist).',
     groups: (b) => {
       const getSum = (keys: ActivityTaskKey[]) => {
         const sum = keys.reduce((acc, k) => {
@@ -651,7 +651,7 @@ export async function executeAutoAssign({
     : null;
 
   // 2. Fetch existing operators from Dataverse
-  onProgress?.('Mengambil operator lama…', 0, 1);
+  onProgress?.('Fetching existing operators…', 0, 1);
   const oldOpRows = await fetchAllPages(Mpp_wl_productionsetupoperatorsesService.getAll, {
     filter: `mpp_productionsetupid eq '${escapeODataString(setup.id)}'`,
     select: ['mpp_wl_productionsetupoperatorsid', 'mpp_name'],
@@ -688,14 +688,14 @@ export async function executeAutoAssign({
 
   const deleteTotal = operatorsToDelete.length;
   if (deleteTotal > 0) {
-    onProgress?.('Menghapus operator lama…', 0, deleteTotal);
+    onProgress?.('Removing old operators…', 0, deleteTotal);
     let deletedCount = 0;
     await runWithConcurrency(
       operatorsToDelete,
       async (row) => {
         await Mpp_wl_productionsetupoperatorsesService.delete(row.mpp_wl_productionsetupoperatorsid);
         deletedCount += 1;
-        onProgress?.('Menghapus operator lama…', deletedCount, deleteTotal);
+        onProgress?.('Removing old operators…', deletedCount, deleteTotal);
       },
       BULK_CONCURRENCY,
     );
@@ -703,7 +703,7 @@ export async function executeAutoAssign({
 
   // 4. Create new operators
   const createTotal = plan.operatorsToCreate.length;
-  onProgress?.('Membuat operator baru…', 0, createTotal);
+  onProgress?.('Creating new operators…', 0, createTotal);
   const labelToId = new Map<string, string>();
   const createdOperators: ProductionOperator[] = [];
   let createdCount = 0;
@@ -722,7 +722,7 @@ export async function executeAutoAssign({
         createdOperators.push({ id, label: item.label });
       }
       createdCount += 1;
-      onProgress?.('Membuat operator baru…', createdCount, createTotal);
+      onProgress?.('Creating new operators…', createdCount, createTotal);
     },
     BULK_CONCURRENCY,
   );
@@ -768,9 +768,9 @@ export async function executeAutoAssign({
   });
 
   // 7. Save machine assignments to Dataverse
-  onProgress?.('Menerapkan assignment mesin…', 0, changes.length);
+  onProgress?.('Applying machine assignments…', 0, changes.length);
   await updateMachineAssignments(setup.id, changes, (done, total) => {
-    onProgress?.('Menerapkan assignment mesin…', done, total);
+    onProgress?.('Applying machine assignments…', done, total);
   });
 
   // 8. Compute updated local assignments
