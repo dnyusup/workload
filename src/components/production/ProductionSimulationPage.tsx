@@ -1063,6 +1063,7 @@ function ProductionSetupEditor({
   const [startTimesOpen, setStartTimesOpen] = useState(false);
   const [waitingModelInfoOpen, setWaitingModelInfoOpen] = useState(false);
   const [autoAssignOpen, setAutoAssignOpen] = useState(false);
+  const [autoAssignScope, setAutoAssignScope] = useState<'selection' | 'all'>('selection');
   const [plannedUtilizationFullscreen, setPlannedUtilizationFullscreen] = useState(false);
   const plannedUtilizationPanelRef = useRef<HTMLDivElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -1305,6 +1306,27 @@ function ProductionSetupEditor({
     assignmentByMachine,
   ]);
 
+  const selectionActivityBreakdown = useMemo(() => {
+    if (!resolvedConstructions || selectedMachineIds.length === 0) return null;
+    const selected = new Set(selectedMachineIds);
+    const required = theoreticalOperators(
+      setup.assignments.filter((a) => selected.has(a.machineId)),
+      products,
+      optimizedCounts.counts,
+      resolvedConstructions ?? undefined,
+    );
+    const requiredReady = !optimizedCounts.error && required.pending === 0 && !optimizedCounts.loading;
+    return calculateTheoreticalActivityBreakdown({
+      setup,
+      resolvedConstructions,
+      machineIds: selectedMachineIds,
+      requiredRows: required.rows,
+      requiredTotal: required.total,
+      requiredReady,
+      assignmentByMachine,
+    });
+  }, [setup, resolvedConstructions, selectedMachineIds, products, optimizedCounts, assignmentByMachine]);
+
   const theoreticalOperatorsBadge = (
     <TheoreticalOperatorsBadge
       total={operatorRequirement.total}
@@ -1315,7 +1337,14 @@ function ProductionSetupEditor({
       loading={optimizedCounts.loading}
       error={optimizedCounts.error}
       activityBreakdown={overallActivityBreakdown}
-      onOpenAutoAssign={!isReadOnly ? () => setAutoAssignOpen(true) : undefined}
+      onOpenAutoAssign={
+        !isReadOnly
+          ? () => {
+              setAutoAssignScope(selectedMachineIds.length > 0 ? 'selection' : 'all');
+              setAutoAssignOpen(true);
+            }
+          : undefined
+      }
     />
   );
 
@@ -1928,9 +1957,28 @@ function ProductionSetupEditor({
     <Card
       title={`Assign Selection (${selectedMachineIds.length} machine(s) selected)`}
       actions={
-        <Button variant="danger" onClick={unplanSelection} disabled={isReadOnly || selectedMachineIds.length === 0}>
-          Unplan Selection
-        </Button>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setAutoAssignScope('selection');
+              setAutoAssignOpen(true);
+            }}
+            disabled={isReadOnly || selectedMachineIds.length === 0}
+            title="Auto assign operators for selected machines"
+            style={{
+              background: 'rgba(56, 189, 248, 0.15)',
+              color: '#38bdf8',
+              borderColor: 'rgba(56, 189, 248, 0.35)',
+              fontWeight: 600,
+            }}
+          >
+            ⚡ Auto Assign
+          </Button>
+          <Button variant="danger" onClick={unplanSelection} disabled={isReadOnly || selectedMachineIds.length === 0}>
+            Unplan Selection
+          </Button>
+        </div>
       }
     >
       <div className="production-assign-row">
@@ -2451,7 +2499,10 @@ function ProductionSetupEditor({
       {autoAssignOpen && !isReadOnly && (
         <AutoAssignOperatorsDialog
           setup={setup}
-          activityBreakdown={overallActivityBreakdown}
+          targetScope={autoAssignScope}
+          selectedMachineIds={selectedMachineIds}
+          overallBreakdown={overallActivityBreakdown}
+          selectionBreakdown={selectionActivityBreakdown}
           onClose={() => setAutoAssignOpen(false)}
           onSuccess={(result) => {
             onLocalChange({
