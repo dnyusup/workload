@@ -17,7 +17,15 @@ import type {
   SimMetrics,
   SimulationState,
 } from '../types';
-import { activityCycleLength, applyRpc, availableTimeMinutes, deriveMachineSpec, distanceMeters, extraBreakMinutes } from './calculations';
+import {
+  activityCycleLength,
+  applyRpc,
+  availableTimeMinutes,
+  deriveMachineSpec,
+  distanceMeters,
+  extraBreakMinutes,
+  loadingTaskZoneFields,
+} from './calculations';
 import { machineWidthPx, machineHeightPx } from './layoutConstants';
 import { buildServiceSegments } from './machineZones';
 import { computeWalkingWaypoints, createRoutingRowCache, type RoutingRowCache } from './operatorRouting';
@@ -46,15 +54,29 @@ function emptyDowntime(activities: ActivityConfig[] = []): Record<DowntimeReason
  * condition saved before a row was re-created can name a key this run doesn't have. Map such a task
  * onto the current activity with the same family and label; drop it if nothing matches, since an
  * unknown key has no counters to add its time to. */
-function matchInheritedTasks<T extends { activity: ActivityKey; label: string }>(tasks: T[], activities: ActivityConfig[]): T[] {
-  const keys = new Set(activities.map((activity) => activity.key));
+function matchInheritedTasks(tasks: PendingTask[], activities: ActivityConfig[], area?: string): PendingTask[] {
+  const byKey = new Map(activities.map((activity) => [activity.key, activity]));
   return tasks.flatMap((task) => {
-    if (keys.has(task.activity)) return [{ ...task }];
-    const family = task.activity.split('-sub-')[0];
-    const match = activities.find(
-      (activity) => activity.parentKey === family && activity.label.trim().toLowerCase() === task.label.trim().toLowerCase(),
-    );
-    return match ? [{ ...task, activity: match.key, label: match.label }] : [];
+    const matched =
+      byKey.get(task.activity) ??
+      (() => {
+        const family = task.activity.split('-sub-')[0];
+        return activities.find(
+          (activity) => activity.parentKey === family && activity.label.trim().toLowerCase() === task.label.trim().toLowerCase(),
+        );
+      })();
+    if (!matched) return [];
+    const zoneFields = loadingTaskZoneFields(area, matched);
+    return [
+      {
+        ...task,
+        activity: matched.key,
+        label: matched.label,
+        ...(isLoadingActivity(matched.key)
+          ? { loadingPayoffOnly: zoneFields.loadingPayoffOnly, loadingZoneMode: zoneFields.loadingZoneMode }
+          : {}),
+      },
+    ];
   });
 }
 
@@ -212,7 +234,7 @@ export class SimulationEngine {
       });
       const widthPx = machineWidthPx(m, config.movement.pixelsPerMeter);
       const heightPx = machineHeightPx(m, config.movement.pixelsPerMeter);
-      const inheritedTasks = savedCondition ? matchInheritedTasks(savedCondition.pendingTasks, config.activities) : [];
+      const inheritedTasks = savedCondition ? matchInheritedTasks(savedCondition.pendingTasks, config.activities, config.spec.area) : [];
       const machine: MachineRuntimeState = {
         id: m.id,
         label: m.label,
@@ -497,7 +519,12 @@ export class SimulationEngine {
     const index2 = newTasks.findIndex((t) => t.activity === partial2.key);
     if (index1 === -1 || index2 === -1) return;
     const insertAt = Math.min(index1, index2);
-    const combined: PendingTask = { activity: partial3.key, label: partial3.label, timeMinutes: partial3.timeMinutes };
+    const combined: PendingTask = {
+      activity: partial3.key,
+      label: partial3.label,
+      timeMinutes: partial3.timeMinutes,
+      ...loadingTaskZoneFields(this.config.spec.area, partial3),
+    };
     const remaining = newTasks.filter((t) => t.activity !== partial1.key && t.activity !== partial2.key);
     remaining.splice(insertAt, 0, combined);
     newTasks.length = 0;
@@ -547,7 +574,7 @@ export class SimulationEngine {
             activity: key,
             label: activity.label,
             timeMinutes: activity.timeMinutes,
-            loadingPayoffOnly: activity.loadingInterrupt,
+            ...loadingTaskZoneFields(this.config.spec.area, activity),
             defectTakeupOnly: activity.defectTakeupOnly,
           });
         }
@@ -697,7 +724,7 @@ export class SimulationEngine {
         activity: 'loading',
         label: activity.label,
         timeMinutes: activity.timeMinutes,
-        loadingPayoffOnly: true,
+        ...loadingTaskZoneFields(this.config.spec.area, activity),
       });
       machine.runtimeRemainingMin = Math.max(0, machine.nextCompletionAt - atMin);
       machine.runtimePaused = true;

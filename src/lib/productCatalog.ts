@@ -2,12 +2,17 @@ import type { Mpp_wl_activities } from '../generated/models/Mpp_wl_activitiesMod
 import { Mpp_wl_activitiesmpp_taskname } from '../generated/models/Mpp_wl_activitiesModel';
 import type { Mpp_wl_productses } from '../generated/models/Mpp_wl_productsesModel';
 import type { ActivityConfig, MachCondition, MachineSpecInput, TaskPriorityMode } from '../types';
-import { deriveMachineSpec, fractureRepairingDenominator } from './calculations';
+import {
+  LENGTH_INTERRUPT_LOADING_AREAS,
+  MID_RUNTIME_LOADING_AREAS,
+  WEIGHT_LOADING_AREAS,
+  deriveMachineSpec,
+  fractureRepairingDenominator,
+  loadingZoneModeFor,
+} from './calculations';
 import { parseFrequencyType } from './frequencyTypes';
 
-export const WEIGHT_LOADING_AREAS = ['WW', 'BA', 'CA', 'IS', 'IP'];
-export const LENGTH_INTERRUPT_LOADING_AREAS = ['CR'];
-export const MID_RUNTIME_LOADING_AREAS = [...WEIGHT_LOADING_AREAS, ...LENGTH_INTERRUPT_LOADING_AREAS];
+export { WEIGHT_LOADING_AREAS, LENGTH_INTERRUPT_LOADING_AREAS, MID_RUNTIME_LOADING_AREAS };
 const DIES_CHANGE_AREAS = ['WW', 'BA', 'CA'];
 const DEFECT_REPAIRING_AREAS = ['CB', 'BU', 'SP', 'CH', 'CR'];
 
@@ -211,6 +216,7 @@ function buildLoadingActivities(
       numeratorReadOnly: true,
       denominatorReadOnly: true,
       loadingInterrupt: midRuntimeLoading,
+      loadingZoneMode: loadingZoneModeFor(area, midRuntimeLoading),
     });
   }
 
@@ -353,6 +359,7 @@ export function buildActivitiesFromRows(
         ? parseNumber(product.mpp_defectston, 0)
         : 0;
     const isTonRegulatedParent = isFractureParent || isDiesChangeParent || isDefectRepairingParent;
+    const loadingZoneMode = taskKey === 'loading' ? loadingZoneModeFor(area, false) : undefined;
 
     if (parentRow && (taskKey !== 'diesChange' || isDiesChangeParent) && (taskKey !== 'defectRepairing' || isDefectRepairingParent)) {
       result.push({
@@ -365,6 +372,7 @@ export function buildActivitiesFromRows(
         denominatorAuto: isTonRegulatedParent,
         machCondition: parseMachCondition(parentRow.mpp_machcondition),
         defectTakeupOnly: isDefectRepairingParent,
+        ...(loadingZoneMode ? { loadingZoneMode } : {}),
       });
     }
 
@@ -382,6 +390,7 @@ export function buildActivitiesFromRows(
         denominatorAuto: false,
         machCondition: parseMachCondition(row.mpp_machcondition),
         ...(frequencyType ? { frequencyType } : {}),
+        ...(loadingZoneMode ? { loadingZoneMode } : {}),
       });
       });
     }

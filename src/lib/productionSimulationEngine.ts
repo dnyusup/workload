@@ -17,7 +17,7 @@ import type {
   TaskPriorityMode,
 } from '../types';
 import type { ProductOperatorSettings } from './productCatalog';
-import { availableTimeMinutes, deriveMachineSpec, distanceMeters } from './calculations';
+import { availableTimeMinutes, deriveMachineSpec, distanceMeters, loadingTaskZoneFields } from './calculations';
 import { machineWidthPx, machineHeightPx } from './layoutConstants';
 import { buildServiceSegments } from './machineZones';
 import { computeWalkingWaypoints, createRoutingRowCache, type RoutingRowCache } from './operatorRouting';
@@ -44,6 +44,7 @@ const EMPTY_SET: ReadonlySet<string> = new Set();
  * app (see productCatalog.ts) — this decides which of a machine assignment's three operator slots
  * a given task is routed to. */
 interface ProdMachine extends MachineRuntimeState {
+  area: string;
   constructionId: string | null;
   cycleLengths: Record<ActivityKey, number>;
   activities: ActivityConfig[];
@@ -236,6 +237,7 @@ export class ProductionSimulationEngine {
         timeline: [],
         runtimePaused: false,
         runtimeRemainingMin: null,
+        area: construction ? construction.spec.area || construction.attributes.area : '',
         constructionId: assignment?.constructionDetailId ?? null,
         cycleLengths: construction ? construction.cycleLengths : {},
         activities,
@@ -445,6 +447,7 @@ export class ProductionSimulationEngine {
       activity: partial3.key,
       label: partial3.label,
       timeMinutes: partial3.timeMinutes,
+      ...loadingTaskZoneFields(machine.area, partial3),
     };
     const remaining = newTasks.filter((t) => t.activity !== partial1.key && t.activity !== partial2.key);
     remaining.splice(insertAt, 0, combined);
@@ -494,7 +497,7 @@ export class ProductionSimulationEngine {
             activity: key,
             label: activity.label,
             timeMinutes: activity.timeMinutes,
-            loadingPayoffOnly: activity.loadingInterrupt,
+            ...loadingTaskZoneFields(machine.area, activity),
             defectTakeupOnly: activity.defectTakeupOnly,
           });
         }
@@ -577,7 +580,7 @@ export class ProductionSimulationEngine {
       activity: 'loading',
       label: activity.label,
       timeMinutes: activity.timeMinutes,
-      loadingPayoffOnly: true,
+      ...loadingTaskZoneFields(machine.area, activity),
     });
     machine.runtimeRemainingMin = Math.max(0, machine.nextCompletionAt - atMin);
     machine.runtimePaused = true;

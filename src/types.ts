@@ -87,6 +87,8 @@ export type ActivityKey = string;
 
 export type MachCondition = 'stop' | 'run';
 
+export type LoadingZoneMode = 'default' | 'payoff-only' | 'payoff-takeup-85-15';
+
 export interface ActivityConfig {
   key: ActivityKey;
   parentKey?: ActivityKey;
@@ -113,8 +115,10 @@ export interface ActivityConfig {
    * its own (its numerator is 0, an infinite cycle) — it only exists as that substitution's source
    * for Time/MachCondition. */
   loadingPartialSlot?: 1 | 2 | 3;
-  /** Loading is triggered from fractional production progress (weight) and may interrupt a spool. */
+  /** Loading is triggered from fractional production progress and may interrupt a spool. */
   loadingInterrupt?: boolean;
+  /** Zone standing/movement convention during Loading for this Area. */
+  loadingZoneMode?: LoadingZoneMode;
   /** Defect Repairing for the applicable areas is performed entirely at the Take Up zone. */
   defectTakeupOnly?: boolean;
   /** Doffing sub-activities only. When set, the sub isn't due by Numerator/Denominator but on the
@@ -250,6 +254,8 @@ export interface PendingTask {
   quantity?: number;
   /** Weight-based Loading is performed entirely at the Pay Off zone. */
   loadingPayoffOnly?: boolean;
+  /** Zone standing/movement convention during Loading for this Area. */
+  loadingZoneMode?: LoadingZoneMode;
   defectTakeupOnly?: boolean;
 }
 

@@ -87,7 +87,7 @@ Sumber: `buildLoadingActivities`, `rebuildLoadingActivities` di `productCatalog.
 | Kondisi | Loading (parent) | Sub-loading |
 |---|---|---|
 | Area WW/BA/CA/IS/IP (POlength = kg) | Denominator = `POlength pertama yang terisi / SpoolWeight` (desimal); engine memicu Loading dari progres fraksional (bisa memotong spool) | tidak ada |
-| Area CR (POlength1 = m) | Denominator = `POlength1 / SpoolLength` (desimal, boleh `< 1`); engine memicu Loading dari progres fraksional (bisa memotong spool) | tidak ada |
+| Area CR (POlength1 = m) | Denominator = `POlength1 / SpoolLength` (desimal, boleh `< 1`); engine memicu Loading dari progres fraksional (bisa memotong spool), posisi operator 85% di Pay Off lalu pindah 15% ke Take Up | tidak ada |
 | 1 POlength terisi | Denominator = `ROUNDDOWN(POlength / SpoolLength)` | tidak ada |
 | 2 POlength terisi | Denominator = `ROUNDDOWN(max POlength / SpoolLength)` | **Partial1**: Denominator = `ROUNDDOWN(POlength lain / SpoolLength)` |
 | 3 POlength terisi | sama (pakai max) | Dua sisanya: `ROUNDDOWN(PO/SpoolLength)`. Bila sama → hanya Partial1. Bila beda → yang kecil **Partial1**, yang besar **Partial2**; ditambah **Partial3** (dikerjakan bila Partial1 & Partial2 jatuh bersamaan) |
@@ -212,7 +212,7 @@ Dipicu saat `spoolsSinceLoading + progres spool saat ini ≥ cycle Loading` → 
 | **Nearest Task** | Jarak jalan (m) dari posisi operator ke mesin |
 | **Quickest Task** | `jalan ke zona pertama / WalkingSpeed + Σ dwell zona + Σ jalan antar zona / WalkingSpeed` |
 
-Jalan mengikuti rute yang menghindari badan mesin. Waktu servis dibagi ke zona mesin (Pay Off, Take Up, dst.); untuk Loading, sub-Loading, Fracture, dan Defect (bukan take-up-only), waktu jalan antar zona **termasuk** dalam `time` aktivitas: `dwell = max(0, time − waktu jalan antar zona)` dibagi proporsional per zona.
+Jalan mengikuti rute yang menghindari badan mesin. Waktu servis dibagi ke zona mesin (Pay Off, Cradle, Take Up — khusus Loading Area WW/BA/CA/IS/IP 100% di Pay Off, Area CR 85% di Pay Off lalu 15% di Take Up); untuk Loading, sub-Loading, Fracture, dan Defect (bukan take-up-only), waktu jalan antar zona **termasuk** dalam `time` aktivitas: `dwell = max(0, time − waktu jalan antar zona)` dibagi proporsional per zona.
 
 ### 7.6 Estimate kejadian (Completed Activities "/ ~N")
 

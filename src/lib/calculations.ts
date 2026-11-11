@@ -1,9 +1,44 @@
-import type { ActivityConfig, MachineSpecDerived, MachineSpecInput } from '../types';
+import type { ActivityConfig, LoadingZoneMode, MachineSpecDerived, MachineSpecInput, PendingTask } from '../types';
 
 /** Areas whose Linear Speed = Speed directly (no twisting formula) — Twist/min doesn't apply here. */
 const LINEAR_SPEED_FROM_SPEED_AREAS = ['WW', 'CH', 'CR', 'BA', 'CA', 'IS', 'IP'];
 /** Areas whose Twist/min = Speed (not Speed*2); Linear Speed still uses the LayLength/1000*Twist/min formula. */
 const TWIST_EQUALS_SPEED_AREAS = ['SP', 'CB'];
+export const WEIGHT_LOADING_AREAS = ['WW', 'BA', 'CA', 'IS', 'IP'];
+export const LENGTH_INTERRUPT_LOADING_AREAS = ['CR'];
+export const MID_RUNTIME_LOADING_AREAS = [...WEIGHT_LOADING_AREAS, ...LENGTH_INTERRUPT_LOADING_AREAS];
+
+/** Resolves the operator's Loading zone schedule for an Area: CR splits 85% at PO then 15% at TU,
+ * weight-based mid-runtime areas stay 100% at PO, and all other areas use PO -> Cradle -> TU. */
+export function loadingZoneModeFor(
+  area: string | undefined,
+  loadingInterrupt?: boolean,
+  explicitMode?: LoadingZoneMode,
+): LoadingZoneMode | undefined {
+  const areaUpper = (area ?? '').trim().toUpperCase();
+  if (LENGTH_INTERRUPT_LOADING_AREAS.includes(areaUpper)) return 'payoff-takeup-85-15';
+  if (WEIGHT_LOADING_AREAS.includes(areaUpper)) {
+    return loadingInterrupt || explicitMode === 'payoff-only' ? 'payoff-only' : undefined;
+  }
+  if (!areaUpper) return explicitMode ?? (loadingInterrupt ? 'payoff-only' : undefined);
+  return undefined;
+}
+
+/** PendingTask zone fields for a Loading task (no-op for non-Loading activities). */
+export function loadingTaskZoneFields(
+  area: string | undefined,
+  activity?: Pick<ActivityConfig, 'key' | 'parentKey' | 'loadingInterrupt' | 'loadingZoneMode'>,
+): Pick<PendingTask, 'loadingPayoffOnly' | 'loadingZoneMode'> {
+  if (!activity || (activity.key !== 'loading' && activity.parentKey !== 'loading')) {
+    return {};
+  }
+  const mode = loadingZoneModeFor(area, activity.loadingInterrupt, activity.loadingZoneMode);
+  if (!mode) return {};
+  return {
+    loadingPayoffOnly: mode === 'payoff-only',
+    loadingZoneMode: mode,
+  };
+}
 
 /** Whether the Area's Linear Speed (so its runtime per spool) is worked out from LayLength. */
 export function areaUsesLayLength(area: string): boolean {
@@ -91,6 +126,9 @@ export function syncAutoActivityValues(
   const derived = deriveMachineSpec(spec);
   return activities.map((activity) => ({
     ...activity,
+    ...(activity.key === 'loading' || activity.parentKey === 'loading'
+      ? { loadingZoneMode: loadingZoneModeFor(spec.area, activity.loadingInterrupt, activity.loadingZoneMode) }
+      : {}),
     numerator:
       activity.key === 'diesChange'
         ? spec.diesPerTon

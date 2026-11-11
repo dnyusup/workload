@@ -1,4 +1,13 @@
-import type { ActivityKey, MachineOrientation, MachinePairSide, MachineZone, PendingTask, ServiceSegment, MachineAxis } from '../types';
+import type {
+  ActivityKey,
+  LoadingZoneMode,
+  MachineAxis,
+  MachineOrientation,
+  MachinePairSide,
+  MachineZone,
+  PendingTask,
+  ServiceSegment,
+} from '../types';
 import { MACHINE_H, MACHINE_W } from './layoutConstants';
 import { distanceMeters } from './calculations';
 
@@ -52,21 +61,40 @@ interface RawSegment {
   duration: number;
 }
 
+function resolveLoadingZoneMode(loadingPayoffOnly = false, loadingZoneMode?: LoadingZoneMode): LoadingZoneMode {
+  if (loadingZoneMode) return loadingZoneMode;
+  return loadingPayoffOnly ? 'payoff-only' : 'default';
+}
+
 /** Splits one activity's total time into the zones the operator stands in, per plant convention. */
-function activityZoneSchedule(activity: ActivityKey, totalTime: number, loadingPayoffOnly = false, defectTakeupOnly = false): RawSegment[] {
+function activityZoneSchedule(
+  activity: ActivityKey,
+  totalTime: number,
+  loadingPayoffOnly = false,
+  defectTakeupOnly = false,
+  loadingZoneMode?: LoadingZoneMode,
+): RawSegment[] {
   let raw: RawSegment[];
   if (activity === 'doffing' || activity.startsWith('doffing-')) {
     raw = [{ zone: 'takeup', duration: totalTime }];
   } else if (activity === 'loading' || activity.startsWith('loading-')) {
-    if (loadingPayoffOnly) return [{ zone: 'payoff', duration: totalTime }];
-    const payoff = totalTime * 0.3;
-    const takeup = 2;
-    const cradle = totalTime - payoff - takeup;
-    raw = [
-      { zone: 'payoff', duration: payoff },
-      { zone: 'cradle', duration: cradle },
-      { zone: 'takeup', duration: takeup },
-    ];
+    const mode = resolveLoadingZoneMode(loadingPayoffOnly, loadingZoneMode);
+    if (mode === 'payoff-only') return [{ zone: 'payoff', duration: totalTime }];
+    if (mode === 'payoff-takeup-85-15') {
+      raw = [
+        { zone: 'payoff', duration: totalTime * 0.85 },
+        { zone: 'takeup', duration: totalTime * 0.15 },
+      ];
+    } else {
+      const payoff = totalTime * 0.3;
+      const takeup = 2;
+      const cradle = totalTime - payoff - takeup;
+      raw = [
+        { zone: 'payoff', duration: payoff },
+        { zone: 'cradle', duration: cradle },
+        { zone: 'takeup', duration: takeup },
+      ];
+    }
   } else if (defectTakeupOnly) {
     raw = [{ zone: 'takeup', duration: totalTime }];
   } else if (
@@ -130,14 +158,14 @@ export function buildServiceSegments(
 ): ServiceSegment[] {
   const segments: ServiceSegment[] = [];
   for (const task of tasks) {
-    const raw = activityZoneSchedule(task.activity, task.timeMinutes, task.loadingPayoffOnly, task.defectTakeupOnly);
+    const zoneMode = resolveLoadingZoneMode(task.loadingPayoffOnly, task.loadingZoneMode);
+    const raw = activityZoneSchedule(task.activity, task.timeMinutes, task.loadingPayoffOnly, task.defectTakeupOnly, zoneMode);
     const positioned = raw.map((seg) => ({
       ...seg,
       pos: zonePosition(centerX, centerY, orientation, seg.zone, pairSide, boxWidthPx, boxHeightPx, axis),
     }));
     const includesInternalMovement =
-      (task.activity === 'loading' && !task.loadingPayoffOnly) ||
-      task.activity.startsWith('loading-') ||
+      ((task.activity === 'loading' || task.activity.startsWith('loading-')) && zoneMode !== 'payoff-only') ||
       task.activity === 'fractureRepairing' ||
       task.activity.startsWith('fractureRepairing-') ||
       (task.activity === 'defectRepairing' && !task.defectTakeupOnly);
