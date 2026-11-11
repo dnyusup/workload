@@ -576,13 +576,18 @@ export function ProductionSimulationPage({
     };
   }, []);
 
+  const selectedSetupIdForFreq = selectedSetup?.id;
+  const selectedFrequencyMode = selectedSetup?.frequencyMode;
+  const selectedFrequencyStartDate = selectedSetup?.frequencyStartDate;
+  const selectedFrequencyEndDate = selectedSetup?.frequencyEndDate;
+
   // When selected setup changes or has historical frequency, load catalog for its specific date range
   useEffect(() => {
-    if (!selectedSetup || selectedSetup.frequencyMode !== 'historical') return;
+    if (!selectedSetupIdForFreq || selectedFrequencyMode !== 'historical') return;
     let cancelled = false;
     loadFrequencyCatalog({
-      startDate: selectedSetup.frequencyStartDate,
-      endDate: selectedSetup.frequencyEndDate,
+      startDate: selectedFrequencyStartDate,
+      endDate: selectedFrequencyEndDate,
     })
       .then(({ catalog }) => {
         if (!cancelled) setFreqCatalog(catalog);
@@ -592,10 +597,10 @@ export function ProductionSimulationPage({
       cancelled = true;
     };
   }, [
-    selectedSetup?.id,
-    selectedSetup?.frequencyMode,
-    selectedSetup?.frequencyStartDate,
-    selectedSetup?.frequencyEndDate,
+    selectedSetupIdForFreq,
+    selectedFrequencyMode,
+    selectedFrequencyStartDate,
+    selectedFrequencyEndDate,
   ]);
 
   /** Optimistic local-state patch for the currently loaded setup — callers that already wrote

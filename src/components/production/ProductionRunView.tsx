@@ -400,7 +400,10 @@ export function ProductionRunView({
     });
     return map;
   }, [resolved]);
-  const activityLabel = (key: string) => downtimeLabels[key] ?? activityLabelByKey[key] ?? key;
+  const activityLabel = useCallback(
+    (key: string) => downtimeLabels[key] ?? activityLabelByKey[key] ?? key,
+    [activityLabelByKey],
+  );
 
   /** Groups by LABEL rather than raw key — two Constructions can each have their own
    * loading-sub-<guid> key that both mean "Loading Partial1", and those should show as one row. */
