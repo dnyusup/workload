@@ -1,10 +1,11 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { machineLocalFrame } from '../../lib/layoutConstants';
+import { MID_RUNTIME_LOADING_AREAS } from '../../lib/productCatalog';
 import type { ProductionMachineAssignment, ProductionSetup, ProductionSimulationState } from '../../types';
 import type { ResolvedConstruction } from '../../lib/productionConstructionResolver';
 import { useProductionSimulation } from '../../hooks/useProductionSimulation';
 
-const HIDDEN_SPOOL_LABEL_AREAS = new Set(['WW', 'IS', 'IP', 'BA', 'CA']);
+const HIDDEN_SPOOL_LABEL_AREAS = new Set(MID_RUNTIME_LOADING_AREAS);
 import { MachineZoneLabels } from '../ui/MachineZoneLabels';
 import { MachineDonut } from '../simulation/MachineDonut';
 import {
@@ -1531,7 +1532,7 @@ const MachinesLayer = memo(function MachinesLayer({
             takeupColor={zoneColors.takeup}
             isSelected={selectedMachineId === m.id}
             borderColor={assignment?.constructionDetailId ? constructionColorMap.get(assignment.constructionDetailId) : undefined}
-            showSpoolLabels={!HIDDEN_SPOOL_LABEL_AREAS.has(area ?? '')}
+            showSpoolLabels={!HIDDEN_SPOOL_LABEL_AREAS.has((area ?? '').trim().toUpperCase())}
             spoolsSinceLoading={m.spoolsSinceLoading}
             shiftSpoolsCompleted={m.shiftSpoolsCompleted}
             tooltip={tooltip}

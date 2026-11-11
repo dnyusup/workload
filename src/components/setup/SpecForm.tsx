@@ -1,6 +1,6 @@
 import type { MachineSpecInput } from '../../types';
 import { deriveMachineSpec } from '../../lib/calculations';
-import { WEIGHT_LOADING_AREAS } from '../../lib/productCatalog';
+import { LENGTH_INTERRUPT_LOADING_AREAS, WEIGHT_LOADING_AREAS } from '../../lib/productCatalog';
 import { Card } from '../ui/Card';
 import { PRODUCT_AREAS } from '../../types';
 import { Field, NumberInput, SelectInput } from '../ui/Field';
@@ -18,7 +18,9 @@ export function SpecForm({
   loadingErrors?: string[];
 }) {
   const derived = deriveMachineSpec(spec);
-  const weightLoading = WEIGHT_LOADING_AREAS.includes(spec.area.trim().toUpperCase());
+  const areaUpper = spec.area.trim().toUpperCase();
+  const weightLoading = WEIGHT_LOADING_AREAS.includes(areaUpper);
+  const lengthInterruptLoading = LENGTH_INTERRUPT_LOADING_AREAS.includes(areaUpper);
   const set = (key: keyof MachineSpecInput) => (v: number) => onChange({ ...spec, [key]: v });
   const setArea = (area: string) => onChange({ ...spec, area });
 
@@ -58,7 +60,7 @@ export function SpecForm({
 
       <div className="grid-2">
         {(['poLength1', 'poLength2', 'poLength3'] as const).map((key, i) => (
-          <Field key={key} label={`POlength${i + 1}${weightLoading ? ' (kg)' : ''}`}>
+          <Field key={key} label={`POlength${i + 1}${weightLoading ? ' (kg)' : lengthInterruptLoading ? ' (m)' : ''}`}>
             <NumberInput value={spec[key] ?? 0} min={0} onChange={set(key)} />
           </Field>
         ))}
@@ -68,7 +70,9 @@ export function SpecForm({
           ? 'Select a Construction Detail to apply POlength to Loading.'
           : weightLoading
             ? 'Loading every POlength ÷ SpoolWeight spools (only the first filled POlength is used for this Area). 0 = not filled.'
-            : 'Loading every ROUNDDOWN(max POlength ÷ SpoolLength) spools; the other filled POlengths become Partial1/Partial2. 0 = not filled.'}
+            : lengthInterruptLoading
+              ? 'Loading every POlength1 ÷ SpoolLength spools mid-runtime (decimal values including < 1 are allowed; only POlength1 is used for this Area). 0 = not filled.'
+              : 'Loading every ROUNDDOWN(max POlength ÷ SpoolLength) spools; the other filled POlengths become Partial1/Partial2. 0 = not filled.'}
       </p>
       {loadingErrors.length > 0 && <p className="construction-selector-error">{loadingErrors.join(' ')}</p>}
 

@@ -6,6 +6,8 @@ import { deriveMachineSpec, fractureRepairingDenominator } from './calculations'
 import { parseFrequencyType } from './frequencyTypes';
 
 export const WEIGHT_LOADING_AREAS = ['WW', 'BA', 'CA', 'IS', 'IP'];
+export const LENGTH_INTERRUPT_LOADING_AREAS = ['CR'];
+export const MID_RUNTIME_LOADING_AREAS = [...WEIGHT_LOADING_AREAS, ...LENGTH_INTERRUPT_LOADING_AREAS];
 const DIES_CHANGE_AREAS = ['WW', 'BA', 'CA'];
 const DEFECT_REPAIRING_AREAS = ['CB', 'BU', 'SP', 'CH', 'CR'];
 
@@ -145,6 +147,9 @@ function rounddownRatio(value: number, divisor: number): number {
  * Loading is created, its denominator is POlength/SpoolWeight (decimal values are intentional),
  * and the simulation marks it due from fractional production progress, so it may interrupt a
  * spool before Doffing.
+ * For CR, POlength1 is still a physical length in meters, and Loading uses the same mid-runtime
+ * interrupt rule: only the parent Loading is created (when POlength1 > 0), with denominator =
+ * POlength1/SpoolLength (decimal values including < 1 are intentional).
  *   - 1 filled: parent only, denominator = ROUNDDOWN(that length / SpoolLength).
  *   - 2 filled: parent denominator = ROUNDDOWN(MAX(length) / SpoolLength); one sub-loading, taken
  *     whole (time/numerator/denominator/machcondition) from the WL_Activities row
@@ -165,8 +170,17 @@ function buildLoadingActivities(
   product: Pick<Mpp_wl_productses, 'mpp_area' | 'mpp_polength1' | 'mpp_polength2' | 'mpp_polength3' | 'mpp_spoollength'>,
   spoolWeight: number,
 ): { activities: ActivityConfig[]; errors: string[] } | null {
+  const area = (product.mpp_area ?? '').trim().toUpperCase();
+  const weightLoading = WEIGHT_LOADING_AREAS.includes(area);
+  const lengthInterruptLoading = LENGTH_INTERRUPT_LOADING_AREAS.includes(area);
+  const midRuntimeLoading = weightLoading || lengthInterruptLoading;
+  const poLength1 = parseNumber(product.mpp_polength1, NaN);
+  const hasPoLength1 = Number.isFinite(poLength1) && poLength1 > 0;
+
+  if (lengthInterruptLoading && !hasPoLength1) return null;
+
   const poLengths = [
-    { value: parseNumber(product.mpp_polength1, NaN) },
+    { value: poLength1 },
     { value: parseNumber(product.mpp_polength2, NaN) },
     { value: parseNumber(product.mpp_polength3, NaN) },
   ].filter((p): p is { value: number } => Number.isFinite(p.value) && p.value > 0);
@@ -180,7 +194,6 @@ function buildLoadingActivities(
   const findSub = (subtaskName: string) =>
     loadingRows.find((row) => row.mpp_subtaskname?.trim().toLowerCase() === subtaskName.toLowerCase());
   const spoolLength = parseNumber(product.mpp_spoollength, 0);
-  const weightLoading = WEIGHT_LOADING_AREAS.includes((product.mpp_area ?? '').trim().toUpperCase());
 
   if (!parentRow) {
     errors.push('Loading (Task=Loading, SubTask blank) not found in WL_Activities for this Construction.');
@@ -197,21 +210,23 @@ function buildLoadingActivities(
       machCondition: parseMachCondition(parentRow.mpp_machcondition),
       numeratorReadOnly: true,
       denominatorReadOnly: true,
-      loadingInterrupt: weightLoading,
+      loadingInterrupt: midRuntimeLoading,
     });
   }
 
-  if (weightLoading) {
-    const poLength = poLengths[0].value;
-    if (!spoolWeight) {
-      errors.push('Loading denominator cannot be calculated because SpoolWeight is zero.');
+  if (midRuntimeLoading) {
+    const numeratorLength = weightLoading ? poLengths[0].value : poLength1;
+    const divisor = weightLoading ? spoolWeight : spoolLength;
+    const divisorName = weightLoading ? 'SpoolWeight' : 'SpoolLength';
+    if (!divisor) {
+      errors.push(`Loading denominator cannot be calculated because ${divisorName} is zero.`);
     } else if (parentRow) {
       const loading = activities[0];
-      loading.denominator = poLength / spoolWeight;
+      loading.denominator = numeratorLength / divisor;
       loading.loadingInterrupt = true;
-      // POlength is kilograms for these areas: only the parent Loading is applicable.
-      return { activities, errors };
     }
+    // Only the parent Loading is applicable for mid-runtime regulated areas (weight-based or CR).
+    return { activities, errors };
   }
 
   if (poLengths.length > 1) {

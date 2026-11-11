@@ -23,7 +23,7 @@ import { buildServiceSegments } from './machineZones';
 import { computeWalkingWaypoints, createRoutingRowCache, type RoutingRowCache } from './operatorRouting';
 import { createRng, randomSeed } from './rng';
 import { forecastCycleLength, frequencyTypeIsDue, triggerEventOf, type TriggerEvent } from './frequencyTypes';
-import { isDoffingActivity, nextTaskOf, remainingVisitMinutes, snapshotVisit } from './doffPriority';
+import { isDoffingActivity, isLoadingActivity, nextTaskOf, remainingVisitMinutes, snapshotVisit, spoolFractionAt } from './doffPriority';
 import { pickLowestScore } from './bestCandidate';
 import { defaultAssignmentOrder } from './defaultAssignment';
 import { buildWallGraph, type WallGraph } from './wallRouting';
@@ -132,6 +132,8 @@ export class SimulationEngine {
   private suspendedVisits = new Map<string, SuspendedVisit>();
   /** Doffing priority: the operator just left a visit and does every waiting Doffing first. */
   private doffFirst = false;
+  /** Mid-runtime Loading tasks whose Pay-Off progress has already been reset (before any RPC tail). */
+  private resetLoadingTasks = new WeakSet<PendingTask>();
 
   constructor(config: AppConfig) {
     this.config = config;
@@ -264,10 +266,15 @@ export class SimulationEngine {
       // Simulate a realistic shift start: some machines are already stopped waiting on
       // unfinished work (e.g. left over from the previous operator), so the new operator
       // has something to do immediately instead of everyone idling for the first completion.
+      const loadingPhase = !savedCondition && weightBasedLoading ? machine.spoolsSinceLoading : 0;
+      if (!savedCondition && weightBasedLoading) {
+        machine.spoolsSinceLoading -= spoolFractionAt(machine, this.runtimePerSpool, 0);
+      }
       if (assigned && !savedCondition && this.rng() < INITIAL_BACKLOG_CHANCE) {
         machine.spoolsCompleted += 1;
         this.queueTasksForMachine(machine, 0);
         machine.nextCompletionAt = this.runtimePerSpool;
+        if (weightBasedLoading) machine.spoolsSinceLoading = loadingPhase;
       }
 
       return machine;
@@ -660,17 +667,32 @@ export class SimulationEngine {
 
   }
 
+  private isLoadingInProgress(machine: MachineRuntimeState): boolean {
+    return (
+      machine.pendingTasks.some((task) => task.activity === 'loading') ||
+      (this.operator.phase === 'servicing' &&
+        this.operator.targetMachineId === machine.id &&
+        this.operator.serviceTasks.some((task) => task.activity === 'loading')) ||
+      (this.suspendedVisits.get(machine.id)?.tasks.some((task) => task.activity === 'loading') ?? false)
+    );
+  }
+
+  private resetMachineLoadingProgress(machine: MachineRuntimeState, task: PendingTask, atMin: number) {
+    if (!isLoadingActivity(task.activity) || this.resetLoadingTasks.has(task)) return;
+    this.resetLoadingTasks.add(task);
+    const loading = this.config.activities.find((item) => item.key === 'loading');
+    // Offset relative to current spool progress so cycle < 1 (multiple Loadings per spool)
+    // and mid-spool completions count progress continuously from 0 after Loading finishes.
+    machine.spoolsSinceLoading = loading?.loadingInterrupt ? -spoolFractionAt(machine, this.runtimePerSpool, atMin) : 0;
+  }
+
   private triggerMidRuntimeLoading(machine: MachineRuntimeState, atMin: number) {
       const activity = this.config.activities.find((item) => item.key === 'loading');
       if (!activity?.loadingInterrupt || machine.status !== 'running') return;
       const cycle = this.cycleLengths.loading;
       if (!Number.isFinite(cycle) || cycle <= 0) return;
-      const fractionalProgress = Math.max(
-        0,
-        Math.min(1, (this.runtimePerSpool - (machine.nextCompletionAt - atMin)) / this.runtimePerSpool),
-      );
-      if (machine.spoolsSinceLoading + fractionalProgress < cycle ||
-        machine.pendingTasks.some((task) => task.activity === 'loading')) return;
+      const fractionalProgress = spoolFractionAt(machine, this.runtimePerSpool, atMin);
+      if (machine.spoolsSinceLoading + fractionalProgress < cycle || this.isLoadingInProgress(machine)) return;
       machine.pendingTasks.push({
         activity: 'loading',
         label: activity.label,
@@ -682,7 +704,7 @@ export class SimulationEngine {
       machine.status = 'needs-service';
       machine.queuedSince = atMin;
       machine.nextCompletionAt = Number.POSITIVE_INFINITY;
-      this.addLog(atMin, `${machine.label} needs ${activity.label} (weight threshold reached)`);
+      this.addLog(atMin, `${machine.label} needs ${activity.label} (Pay-Off threshold reached)`);
   }
 
   private pickNextTarget(): MachineRuntimeState | null {
@@ -1151,6 +1173,8 @@ export class SimulationEngine {
   }
 
   private advanceToNextZone(atMin: number) {
+    const previousTask = this.serviceTaskForCurrentZone();
+    const wasInRpcZone = this.operator.currentZoneLabel?.endsWith(' — RPC') ?? false;
     const next = this.operator.serviceSegments.shift();
     if (!next) {
       this.finishService(atMin);
@@ -1168,6 +1192,14 @@ export class SimulationEngine {
     this.operator.currentZoneLabel = next.label;
     this.operator.serviceSubPhase = dist > 0 ? 'moving' : 'dwelling';
     this.syncMachineRunStateForCurrentTask(atMin);
+    if (previousTask && !wasInRpcZone) {
+      const nextTask = this.serviceTaskForCurrentZone();
+      const nextIsRpcZone = next.label.endsWith(' — RPC');
+      if (nextTask !== previousTask || nextIsRpcZone) {
+        const machine = this.machines.find((m) => m.id === this.operator.targetMachineId);
+        if (machine) this.resetMachineLoadingProgress(machine, previousTask, atMin);
+      }
+    }
   }
 
   private finishWalk() {
@@ -1198,22 +1230,31 @@ export class SimulationEngine {
     if (machine) {
       // If the machine never left 'running' (a purely Run-condition visit), its production clock
       // was never frozen and must be left alone — only a stopped machine needs restarting.
+      const stillNeedsStop = machine.pendingTasks.some((t) => this.isStopActivity(t.activity));
       const wasStopped = machine.status !== 'running';
-      machine.status = 'running';
-      machine.queuedSince = null;
-      machine.totalServiced += 1;
-      if (wasStopped) {
-        machine.nextCompletionAt = atMin + (machine.runtimeRemainingMin ?? this.runtimePerSpool);
-        machine.runtimePaused = false;
-        machine.runtimeRemainingMin = null;
+      if (stillNeedsStop) {
+        if (machine.status === 'running') {
+          machine.runtimeRemainingMin = Math.max(0, machine.nextCompletionAt - atMin);
+          machine.runtimePaused = true;
+          machine.nextCompletionAt = Number.POSITIVE_INFINITY;
+        }
+        machine.status = 'needs-service';
+        machine.queuedSince ??= atMin;
+      } else {
+        machine.status = 'running';
+        machine.queuedSince = null;
+        if (wasStopped) {
+          machine.nextCompletionAt = atMin + (machine.runtimeRemainingMin ?? this.runtimePerSpool);
+          machine.runtimePaused = false;
+          machine.runtimeRemainingMin = null;
+        }
       }
+      machine.totalServiced += 1;
       this.operator.serviceTasks.forEach((t) => {
         this.recordTriggerEvent(machine.id, t.activity);
         this.metrics.completedByActivity[t.activity] += 1;
         if (t.activity === 'diesChange') this.metrics.diesChanged += t.quantity ?? 0;
-        if (t.activity === 'loading' || t.activity.startsWith('loading-')) {
-          machine.spoolsSinceLoading = 0;
-        }
+        this.resetMachineLoadingProgress(machine, t, atMin);
       });
       this.addLog(atMin, `Finished servicing Machine ${machine.label}`);
     }

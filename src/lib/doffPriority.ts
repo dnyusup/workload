@@ -1,9 +1,26 @@
-import type { ActivityKey, MachineZone, OperatorRuntimeState, PendingTask, ServiceSegment, SuspendedVisit } from '../types';
+import type { ActivityKey, MachineRuntimeState, MachineZone, OperatorRuntimeState, PendingTask, ServiceSegment, SuspendedVisit } from '../types';
 import { distanceMeters } from './calculations';
 import { ZONE_LABEL } from './machineZones';
 
 export function isDoffingActivity(activity: ActivityKey): boolean {
   return activity === 'doffing' || activity.startsWith('doffing-');
+}
+
+export function isLoadingActivity(activity: ActivityKey): boolean {
+  return activity === 'loading' || activity.startsWith('loading-');
+}
+
+/** Fraction [0, 1] of the current spool already elapsed on `machine` at `atMin`. */
+export function spoolFractionAt(
+  machine: Pick<MachineRuntimeState, 'status' | 'nextCompletionAt' | 'runtimeRemainingMin'>,
+  runtimePerSpool: number,
+  atMin: number,
+): number {
+  const remainingMin =
+    machine.status === 'running'
+      ? machine.nextCompletionAt - atMin
+      : (machine.runtimeRemainingMin ?? runtimePerSpool);
+  return Math.max(0, Math.min(1, (runtimePerSpool - remainingMin) / runtimePerSpool));
 }
 
 /** Minutes the operator still needs to finish the visit they're on: what's left of the current

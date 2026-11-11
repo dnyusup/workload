@@ -87,6 +87,7 @@ Sumber: `buildLoadingActivities`, `rebuildLoadingActivities` di `productCatalog.
 | Kondisi | Loading (parent) | Sub-loading |
 |---|---|---|
 | Area WW/BA/CA/IS/IP (POlength = kg) | Denominator = `POlength pertama yang terisi / SpoolWeight` (desimal); engine memicu Loading dari progres fraksional (bisa memotong spool) | tidak ada |
+| Area CR (POlength1 = m) | Denominator = `POlength1 / SpoolLength` (desimal, boleh `< 1`); engine memicu Loading dari progres fraksional (bisa memotong spool) | tidak ada |
 | 1 POlength terisi | Denominator = `ROUNDDOWN(POlength / SpoolLength)` | tidak ada |
 | 2 POlength terisi | Denominator = `ROUNDDOWN(max POlength / SpoolLength)` | **Partial1**: Denominator = `ROUNDDOWN(POlength lain / SpoolLength)` |
 | 3 POlength terisi | sama (pakai max) | Dua sisanya: `ROUNDDOWN(PO/SpoolLength)`. Bila sama → hanya Partial1. Bila beda → yang kecil **Partial1**, yang besar **Partial2**; ditambah **Partial3** (dikerjakan bila Partial1 & Partial2 jatuh bersamaan) |
@@ -200,9 +201,9 @@ Sumber: [`src/lib/simulationEngine.ts`](../src/lib/simulationEngine.ts)
 | Pemicu | Selama `spool fraksional ≥ (event terpicu + 1) × siklus` → pasang task di mesin running acak (efektif setelah spool mesin itu selesai) |
 | Dies per event | 7 atau 26 (acak 50/50), dibatasi sisa planned dies; waktu = `time × jumlah dies` |
 
-### 7.4 Loading berbasis berat (WW/BA/CA/IS/IP)
+### 7.4 Loading mid-runtime (WW/BA/CA/IS/IP berbasis berat & CR berbasis meter)
 
-Dipicu saat `spoolsSinceLoading + progres spool saat ini ≥ cycle Loading` → mesin langsung berhenti (memotong spool). `spoolsSinceLoading` direset setelah Loading/sub-Loading selesai.
+Dipicu saat `spoolsSinceLoading + progres spool saat ini ≥ cycle Loading` → mesin langsung berhenti (memotong spool), termasuk bila `cycle < 1` (lebih dari satu Loading per spool). `spoolsSinceLoading` direset relatif terhadap progres spool saat ini setelah Loading selesai (pada akhir aktivitas Loading sebelum segmen RPC).
 
 ### 7.5 Pemilihan task (Task Priority)
 

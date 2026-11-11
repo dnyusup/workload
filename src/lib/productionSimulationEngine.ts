@@ -28,7 +28,7 @@ const WALL_CLEARANCE_METERS = 0.5;
 import { activityFamily, taskOperatorIds, TASK_OPERATOR_FIELDS, type ProductionActivityFamily } from './productionActivityRouting';
 import type { ResolvedConstruction } from './productionConstructionResolver';
 import { frequencyTypeIsDue, triggerEventOf, type TriggerEvent } from './frequencyTypes';
-import { isDoffingActivity, nextTaskOf, remainingVisitMinutes, snapshotVisit } from './doffPriority';
+import { isDoffingActivity, isLoadingActivity, nextTaskOf, remainingVisitMinutes, snapshotVisit, spoolFractionAt } from './doffPriority';
 import { pickLowestScore } from './bestCandidate';
 
 function emptyCounts(activities: ActivityConfig[]): Record<ActivityKey, number> {
@@ -138,6 +138,8 @@ export class ProductionSimulationEngine {
    * re-checking every 0.02-min step was the dominant cost at a few thousand machines. */
   private lastFailedDoffCheck = new Map<string, { epoch: number; zone: string | null; tasks: PendingTask[] }>();
   private routeCache: RoutingRowCache = createRoutingRowCache();
+  /** Mid-runtime Loading tasks whose Pay-Off progress has already been reset (before any RPC tail). */
+  private resetLoadingTasks = new WeakSet<PendingTask>();
   /** Visibility graph around the layout's walls (null when there are none). */
   private wallGraph: WallGraph | null = null;
   private fractureByConstruction = new Map<string, ConstructionFractureState>();
@@ -200,6 +202,8 @@ export class ProductionSimulationEngine {
         completedByActivity[key] = Number.isFinite(cycle) && (cycle ?? 0) > 0 ? Math.floor(startSpools / cycle!) : 0;
       });
 
+      const nextCompletionAt = assigned ? Math.random() * runtimePerSpool : runtimePerSpool;
+      const initialFractional = Math.max(0, Math.min(1, (runtimePerSpool - nextCompletionAt) / runtimePerSpool));
       const machine: ProdMachine = {
         id: m.id,
         label: m.label,
@@ -218,11 +222,11 @@ export class ProductionSimulationEngine {
           const loading = activities.find((activity) => activity.key === 'loading');
           const loadingCycle = construction?.cycleLengths.loading;
           if (loading?.loadingInterrupt && Number.isFinite(loadingCycle) && (loadingCycle ?? 0) > 0) {
-            return Math.random() * loadingCycle!;
+            return Math.random() * loadingCycle! - initialFractional;
           }
           return startSpools;
         })(),
-        nextCompletionAt: assigned ? Math.random() * runtimePerSpool : runtimePerSpool,
+        nextCompletionAt,
         pendingTasks: [],
         queuedSince: null,
         totalServiced: 0,
@@ -546,17 +550,29 @@ export class ProductionSimulationEngine {
     }
   }
 
+  private isLoadingInProgress(machine: ProdMachine): boolean {
+    if (machine.pendingTasks.some((task) => task.activity === 'loading')) return true;
+    const servicing = this.servicingOperatorByMachineId.get(machine.id);
+    if (servicing?.serviceTasks.some((task) => task.activity === 'loading')) return true;
+    return this.suspendedVisits.get(machine.id)?.tasks.some((task) => task.activity === 'loading') ?? false;
+  }
+
+  private resetMachineLoadingProgress(machine: ProdMachine, task: PendingTask, atMin: number) {
+    if (!isLoadingActivity(task.activity) || this.resetLoadingTasks.has(task)) return;
+    this.resetLoadingTasks.add(task);
+    const loading = machine.activities.find((item) => item.key === 'loading');
+    // Offset relative to current spool progress so cycle < 1 (multiple Loadings per spool)
+    // and mid-spool completions count progress continuously from 0 after Loading finishes.
+    machine.spoolsSinceLoading = loading?.loadingInterrupt ? -spoolFractionAt(machine, machine.runtimePerSpool, atMin) : 0;
+  }
+
   private triggerMidRuntimeLoading(machine: ProdMachine, atMin: number) {
     const activity = machine.activities.find((item) => item.key === 'loading');
     if (!activity?.loadingInterrupt || machine.status !== 'running') return;
     const cycle = machine.cycleLengths.loading;
     if (!Number.isFinite(cycle) || cycle <= 0) return;
-    const fractionalProgress = Math.max(
-      0,
-      Math.min(1, (machine.runtimePerSpool - (machine.nextCompletionAt - atMin)) / machine.runtimePerSpool),
-    );
-    if (machine.spoolsSinceLoading + fractionalProgress < cycle ||
-      machine.pendingTasks.some((task) => task.activity === 'loading')) return;
+    const fractionalProgress = spoolFractionAt(machine, machine.runtimePerSpool, atMin);
+    if (machine.spoolsSinceLoading + fractionalProgress < cycle || this.isLoadingInProgress(machine)) return;
     machine.pendingTasks.push({
       activity: 'loading',
       label: activity.label,
@@ -569,7 +585,7 @@ export class ProductionSimulationEngine {
     machine.queuedSince = atMin;
     machine.nextCompletionAt = Number.POSITIVE_INFINITY;
     const constructionLabel = machine.constructionId ? this.constructionLabelById.get(machine.constructionId) ?? machine.constructionId : machine.label;
-    this.addLog(atMin, `${machine.label} needs Loading (${constructionLabel}, weight threshold reached)`);
+    this.addLog(atMin, `${machine.label} needs Loading (${constructionLabel}, Pay-Off threshold reached)`);
   }
 
   /** Once a Construction group's cumulative (fractional, to stay smooth between whole-spool
@@ -1013,6 +1029,8 @@ export class ProductionSimulationEngine {
   }
 
   private advanceToNextZone(operator: ProductionOperatorRuntimeState, atMin: number) {
+    const previousTask = this.serviceTaskForCurrentZone(operator);
+    const wasInRpcZone = operator.currentZoneLabel?.endsWith(' — RPC') ?? false;
     const next = operator.serviceSegments.shift();
     if (!next) {
       this.finishService(operator, atMin);
@@ -1030,6 +1048,14 @@ export class ProductionSimulationEngine {
     operator.currentZoneLabel = next.label;
     operator.serviceSubPhase = dist > 0 ? 'moving' : 'dwelling';
     this.syncMachineRunStateForCurrentTask(operator, atMin);
+    if (previousTask && !wasInRpcZone) {
+      const nextTask = this.serviceTaskForCurrentZone(operator);
+      const nextIsRpcZone = next.label.endsWith(' — RPC');
+      if (nextTask !== previousTask || nextIsRpcZone) {
+        const machine = operator.targetMachineId ? this.machineById.get(operator.targetMachineId) : undefined;
+        if (machine) this.resetMachineLoadingProgress(machine, previousTask, atMin);
+      }
+    }
   }
 
   private finishWalk(operator: ProductionOperatorRuntimeState) {
@@ -1097,7 +1123,7 @@ export class ProductionSimulationEngine {
           }
           this.metrics.producedMachineMin += machine.runtimePerSpool;
         }
-        if (t.activity === 'loading' || t.activity.startsWith('loading-')) machine.spoolsSinceLoading = 0;
+        this.resetMachineLoadingProgress(machine, t, atMin);
       });
       if (machine.lockedByOperatorId === operator.id) {
         machine.lockedByOperatorId = null;

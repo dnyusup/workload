@@ -451,7 +451,9 @@
     <h3>Doffing, Loading, dan sub-aktivitas</h3>
     <ul>
       <li><strong>Loading</strong> mengikuti POlength di WL_Products bila diisi. Area WW, BA, CA, IS, IP memakai Loading
-        berbasis berat yang dikerjakan di Pay Off.</li>
+        berbasis berat yang dikerjakan di Pay Off (bisa memotong pertengahan runtime), sedangkan Area CR memakai aturan
+        mid-runtime yang sama berdasarkan panjang meter (<code>POlength1 / SpoolLength</code>, nilai desimal termasuk
+        <code>&lt; 1</code> diizinkan).</li>
       <li>Kalau <strong>Loading Partial1 dan Partial2</strong> jatuh tempo bersamaan, keduanya diganti satu Loading
         Partial3.</li>
       <li>Kalau Doffing dan Loading satu mesin dipegang operator berbeda, Loading menunggu sampai Doffing selesai; jeda

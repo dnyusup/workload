@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { machineLocalFrame } from '../../lib/layoutConstants';
+import { MID_RUNTIME_LOADING_AREAS } from '../../lib/productCatalog';
 import type { LayoutRemark, LayoutWall, MachineTimelineKind, OperatorTimelineKind, SimulationState } from '../../types';
 import { MachineZoneLabels } from '../ui/MachineZoneLabels';
 import { WallsLayer } from '../ui/WallsLayer';
@@ -40,7 +41,7 @@ function operatorLabel(state: SimulationState): string {
   return 'Idle';
 }
 
-const HIDDEN_SPOOL_LABEL_AREAS = new Set(['WW', 'IS', 'IP', 'BA', 'CA']);
+const HIDDEN_SPOOL_LABEL_AREAS = new Set(MID_RUNTIME_LOADING_AREAS);
 
 export function LayoutCanvas({
   state,
