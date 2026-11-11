@@ -5,7 +5,15 @@ import { updateProductionSetupHeader, type ProductionSetupSummary } from '../../
 import { Office365UsersService } from '../../generated/services/Office365UsersService';
 import type { User } from '../../generated/models/Office365UsersModel';
 import { Button } from '../ui/Button';
-import { parseSharedUsers, serializeSharedUsers, type SharedUserEntry, type SharedRole } from '../../lib/ownership';
+import { Toggle } from '../ui/Toggle';
+import {
+  isLinkSharingEnabled,
+  parseSharedUsers,
+  serializeSharedUsers,
+  type SharedUserEntry,
+  type SharedRole,
+} from '../../lib/ownership';
+import { buildSetupShareUrl, getFallbackSetupShareUrl } from '../../lib/shareLink';
 import { getRegisteredUserRoles } from '../../lib/userDirectory';
 
 interface ShareProductionSetupDialogProps {
@@ -16,8 +24,12 @@ interface ShareProductionSetupDialogProps {
 
 export function ShareProductionSetupDialog({ setup, onClose, onSuccess }: ShareProductionSetupDialogProps) {
   const initialEntries = parseSharedUsers(setup.sharedEmail, setup.sharedRole);
+  const initialLinkEnabled = isLinkSharingEnabled(setup.sharedEmail);
 
   const [entries, setEntries] = useState<SharedUserEntry[]>(initialEntries);
+  const [linkEnabled, setLinkEnabled] = useState<boolean>(initialLinkEnabled);
+  const [shareUrl, setShareUrl] = useState<string>(() => getFallbackSetupShareUrl(setup.id));
+  const [copied, setCopied] = useState(false);
   const [registeredRoles, setRegisteredRoles] = useState<Map<string, 'admin' | 'contribute'>>(new Map());
   const [loadingRoles, setLoadingRoles] = useState(true);
   const [inputVal, setInputVal] = useState('');
@@ -28,6 +40,17 @@ export function ShareProductionSetupDialog({ setup, onClose, onSuccess }: ShareP
 
   const searchSeq = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const shareUrlInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    buildSetupShareUrl(setup.id).then((url) => {
+      if (!cancelled) setShareUrl(url);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [setup.id]);
 
   useEffect(() => {
     getRegisteredUserRoles()
@@ -102,6 +125,29 @@ export function ShareProductionSetupDialog({ setup, onClose, onSuccess }: ShareP
     setEntries((prev) => prev.map((e) => (e.email === email ? { ...e, role } : e)));
   };
 
+  const copyShareUrl = async () => {
+    let ok = false;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      ok = true;
+    } catch {
+      const el = shareUrlInputRef.current;
+      if (el) {
+        el.focus();
+        el.select();
+        try {
+          ok = document.execCommand('copy');
+        } catch {
+          ok = false;
+        }
+      }
+    }
+    if (ok) {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
   const handleSave = async () => {
     setSaving(true);
     setError(null);
@@ -110,7 +156,7 @@ export function ShareProductionSetupDialog({ setup, onClose, onSuccess }: ShareP
       ...e,
       role: isGuestUser(e.email) ? ('read' as SharedRole) : e.role,
     }));
-    const { sharedEmail, sharedRole } = serializeSharedUsers(sanitized);
+    const { sharedEmail, sharedRole } = serializeSharedUsers(sanitized, linkEnabled);
     try {
       await updateProductionSetupHeader(setup.id, { sharedEmail, sharedRole });
       onSuccess(sharedEmail, sharedRole);
@@ -405,6 +451,54 @@ export function ShareProductionSetupDialog({ setup, onClose, onSuccess }: ShareP
                   );
                 })}
               </div>
+            )}
+          </div>
+
+          {/* Anyone with the link (Read-Only) */}
+          <div className="share-link-box">
+            <div className="share-link-header">
+              <div>
+                <div className="share-link-title-row">
+                  <span className="share-link-title">Share via Link (Read-Only)</span>
+                  <span className={`share-link-status ${linkEnabled ? 'active' : ''}`}>
+                    {linkEnabled ? 'On' : 'Off'}
+                  </span>
+                </div>
+                <p className="share-link-hint">
+                  {linkEnabled
+                    ? 'Anyone with this link (including Guest) can open this setup directly in read-only mode without the navigation menu and run simulations.'
+                    : 'Turn on so anyone with this link (including Guest) can open this setup directly in read-only mode and run simulations.'}
+                </p>
+              </div>
+              <Toggle
+                checked={linkEnabled}
+                onChange={setLinkEnabled}
+                ariaLabel="Enable share via link"
+                disabled={saving}
+              />
+            </div>
+
+            {linkEnabled && (
+              <div className="share-link-url-row">
+                <input
+                  ref={shareUrlInputRef}
+                  type="text"
+                  readOnly
+                  className="input share-link-input"
+                  value={shareUrl}
+                  onFocus={(e) => e.currentTarget.select()}
+                  aria-label="Share setup link URL"
+                />
+                <Button variant="secondary" type="button" onClick={copyShareUrl} disabled={saving}>
+                  {copied ? '✓ Copied' : 'Copy Link'}
+                </Button>
+              </div>
+            )}
+
+            {linkEnabled !== initialLinkEnabled && (
+              <p className="share-link-save-note">
+                Click &ldquo;Save Changes&rdquo; below to apply this link sharing setting.
+              </p>
             )}
           </div>
 

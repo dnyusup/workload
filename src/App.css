@@ -490,6 +490,10 @@
   align-items: start;
 }
 
+.layout-manager-grid-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 @media (max-width: 900px) {
   .layout-manager-grid {
     grid-template-columns: 1fr;
@@ -7637,6 +7641,77 @@
 
 .share-autocomplete-item:hover {
   background: #1e293b !important;
+}
+
+.share-link-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid #334155;
+  border-radius: 8px;
+}
+
+.share-link-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.share-link-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.share-link-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #f1f5f9;
+}
+
+.share-link-status {
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.16);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.share-link-status.active {
+  background: rgba(34, 197, 94, 0.15);
+  color: #4ade80;
+  border-color: rgba(34, 197, 94, 0.35);
+}
+
+.share-link-hint {
+  margin: 4px 0 0 0;
+  font-size: 0.76rem;
+  color: #94a3b8;
+  line-height: 1.4;
+}
+
+.share-link-url-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.share-link-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.76rem;
+  color: #cbd5e1;
+}
+
+.share-link-save-note {
+  margin: 0;
+  font-size: 0.74rem;
+  color: #fbbf24;
 }
 
 

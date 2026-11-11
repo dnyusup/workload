@@ -12,6 +12,17 @@ export function isOwnedByCurrentUser(
   return (record.createdByName ?? '').trim().toLowerCase() === user.displayName.trim().toLowerCase();
 }
 
+export const LINK_SHARE_MARKER = '*';
+
+/** Checks whether "Anyone with the link (Read-Only)" sharing is enabled in `sharedEmail`. */
+export function isLinkSharingEnabled(sharedEmail?: string): boolean {
+  if (!sharedEmail) return false;
+  return sharedEmail
+    .split(/[,;\s]+/)
+    .map((e) => e.trim())
+    .includes(LINK_SHARE_MARKER);
+}
+
 /** Checks whether a Production Setup is shared with the current user.
  * Looks up user's email in `sharedEmail` (semicolon/comma/space separated list of emails). */
 export function isSharedWithCurrentUser(
@@ -25,7 +36,7 @@ export function isSharedWithCurrentUser(
   const emails = record.sharedEmail
     .split(/[,;\s]+/)
     .map((e) => e.trim().toLowerCase())
-    .filter(Boolean);
+    .filter((e) => Boolean(e) && e !== LINK_SHARE_MARKER);
   return emails.includes(userEmail);
 }
 
@@ -65,25 +76,37 @@ export function parseSharedUsers(
   // Support parallel semicolon/comma separated roles e.g. "read;edit"
   const roleList = rawRole.split(/[,;\s]+/).map((r) => r.trim().toLowerCase());
 
-  return emails.map((email, index) => {
-    if (mapFromPairs.has(email)) {
-      return { email, role: mapFromPairs.get(email)! };
-    }
-    if (roleList[index] === 'edit' || roleList[index] === 'read') {
-      return { email, role: roleList[index] as SharedRole };
-    }
-    if (rawRole === 'edit') {
-      return { email, role: 'edit' };
-    }
-    return { email, role: 'read' };
-  });
+  return emails
+    .map((email, index): SharedUserEntry => {
+      if (mapFromPairs.has(email)) {
+        return { email, role: mapFromPairs.get(email)! };
+      }
+      if (roleList[index] === 'edit' || roleList[index] === 'read') {
+        return { email, role: roleList[index] as SharedRole };
+      }
+      if (rawRole === 'edit') {
+        return { email, role: 'edit' };
+      }
+      return { email, role: 'read' };
+    })
+    .filter((entry) => entry.email !== LINK_SHARE_MARKER);
 }
 
 /** Serializes shared user entries back into parallel strings for Dataverse */
-export function serializeSharedUsers(users: SharedUserEntry[]): { sharedEmail: string; sharedRole: string } {
-  if (users.length === 0) return { sharedEmail: '', sharedRole: '' };
-  const sharedEmail = users.map((u) => u.email.trim().toLowerCase()).join(';');
-  const sharedRole = users.map((u) => u.role).join(';');
+export function serializeSharedUsers(
+  users: SharedUserEntry[],
+  linkEnabled = false,
+): { sharedEmail: string; sharedRole: string } {
+  const cleanUsers = users.filter((u) => {
+    const email = u.email.trim().toLowerCase();
+    return Boolean(email) && email !== LINK_SHARE_MARKER;
+  });
+  const entries = linkEnabled
+    ? [...cleanUsers, { email: LINK_SHARE_MARKER, role: 'read' as SharedRole }]
+    : cleanUsers;
+  if (entries.length === 0) return { sharedEmail: '', sharedRole: '' };
+  const sharedEmail = entries.map((u) => u.email.trim().toLowerCase()).join(';');
+  const sharedRole = entries.map((u) => u.role).join(';');
   return { sharedEmail, sharedRole };
 }
 
@@ -111,5 +134,17 @@ export function canEditSetup(
   if (isOwnedByCurrentUser(record, user)) return true;
   const sharedRole = getSharedRoleForCurrentUser(record, user);
   return sharedRole === 'edit';
+}
+
+/** Checks whether the current user can open a Production Setup via direct share link.
+ * Allowed when link sharing ('*') is enabled, or user is admin, owner, or explicitly shared. */
+export function canViewViaShareLink(
+  record: { sharedEmail?: string; sharedRole?: string; createdByEmail?: string; createdByName?: string },
+  user: AuthUser,
+): boolean {
+  if (isLinkSharingEnabled(record.sharedEmail)) return true;
+  if (user.role === 'admin') return true;
+  if (isOwnedByCurrentUser(record, user)) return true;
+  return isSharedWithCurrentUser(record, user);
 }
 

@@ -20,7 +20,15 @@ import {
 } from '../../lib/productionSetupsStore';
 import { useDebouncedCallback } from '../../hooks/useDebouncedCallback';
 import { useAuth } from '../../context/auth';
-import { isOwnedByCurrentUser, isSharedWithCurrentUser, canEditSetup, getSharedRoleForCurrentUser } from '../../lib/ownership';
+import {
+  isOwnedByCurrentUser,
+  isSharedWithCurrentUser,
+  canEditSetup,
+  canViewViaShareLink,
+  getSharedRoleForCurrentUser,
+  isLinkSharingEnabled,
+  parseSharedUsers,
+} from '../../lib/ownership';
 import { resolveDisplayNames } from '../../lib/userDirectory';
 import { Mpp_wl_productsesService } from '../../generated/services/Mpp_wl_productsesService';
 import { fetchAllPages } from '../../lib/dataversePaging';
@@ -233,13 +241,24 @@ function parseCsv(text: string): string[][] {
   return rows.filter((r) => r.length > 1 || r[0] !== '');
 }
 
-export function ProductionSimulationPage() {
-  const { user } = useAuth();
+interface ProductionSimulationPageProps {
+  sharedSetupId?: string;
+  onSharedSetupLoaded?: (name: string | null) => void;
+}
+
+export function ProductionSimulationPage({
+  sharedSetupId,
+  onSharedSetupLoaded,
+}: ProductionSimulationPageProps = {}) {
+  const { user, loading: authLoading } = useAuth();
   const isAdmin = user.role === 'admin';
+  const trimmedSharedSetupId = sharedSetupId?.trim() || null;
+  const isSharedLinkMode = Boolean(trimmedSharedSetupId);
   const [summaries, setSummaries] = useState<ProductionSetupSummary[]>([]);
-  const [loadingSummaries, setLoadingSummaries] = useState(true);
+  const [loadingSummaries, setLoadingSummaries] = useState(!isSharedLinkMode);
   const [summariesError, setSummariesError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const effectiveSelectedId = trimmedSharedSetupId ?? selectedId;
   const [selectedSetup, setSelectedSetup] = useState<ProductionSetup | null>(null);
   const [loadingSetup, setLoadingSetup] = useState(false);
   const [setupError, setSetupError] = useState<string | null>(null);
@@ -298,6 +317,7 @@ export function ProductionSimulationPage() {
 
   // Mount-only on purpose: fetchSummaries is recreated every render.
   useEffect(() => {
+    if (isSharedLinkMode) return;
     fetchSummaries();
     loadSavedLayouts()
       .then(setSavedLayouts)
@@ -305,7 +325,7 @@ export function ProductionSimulationPage() {
         // Layout picker just stays empty if this fails — creating a setup will show no options.
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isSharedLinkMode]);
 
   // `loadingProducts` starts true for the first load; the Retry button (reloadProducts) resets
   // loading/error itself before bumping productsReloadKey.
@@ -336,17 +356,17 @@ export function ProductionSimulationPage() {
   // listProductionSetupSummaries. Waits for WL_Products so Construction labels resolve correctly
   // instead of racing an empty product list.
   useEffect(() => {
-    if (!selectedId || loadingProducts) {
-      // Selection-driven reset/fetch: selectedId changes from many places (list clicks, create,
-      // delete), so resetting here keeps them all consistent.
+    if (!effectiveSelectedId || loadingProducts || (isSharedLinkMode && authLoading)) {
+      // Selection-driven reset/fetch: effectiveSelectedId changes from many places (list clicks,
+      // create, delete, shared link), so resetting here keeps them all consistent.
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      if (!selectedId) setSelectedSetup(null);
+      if (!effectiveSelectedId) setSelectedSetup(null);
       return;
     }
     let cancelled = false;
     setLoadingSetup(true);
     setSetupError(null);
-    loadProductionSetup(selectedId, constructionLabelById)
+    loadProductionSetup(effectiveSelectedId, constructionLabelById)
       // Only an Admin picks the waiting model; everyone else's forecast follows Default Values. Default
       // Values can also switch the waiting model off altogether (forecast as None, field hidden).
       .then(async (setup) => {
@@ -360,10 +380,21 @@ export function ProductionSimulationPage() {
         };
       })
       .then((setup) => {
-        if (!cancelled) setSelectedSetup(setup);
+        if (cancelled) return;
+        if (isSharedLinkMode && !canViewViaShareLink(setup, user)) {
+          setSelectedSetup(null);
+          setSetupError('Link sharing is not enabled for this Production Setup, or you do not have access to view it.');
+          onSharedSetupLoaded?.('Setup Unavailable');
+          return;
+        }
+        setSelectedSetup(setup);
+        if (isSharedLinkMode) onSharedSetupLoaded?.(setup.name);
       })
       .catch((err) => {
-        if (!cancelled) setSetupError(err instanceof Error ? err.message : 'Failed to load Production Setup.');
+        if (!cancelled) {
+          setSetupError(err instanceof Error ? err.message : 'Failed to load Production Setup.');
+          if (isSharedLinkMode) onSharedSetupLoaded?.('Setup Unavailable');
+        }
       })
       .finally(() => {
         if (!cancelled) setLoadingSetup(false);
@@ -371,9 +402,9 @@ export function ProductionSimulationPage() {
     return () => {
       cancelled = true;
     };
-    // isAdmin: reload once sign-in settles, so an Admin sees the setup's own waiting model.
+    // isAdmin / authLoading: wait for sign-in to settle so Admin/Owner access checks and waiting model stay accurate.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId, loadingProducts, isAdmin]);
+  }, [effectiveSelectedId, loadingProducts, isAdmin, isSharedLinkMode, authLoading]);
 
   const isOwned = useCallback((s: ProductionSetupSummary) => isOwnedByCurrentUser(s, user), [user]);
   const isShared = useCallback((s: ProductionSetupSummary) => isSharedWithCurrentUser(s, user), [user]);
@@ -686,7 +717,7 @@ export function ProductionSimulationPage() {
   }
 
   return (
-    <div className="layout-manager-grid">
+    <div className={isSharedLinkMode ? 'layout-manager-grid layout-manager-grid-single' : 'layout-manager-grid'}>
       {productsError && (
         <div className="production-run-warnings" style={{ gridColumn: '1 / -1' }}>
           <div>Failed to load WL_Products: {productsError}</div>
@@ -702,7 +733,7 @@ export function ProductionSimulationPage() {
           </Button>
         </div>
       )}
-      {summariesError && (
+      {summariesError && !isSharedLinkMode && (
         <div className="production-run-warnings" style={{ gridColumn: '1 / -1' }}>
           <div>{summariesError}</div>
           <Button variant="secondary" onClick={refreshSummaries}>
@@ -710,6 +741,7 @@ export function ProductionSimulationPage() {
           </Button>
         </div>
       )}
+      {!isSharedLinkMode && (
       <Card
         title="Production Setups"
         subtitle="Snapshot of a Layout plus Construction & per-activity operator assignment per machine"
@@ -827,7 +859,10 @@ export function ProductionSimulationPage() {
                               {getSharedRoleForCurrentUser(s, user) === 'edit' ? 'Shared (Edit)' : 'Shared (View)'}
                             </span>
                           )}
-                          {isOwned(s) && !!s.sharedEmail?.trim() && <span className="setup-badge-sharing">Sharing</span>}
+                          {isOwned(s) &&
+                            (parseSharedUsers(s.sharedEmail, s.sharedRole).length > 0 || isLinkSharingEnabled(s.sharedEmail)) && (
+                              <span className="setup-badge-sharing">Sharing</span>
+                            )}
                         </div>
                         <span className="layout-list-count">
                           {s.machineCount} machines · {s.operatorCount} operators
@@ -907,10 +942,11 @@ export function ProductionSimulationPage() {
           </>
         )}
       </Card>
+      )}
 
       <div className="layout-manager-editor production-editor">
         {setupError && <div className="production-run-warnings">{setupError}</div>}
-        {loadingSetup ? (
+        {loadingSetup || (isSharedLinkMode && (loadingProducts || authLoading) && !selectedSetup && !setupError) ? (
           <Card title="Loading Setup">
             <p className="data-manager-hint">Loading…</p>
           </Card>
@@ -920,6 +956,7 @@ export function ProductionSimulationPage() {
             setup={selectedSetup}
             products={products}
             loadingProducts={loadingProducts}
+            forceReadOnly={isSharedLinkMode}
             onLocalChange={patchLocalSetup}
             onRun={() => runSimulation(selectedSetup)}
             onOperatorCountChange={(delta) =>
@@ -927,7 +964,7 @@ export function ProductionSimulationPage() {
             }
             onProductsUpdated={(updated) => setProducts(updated)}
             onDuplicate={
-              user.role === 'guest'
+              isSharedLinkMode || user.role === 'guest'
                 ? undefined
                 : () => {
                     if (isLimitReached) {
@@ -937,7 +974,7 @@ export function ProductionSimulationPage() {
                     setDuplicatingTarget(selectedSetup);
                   }
             }
-            onShare={canShare(selectedSetup) ? () => setSharingSetup(selectedSetup) : undefined}
+            onShare={!isSharedLinkMode && canShare(selectedSetup) ? () => setSharingSetup(selectedSetup) : undefined}
             resolving={resolving}
             plannedUtilization={plannedResolution.utilization}
             plannedUtilizationErrors={plannedResolution.errors}
@@ -945,6 +982,10 @@ export function ProductionSimulationPage() {
             resolvedConstructions={plannedResolution.resolved}
             optimizedCounts={optimizedCounts}
           />
+        ) : setupError && isSharedLinkMode ? (
+          <Card title="Setup Unavailable">
+            <p className="data-manager-hint">Please ask the setup owner to enable link sharing or verify that the link is valid.</p>
+          </Card>
         ) : (
           <Card title="No Setup Selected">
             <p className="data-manager-hint">
@@ -1000,6 +1041,7 @@ function ProductionSetupEditor({
   setup,
   products,
   loadingProducts,
+  forceReadOnly = false,
   onLocalChange,
   onRun,
   onOperatorCountChange,
@@ -1016,6 +1058,7 @@ function ProductionSetupEditor({
   setup: ProductionSetup;
   products: Mpp_wl_productses[];
   loadingProducts: boolean;
+  forceReadOnly?: boolean;
   onLocalChange: (patch: Partial<ProductionSetup>) => void;
   onRun: () => void;
   onOperatorCountChange: (delta: number) => void;
@@ -1031,8 +1074,8 @@ function ProductionSetupEditor({
 }) {
   const { user } = useAuth();
   const isAdmin = user.role === 'admin';
-  const isReadOnly = !canEditSetup(setup, user);
-  const isSharedToMe = isSharedWithCurrentUser(setup, user);
+  const isReadOnly = Boolean(forceReadOnly) || !canEditSetup(setup, user);
+  const isSharedToMe = !forceReadOnly && isSharedWithCurrentUser(setup, user);
   /** Only an Admin picks the waiting model (and only when not read-only); for everyone else it follows Default Values. */
   const canChangeWaitingModel = isAdmin && !isReadOnly;
   const [selectedMachineIds, setSelectedMachineIds] = useState<string[]>([]);
@@ -2152,7 +2195,15 @@ function ProductionSetupEditor({
               <path d="M7 11V7a5 5 0 0 1 10 0v4" />
             </svg>
             <div>
-              <strong>Read-Only Access:</strong> This setup was shared with you as read-only. You can run simulations, inspect all assignments, and export data, but cannot edit this setup directly.
+              {forceReadOnly ? (
+                <>
+                  <strong>Read-Only Shared Link:</strong> Opened via direct share link. You can inspect all assignments, switch views, and run simulations, but editing is disabled.
+                </>
+              ) : (
+                <>
+                  <strong>Read-Only Access:</strong> This setup was shared with you as read-only. You can run simulations, inspect all assignments, and export data, but cannot edit this setup directly.
+                </>
+              )}
             </div>
           </div>
           {onDuplicate && (

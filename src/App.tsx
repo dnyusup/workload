@@ -1,10 +1,15 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AppConfigProvider } from './context/AppConfigContext';
 import { useAppConfig } from './context/appConfig';
 import { AuthProvider } from './context/AuthContext';
 import { useAuth } from './context/auth';
 import { syncAutoActivityValues } from './lib/calculations';
 import { configForStartCondition } from './lib/startConditionConfig';
+import {
+  isRunningInIframe,
+  readSharedSetupIdFromUrl,
+  readSharedSetupIdFromWindowLocation,
+} from './lib/shareLink';
 import { SetupWizard } from './components/setup/SetupWizard';
 import { SimulationView } from './SimulationView';
 import { Sidebar } from './components/layout/Sidebar';
@@ -43,6 +48,26 @@ function AppShell() {
   const [page, setPage] = useState<AppPage>('simulator');
   const [activitiesConstructionFilter, setActivitiesConstructionFilter] = useState('');
   const [outputModelNotice, setOutputModelNotice] = useState<string | null>(null);
+  const [sharedSetupId, setSharedSetupId] = useState<string | null>(() => readSharedSetupIdFromWindowLocation());
+  const [checkingShareUrl, setCheckingShareUrl] = useState<boolean>(
+    () => readSharedSetupIdFromWindowLocation() === null && isRunningInIframe(),
+  );
+  const [sharedSetupTitle, setSharedSetupTitle] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!checkingShareUrl) return;
+    let cancelled = false;
+    readSharedSetupIdFromUrl()
+      .then((id) => {
+        if (!cancelled && id) setSharedSetupId(id);
+      })
+      .finally(() => {
+        if (!cancelled) setCheckingShareUrl(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [checkingShareUrl]);
 
   // If the current role cannot see the selected page, render Simulator without triggering a
   // synchronous state update from an effect. The stored page remains available if access returns.
@@ -55,6 +80,43 @@ function AppShell() {
     }));
     setStage('simulation');
   };
+
+  if (checkingShareUrl) {
+    return (
+      <div className="app-shell">
+        <main className="app-main">
+          <p className="data-manager-hint">Loading…</p>
+        </main>
+      </div>
+    );
+  }
+
+  if (sharedSetupId) {
+    return (
+      <div className="app-shell">
+        <header className="app-header">
+          <div className="app-title">
+            <span className="app-logo">{iconForPage('production')}</span>
+            <div>
+              <h1>{sharedSetupTitle || 'Loading Setup…'}</h1>
+              <p>Shared Production Setup · Read-Only</p>
+            </div>
+          </div>
+          <div className="app-header-user">
+            <span className="app-header-user-name">{authLoading ? 'Signing in…' : user.displayName}</span>
+            <span className="app-header-user-role">{authLoading ? '' : ROLE_LABEL[user.role]}</span>
+          </div>
+        </header>
+
+        <main className="app-main">
+          <ProductionSimulationPage
+            sharedSetupId={sharedSetupId}
+            onSharedSetupLoaded={setSharedSetupTitle}
+          />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="app-shell-with-sidebar">
