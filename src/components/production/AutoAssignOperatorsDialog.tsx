@@ -54,28 +54,47 @@ export function AutoAssignOperatorsDialog({
 
   // Multi task state
   const rawMultiReq = activeBreakdown?.allTask.operators;
-  const initialMultiCount = rawMultiReq
+  const defaultMultiCount = rawMultiReq
     ? Math.max(1, Math.round(rawMultiReq))
     : Math.max(1, scope === 'selection' ? Math.round(selectedMachineIds.length / 10) : setup.operators.length || 10);
-  const [multiCount, setMultiCount] = useState<number>(initialMultiCount);
+  const [multiCountOverride, setMultiCountOverride] = useState<{
+    req: number | undefined;
+    value: number;
+  } | null>(null);
+  const multiCount =
+    multiCountOverride && multiCountOverride.req === rawMultiReq ? multiCountOverride.value : defaultMultiCount;
+  const setMultiCount = (value: number) => setMultiCountOverride({ req: rawMultiReq, value });
   const [multiPrefix, setMultiPrefix] = useState<string>('Opr');
-
-  useEffect(() => {
-    if (rawMultiReq) {
-      setMultiCount(Math.max(1, Math.round(rawMultiReq)));
-    }
-  }, [rawMultiReq]);
 
   // Split task state
   const [splitPresetId, setSplitPresetId] = useState<SplitPresetId>('three_groups_dlr');
   const [balanceFractional, setBalanceFractional] = useState<boolean>(true);
   const [splitGlobalPrefix, setSplitGlobalPrefix] = useState<string>('Opr');
 
-  // Groups config
-  const [customGroups, setCustomGroups] = useState<TaskGroupConfig[]>(() => {
-    const p = SPLIT_PRESETS.find((item) => item.id === 'three_groups_dlr') ?? SPLIT_PRESETS[0];
-    return p.groups(activeBreakdown);
-  });
+  // Groups config (derived from preset + breakdown, with local user overrides kept in state)
+  const defaultCustomGroups = useMemo(() => {
+    const p = SPLIT_PRESETS.find((item) => item.id === splitPresetId) ?? SPLIT_PRESETS[0];
+    const groups = p.groups(activeBreakdown);
+    const prefix = splitGlobalPrefix.trim();
+    return prefix ? groups.map((g) => ({ ...g, prefix })) : groups;
+  }, [splitPresetId, activeBreakdown, splitGlobalPrefix]);
+
+  const [customGroupsOverride, setCustomGroupsOverride] = useState<{
+    breakdown: typeof activeBreakdown;
+    groups: TaskGroupConfig[];
+  } | null>(null);
+
+  const customGroups =
+    customGroupsOverride && (splitPresetId === 'custom' || customGroupsOverride.breakdown === activeBreakdown)
+      ? customGroupsOverride.groups
+      : defaultCustomGroups;
+
+  const setCustomGroups = (
+    updater: TaskGroupConfig[] | ((prev: TaskGroupConfig[]) => TaskGroupConfig[]),
+  ) => {
+    const next = typeof updater === 'function' ? updater(customGroups) : updater;
+    setCustomGroupsOverride({ breakdown: activeBreakdown, groups: next });
+  };
 
   // Split total count in balanced mode
   const rawSplitReq = useMemo(() => {
@@ -84,25 +103,23 @@ export function AutoAssignOperatorsDialog({
     return sum > 0 ? sum : activeBreakdown.allTask.operators;
   }, [activeBreakdown]);
 
-  const [splitTotalCount, setSplitTotalCount] = useState<number>(() => {
-    return rawSplitReq ? Math.max(1, Math.round(rawSplitReq)) : 6;
-  });
+  const defaultSplitTotalCount = rawSplitReq ? Math.max(1, Math.round(rawSplitReq)) : 6;
+  const [splitTotalOverride, setSplitTotalOverride] = useState<{
+    breakdown: typeof activeBreakdown;
+    presetId: SplitPresetId;
+    req: number | undefined;
+    value: number;
+  } | null>(null);
 
-  // Re-sync groups & counts when activeBreakdown or preset changes
-  useEffect(() => {
-    const p = SPLIT_PRESETS.find((item) => item.id === splitPresetId);
-    if (p && splitPresetId !== 'custom') {
-      const groups = p.groups(activeBreakdown);
-      setCustomGroups(
-        splitGlobalPrefix.trim()
-          ? groups.map((g) => ({ ...g, prefix: splitGlobalPrefix.trim() }))
-          : groups,
-      );
-    }
-    if (rawSplitReq) {
-      setSplitTotalCount(Math.max(1, Math.round(rawSplitReq)));
-    }
-  }, [splitPresetId, activeBreakdown, rawSplitReq]);
+  const splitTotalCount =
+    splitTotalOverride &&
+    splitTotalOverride.breakdown === activeBreakdown &&
+    splitTotalOverride.presetId === splitPresetId &&
+    splitTotalOverride.req === rawSplitReq
+      ? splitTotalOverride.value
+      : defaultSplitTotalCount;
+  const setSplitTotalCount = (value: number) =>
+    setSplitTotalOverride({ breakdown: activeBreakdown, presetId: splitPresetId, req: rawSplitReq, value });
 
   const [onlyPlanned, setOnlyPlanned] = useState<boolean>(true);
 
@@ -114,16 +131,11 @@ export function AutoAssignOperatorsDialog({
   const handlePresetChange = (presetId: SplitPresetId) => {
     setSplitPresetId(presetId);
     if (presetId !== 'custom') {
-      const p = SPLIT_PRESETS.find((item) => item.id === presetId);
-      if (p) {
-        const groups = p.groups(activeBreakdown);
-        setCustomGroups(
-          splitGlobalPrefix.trim()
-            ? groups.map((g) => ({ ...g, prefix: splitGlobalPrefix.trim() }))
-            : groups,
-        );
-      }
+      setCustomGroupsOverride(null);
+    } else {
+      setCustomGroupsOverride({ breakdown: activeBreakdown, groups: customGroups });
     }
+    setSplitTotalOverride(null);
   };
 
   const handleGlobalPrefixChange = (val: string) => {

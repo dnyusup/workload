@@ -88,11 +88,12 @@ export function ImportConstructionFromMesDialog({
   onSuccess,
   onProductsUpdated,
 }: ImportConstructionFromMesDialogProps) {
-  const [catalogProducts, setCatalogProducts] = useState<Mpp_wl_productses[]>(products);
-
-  useEffect(() => {
-    setCatalogProducts(products);
-  }, [products]);
+  const [catalogOverride, setCatalogOverride] = useState<{
+    source: Mpp_wl_productses[];
+    items: Mpp_wl_productses[];
+  } | null>(null);
+  const catalogProducts = catalogOverride && catalogOverride.source === products ? catalogOverride.items : products;
+  const setCatalogProducts = (items: Mpp_wl_productses[]) => setCatalogOverride({ source: products, items });
 
   const [plant, setPlant] = useState('PTBI');
   const [date, setDate] = useState(getYesterdayIso);
@@ -201,7 +202,7 @@ export function ImportConstructionFromMesDialog({
       }
 
       // Load WL_Activities to validate dynamic base constructions
-      let activityConstructionSet = new Set<string>();
+      const activityConstructionSet = new Set<string>();
 
       // Pre-seed known base constructions from existing WL_Products
       for (const p of activeProducts) {
@@ -286,7 +287,7 @@ export function ImportConstructionFromMesDialog({
             const machCode = rec.group || rec.sapMachineTypeGroup || mesCode.split('-')[0] || '';
             const recArea = (rec.area || '').trim().toUpperCase() || (isWwd ? 'WW' : '');
 
-            const matchedActKey = findMatchingActivityConstruction(rawBaseConstruction, activityConstructionSet, recArea);
+            const matchedActKey = findMatchingActivityConstruction(rawBaseConstruction, activityConstructionSet);
 
             if (matchedActKey) {
               const canonicalBase = matchedActKey;
@@ -622,6 +623,7 @@ export function ImportConstructionFromMesDialog({
         // Area WW, BA, CA, IS, IP use kg; BU, CB, SP, CH, CR use meters
         const poLength1 = getDefaultPoLengthForArea(defaults, itemArea);
 
+        const nullValue: undefined = null as unknown as undefined;
         const payload: Omit<Mpp_wl_productsesBase, 'mpp_wl_productsid'> = {
           mpp_machinecode: machCode,
           mpp_productspecification: productSpec,
@@ -634,16 +636,16 @@ export function ImportConstructionFromMesDialog({
           mpp_laylength: spec.layLength || 0,
           mpp_spooltype: spec.spoolType || 'BS40',
           mpp_tensilegroup: spec.tensileStrength || '',
-          mpp_polength1: poLength1 as any,
-          mpp_polength2: null as any,
-          mpp_polength3: null as any,
+          mpp_polength1: poLength1 as unknown as number | undefined,
+          mpp_polength2: nullValue,
+          mpp_polength3: nullValue,
           mpp_numberoffibers: spec.numberOfWires ?? item.numberOfWires ?? 1,
           mpp_fractureperton: String(fractureRate),
           mpp_dieston: String(diesRate),
           mpp_defectston: String(defectRate),
-          mpp_taskpriority: null as any,
-          mpp_doffpriority: null as any,
-          mpp_minremaintaskfordoffpriority: null as any,
+          mpp_taskpriority: nullValue,
+          mpp_doffpriority: nullValue,
+          mpp_minremaintaskfordoffpriority: nullValue,
           statecode: 0,
         };
 

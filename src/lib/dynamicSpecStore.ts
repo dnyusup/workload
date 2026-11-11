@@ -227,8 +227,7 @@ export const getWwdSpec = getDynamicSpec;
  */
 export function findMatchingActivityConstruction(
   baseConstruction: string,
-  activitySetOrMap: Set<string> | Map<string, any>,
-  _area?: string,
+  activitySetOrMap: Set<string> | Map<string, unknown>,
 ): string | null {
   if (!baseConstruction) return null;
 

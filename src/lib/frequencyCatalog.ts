@@ -150,7 +150,7 @@ export interface FrequencyRecord {
   defectPerTon: number | null;
   diesPerTon: number | null;
   groupProductInfo: string;
-  raw: Record<string, any>;
+  raw: Record<string, unknown>;
 }
 
 export interface HistoricalFrequencyItem {
@@ -167,7 +167,7 @@ export interface HistoricalFrequencyItem {
 
 export type HistoricalFrequencyMap = Map<string, HistoricalFrequencyItem>;
 
-function getField(row: Record<string, any>, ...candidates: string[]): any {
+function getField(row: Record<string, unknown>, ...candidates: string[]): unknown {
   for (const c of candidates) {
     if (row[c] !== undefined && row[c] !== null) return row[c];
     if (row[`[${c}]`] !== undefined && row[`[${c}]`] !== null) return row[`[${c}]`];
@@ -185,20 +185,20 @@ function getField(row: Record<string, any>, ...candidates: string[]): any {
   return undefined;
 }
 
-function parseNumber(value: any): number | null {
+function parseNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null;
   const num = typeof value === 'number' ? value : parseFloat(String(value).replace(/,/g, ''));
   return Number.isFinite(num) ? num : null;
 }
 
 /** Menghilangkan artefak binary floating point precision (seperti 14.000000000000002 -> 14) */
-export function cleanFloat(value: any, precision = 4): number | null {
+export function cleanFloat(value: unknown, precision = 4): number | null {
   const num = parseNumber(value);
   if (num === null) return null;
   return Number(num.toFixed(precision));
 }
 
-export function normalizeFrequencyKeyPart(val: any): string {
+export function normalizeFrequencyKeyPart(val: unknown): string {
   if (val === null || val === undefined) return '';
   const str = String(val).trim().toLowerCase();
   // Only normalize values that are purely decimal numbers with a dot (e.g. "14.000000000000002" -> "14")
@@ -234,7 +234,7 @@ export function buildFrequencyLookupKey(
   ].join('|');
 }
 
-export function parseFrequencyRows(rawItems: any[]): FrequencyRecord[] {
+export function parseFrequencyRows(rawItems: Record<string, unknown>[]): FrequencyRecord[] {
   return rawItems.map((raw, index) => {
     const zoneName = String(getField(raw, 'DimZone[ZoneName]', '[DimZone].[ZoneName]', 'ZoneName', 'DimZone') ?? '').trim();
     const sapMachineTypeGroup = String(
@@ -489,7 +489,7 @@ export async function loadFrequencyCatalog(
       };
 
       console.log('[WL_Frequency] Sending parameters to flow:', payload);
-      const response = await WL_FrequencyService.Run(payload as any);
+      const response = await WL_FrequencyService.Run(payload as unknown as Parameters<typeof WL_FrequencyService.Run>[0]);
       console.log('[WL_Frequency] Response from flow:', response);
 
       if (!response.success) {
@@ -506,7 +506,7 @@ export async function loadFrequencyCatalog(
         return emptyRes;
       }
 
-      let parsed: any[] = [];
+      let parsed: Record<string, unknown>[] = [];
       if (typeof rawResult === 'string') {
         try {
           parsed = JSON.parse(rawResult);

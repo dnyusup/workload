@@ -134,7 +134,13 @@ export function FrequencyManager() {
   }, [startDate, endDate, dateRangeType]);
 
   useEffect(() => {
-    void fetchData();
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (!cancelled) void fetchData();
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [fetchData]);
 
   const handlePresetChange = (type: FrequencyDateRangeType) => {

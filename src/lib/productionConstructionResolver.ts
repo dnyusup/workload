@@ -162,7 +162,7 @@ export async function resolveConstructions(
 
         let activityRows: Mpp_wl_activities[] = [];
         if (baseConstruction && !activitiesLoadFailed) {
-          const matchedAct = findMatchingActivityConstruction(baseConstruction, activitiesByConstruction, area);
+          const matchedAct = findMatchingActivityConstruction(baseConstruction, activitiesByConstruction);
           if (matchedAct) {
             activityRows = activitiesByConstruction.get(constructionKey(matchedAct)) ?? [];
           }
@@ -182,7 +182,7 @@ export async function resolveConstructions(
           mpp_defectston: String(spec.defectsPerTon),
         };
 
-        const built = buildActivitiesFromRows(activityRows, mockProduct as any, derived.spoolWeight, spec.fracturePerTon);
+        const built = buildActivitiesFromRows(activityRows, mockProduct, derived.spoolWeight, spec.fracturePerTon);
         const activities = syncAutoActivityValues(
           ensureCoreActivities(built.activities, derived.spoolWeight, spec.fracturePerTon),
           spec,
@@ -264,7 +264,7 @@ export async function resolveConstructions(
       if (!activitiesLoadFailed) {
         activityRows = activitiesByConstruction.get(constructionKey(construction)) ?? [];
         if (activityRows.length === 0) {
-          const matchedAct = findMatchingActivityConstruction(construction, activitiesByConstruction, prodArea);
+          const matchedAct = findMatchingActivityConstruction(construction, activitiesByConstruction);
           if (matchedAct) {
             activityRows = activitiesByConstruction.get(constructionKey(matchedAct)) ?? [];
           }

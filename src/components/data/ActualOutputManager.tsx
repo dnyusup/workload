@@ -178,7 +178,13 @@ export function ActualOutputManager() {
   );
 
   useEffect(() => {
-    void fetchData();
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (!cancelled) void fetchData();
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [fetchData]);
 
   // Options for secondary filters

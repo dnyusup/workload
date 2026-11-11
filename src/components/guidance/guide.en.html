@@ -127,10 +127,12 @@
         operator's work follow from that OEE, solved together because less production also means less work and less
         waiting. The <span class="ui"><i>f</i>x</span> button next to Forecast Man Occupation shows the calculation step
         by step: available time, machine availability, every activity's demand, walking, the interference and machine
-        downtime.</li>
+        downtime.
+      </li>
       <li><strong>Activity Table</strong>: Time, Frequency Type, Numerator, Denominator and Mach Condition per activity.
         <span class="ui">RPC %</span> sits right of the table title. Add sub-activities with <span class="ui">+ Sub
-          Doffing</span> or <span class="ui">+ Sub Loading</span>.</li>
+          Doffing</span> or <span class="ui">+ Sub Loading</span>.
+      </li>
     </ol>
     <div class="note">
       <p>The circular-arrow button resets every field to how it was when the Construction Detail was picked.</p>
@@ -190,7 +192,8 @@
         each), Walking Speed, and <strong>Frequency Source</strong> (Manual from WL_Products or Historical from
         MES_Frequency, with automatic fallback to manual if a product lacks historical records).</li>
       <li>Add operators in the <strong>Operators</strong> card: one at a time, or in bulk with a prefix and count (e.g.
-        <code>Opr_0001</code>). The number next to each name is that operator's forecast man occupation.</li>
+        <code>Opr_0001</code>). The number next to each name is that operator's forecast man occupation.
+      </li>
     </ol>
 
     <h3>Assign Selection</h3>
@@ -262,7 +265,8 @@
       </li>
       <li>Use <span class="ui">Export CSV</span>, edit in Excel, then <span class="ui">Import CSV</span>. The Multi Task
         and activity columns take operator names separated by <code>;</code>. Doff Priority takes <code>Yes</code>,
-        <code>No</code> or blank; Min Remain Task takes minutes or blank (blank = follow the setup).</li>
+        <code>No</code> or blank; Min Remain Task takes minutes or blank (blank = follow the setup).
+      </li>
     </ul>
 
     <h3>Running the simulation</h3>
@@ -278,7 +282,8 @@
       its Construction Detail with this setup's Shift &amp; Movement Settings (shift, breaks, RPC, walking speed,
       Task/Doff Priority, waiting model; the product's own Task/Doff Priority still wins), the Area's Default Layout (a
       stand-in grid when there is none) and Optimize Step-Up from Default Values. Changing a setting works it out again.
-      It is worked out in the background; click it for the breakdown per Construction Detail.</p>
+      It is worked out in the background; click it for the breakdown per Construction Detail.
+    </p>
   </section>
 
   <section>
@@ -305,7 +310,8 @@
       stay). Afterwards the log lists every item as Success or Failed with the reason — e.g. no Default Layout for the
       Area, missing spec in WL_Products, no or incomplete WL_Activities, more machines needed than the layout has — and
       can be exported to CSV. Unsaved edits on a row aren't used. Roughly 0.5–1 s per item, so 2000 items take about
-      20–40 minutes.</p>
+      20–40 minutes.
+    </p>
 
     <h3>MES_Frequency</h3>
     <p>Displays actual historical event rates (Fracture/Ton, Defect/Ton, Dies/Ton, and TonProduced) retrieved directly
@@ -327,7 +333,8 @@
       <li><strong>Summary KPIs</strong>: Tracks Total Produced (KG), Ton Produced, Quality A (KG), Reject (KG &amp; %),
         Doffed Spools, Effective Hours, Scheduled Hours, Overall Equipment Effectiveness (OEE % =
         <code>(EffectiveHours ÷ 60) ÷ ScheduledHours × 100</code>), Fracture/Ton (FR / T), Defect/Ton (DEF / T), and
-        Dies/Ton (DIES / T = <code>(DiesCount + HeadDiesCount) ÷ TonProduced</code>).</li>
+        Dies/Ton (DIES / T = <code>(DiesCount + HeadDiesCount) ÷ TonProduced</code>).
+      </li>
       <li><strong>Number of Wires (DimProduct[NumberOfWires])</strong>: The DAX query includes
         <code>DimProduct[NumberOfWires]</code> to precisely identify the wire count per product, which directly
         determines the spool weight: <code>Spool Weight (kg) = SpoolLength × LinearDensity × NoOfWires ÷ 1000</code>.
@@ -396,7 +403,8 @@
     <ul>
       <li><em>Default Frequency Source</em>: Initial frequency mode (Manual or Historical).</li>
       <li><em>Plant Name</em>: Target plant name filtered via <code>TREATAS</code> in the DAX query (e.g.,
-        <code>PTBI</code>).</li>
+        <code>PTBI</code>).
+      </li>
       <li><em>Date Range Filter</em>: Dynamic preset (Last 7 Days, Last 14 Days, or Last 30 Days) or Custom date pickers
         for Start Date &amp; End Date. These filters are passed automatically to the Power Automate flow during
         synchronization.</li>
@@ -413,7 +421,8 @@
       Machines are assigned from the top-left corner, two rows at a time whose Take Ups face each other, column by
       column (upper, then lower): 4 machines on rows 1001… / 2001… are 1001, 2001, 1002, 2002; when those two rows are
       full it carries on with the next facing pair. An Area with no default layout keeps the layout picked in the
-      simulator.</p>
+      simulator.
+    </p>
   </section>
 
   <section>
@@ -443,7 +452,8 @@
       <li><strong>Loading</strong> follows POlength in WL_Products when it's filled. Areas WW, BA, CA, IS, IP use
         weight-based Loading done at the Pay Off (can interrupt mid-runtime), while Area CR uses the same mid-runtime
         interrupt rule based on length in meters (<code>POlength1 / SpoolLength</code>, decimals including
-        <code>&lt; 1</code> allowed).</li>
+        <code>&lt; 1</code> allowed).
+      </li>
       <li>When <strong>Loading Partial1 and Partial2</strong> come due together, one Loading Partial3 replaces both.
       </li>
       <li>When a machine's Doffing and Loading belong to different operators, Loading waits until Doffing is done; that
@@ -524,7 +534,8 @@
     <p>When <strong>Yes</strong>: if the operator is working a machine and another machine needs Doffing while at least
       <em>Min Remain Task</em> minutes of the visit are left, that work is paused. The operator does all waiting
       Doffings (by Task Priority), then picks again by Task Priority. Paused work is judged by its remaining time and
-      resumes where it stopped. Doffing work itself is never paused.</p>
+      resumes where it stopped. Doffing work itself is never paused.
+    </p>
     <p>In Production Simulation each machine can have its own Doff Priority and Min Remain Task (in Assign Selection).
       The setting of the machine that <em>needs Doffing</em> is used; when it's blank, the setup's applies. A machine
       with Doff Priority No never interrupts other work and isn't put first.</p>

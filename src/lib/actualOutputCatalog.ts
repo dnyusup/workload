@@ -49,7 +49,7 @@ export interface ActualOutputRecord {
   defectPerTon: number | null; // totalDefect / tonProduced
   diesPerTon: number | null; // diesCount / tonProduced
 
-  raw: Record<string, any>;
+  raw: Record<string, unknown>;
 }
 
 export interface ActualOutputFilterParams {
@@ -137,29 +137,30 @@ SUMMARIZECOLUMNS(
 )`;
 }
 
-function getField(obj: any, ...keys: string[]): any {
+function getField(obj: unknown, ...keys: string[]): unknown {
   if (!obj || typeof obj !== 'object') return undefined;
+  const record = obj as Record<string, unknown>;
   for (const k of keys) {
-    if (obj[k] !== undefined && obj[k] !== null) return obj[k];
+    if (record[k] !== undefined && record[k] !== null) return record[k];
     const stripped = k.replace(/^\[|\]$/g, '').replace(/.*\[(.*)\]/, '$1');
-    if (obj[stripped] !== undefined && obj[stripped] !== null) return obj[stripped];
+    if (record[stripped] !== undefined && record[stripped] !== null) return record[stripped];
   }
   return undefined;
 }
 
-function parseNumber(val: any): number | null {
+function parseNumber(val: unknown): number | null {
   if (val === null || val === undefined || val === '') return null;
   const num = typeof val === 'number' ? val : Number(String(val).replace(/,/g, '').trim());
   return isNaN(num) ? null : num;
 }
 
-function cleanFloat(val: any, decimals = 2): number | null {
+function cleanFloat(val: unknown, decimals = 2): number | null {
   const n = parseNumber(val);
   if (n === null) return null;
   return Number(n.toFixed(decimals));
 }
 
-export function parseActualOutputRows(rawItems: any[]): ActualOutputRecord[] {
+export function parseActualOutputRows(rawItems: Record<string, unknown>[]): ActualOutputRecord[] {
   const records = rawItems.map((raw, index) => {
     const plantName = String(getField(raw, 'DimPlantRegion[PlantName]', '[DimPlantRegion].[PlantName]', 'PlantName') ?? '').trim();
     const date = String(getField(raw, 'DimDate[Date]', '[DimDate].[Date]', 'Date') ?? '').trim();
@@ -350,7 +351,7 @@ export async function loadActualOutputData(
   };
 
   console.log('[WL_ActualOutput] Sending parameters to flow:', payload);
-  const response = await WL_ActualOutputService.Run(payload as any);
+  const response = await WL_ActualOutputService.Run(payload as unknown as Parameters<typeof WL_ActualOutputService.Run>[0]);
   console.log('[WL_ActualOutput] Response from flow:', response);
 
   if (!response.success) {
@@ -365,7 +366,7 @@ export async function loadActualOutputData(
     return { records: [], daxQuery: generateActualOutputDax(params) };
   }
 
-  let parsed: any[] = [];
+  let parsed: Record<string, unknown>[] = [];
   if (typeof rawResult === 'string') {
     try {
       parsed = JSON.parse(rawResult);

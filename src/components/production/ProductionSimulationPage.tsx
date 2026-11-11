@@ -1082,7 +1082,10 @@ function ProductionSetupEditor({
     }
   };
 
-  const assignmentByMachine = new Map(setup.assignments.map((a) => [a.machineId, a]));
+  const assignmentByMachine = useMemo(
+    () => new Map(setup.assignments.map((a) => [a.machineId, a])),
+    [setup.assignments],
+  );
   const areaByConstructionId = new Map(
     products
       .filter((product) => product.mpp_wl_productsid && product.mpp_area)

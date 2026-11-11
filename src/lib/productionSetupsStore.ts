@@ -121,7 +121,7 @@ export async function listProductionSetupSummaries(): Promise<ProductionSetupSum
     updatedAt: row.modifiedon ? new Date(row.modifiedon).getTime() : Date.now(),
     createdAt: row.createdon ? new Date(row.createdon).getTime() : Date.now(),
     createdByEmail: row.mpp_creator_email ?? '',
-    createdByName: (row as any).createdbyname ?? '',
+    createdByName: (row as { createdbyname?: string }).createdbyname ?? '',
     sharedEmail: row.mpp_shared_email ?? '',
     sharedRole: row.mpp_shared_role ?? '',
   }));
@@ -196,7 +196,7 @@ export async function loadProductionSetup(id: string, constructionLabelById: Map
     frequencyEndDate: header.mpp_frequencyenddate ? header.mpp_frequencyenddate.slice(0, 10) : undefined,
     updatedAt: header.modifiedon ? new Date(header.modifiedon).getTime() : Date.now(),
     createdByEmail: header.mpp_creator_email ?? '',
-    createdByName: (header as any).createdbyname ?? '',
+    createdByName: (header as { createdbyname?: string }).createdbyname ?? '',
     sharedEmail: header.mpp_shared_email ?? '',
     sharedRole: header.mpp_shared_role ?? '',
   };
@@ -352,7 +352,10 @@ export async function updateProductionSetupHeader(
     fields.mpp_shared_role = patch.sharedRole || null;
   }
   if (Object.keys(fields).length === 0) return;
-  const result = await Mpp_wl_productionsetupsesService.update(id, fields as any);
+  const result = await Mpp_wl_productionsetupsesService.update(
+    id,
+    fields as unknown as Parameters<typeof Mpp_wl_productionsetupsesService.update>[1],
+  );
   if (!result.success) throw new Error(result.error?.message ?? 'Failed to update Production Setup.');
 }
 

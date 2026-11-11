@@ -390,8 +390,8 @@ export function ProductsManager({
     if (!sortLevels.length) return filtered;
     return [...filtered].sort((a, b) => {
       for (const { key, dir } of sortLevels) {
-        let av: any;
-        let bv: any;
+        let av: unknown;
+        let bv: unknown;
         if (key === 'hist_fractureperton' || key === 'hist_dieston' || key === 'hist_defectston') {
           const itemA = lookupHistoricalFrequency(
             freqCatalog,

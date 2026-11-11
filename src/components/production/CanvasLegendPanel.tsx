@@ -33,11 +33,14 @@ export function CanvasLegendPanel({
   const rootRef = useRef<HTMLDivElement>(null);
   const resizeRef = useRef<{ startX: number; startWidth: number; maxWidth: number } | null>(null);
 
-  const tabs: { key: LegendTab; label: string; search: string; entries: LegendEntry[] }[] = [
-    { key: 'construction', label: 'Construction', search: 'Search Construction…', entries: constructionEntries },
-    { key: 'operator', label: 'Operator', search: 'Search Operator…', entries: operatorEntries },
-    { key: 'group', label: 'Machine Group', search: 'Search Machine Group…', entries: groupEntries },
-  ];
+  const tabs = useMemo<{ key: LegendTab; label: string; search: string; entries: LegendEntry[] }[]>(
+    () => [
+      { key: 'construction', label: 'Construction', search: 'Search Construction…', entries: constructionEntries },
+      { key: 'operator', label: 'Operator', search: 'Search Operator…', entries: operatorEntries },
+      { key: 'group', label: 'Machine Group', search: 'Search Machine Group…', entries: groupEntries },
+    ],
+    [constructionEntries, operatorEntries, groupEntries],
+  );
   const activeTab = tabs.find((t) => t.key === tab) ?? tabs[0];
   const entries = activeTab.entries;
   const filtered = useMemo(() => {
