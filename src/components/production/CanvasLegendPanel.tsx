@@ -176,12 +176,12 @@ export function CanvasLegendPanel({
                 {activeTab.entries.some((e) => e.subDetail) && (
                   <span
                     style={{ minWidth: '42px', textAlign: 'right', color: '#94a3b8' }}
-                    title="Ideal Demand Man Occupation"
+                    title="Theoretical Operator Required"
                   >
-                    Ideal
+                    #Opr
                   </span>
                 )}
-                <span style={{ minWidth: '22px', textAlign: 'right', color: '#94a3b8' }} title="Machine count">
+                <span style={{ minWidth: '28px', textAlign: 'right', color: '#94a3b8' }} title="Machine count">
                   Mach
                 </span>
               </li>
@@ -202,7 +202,7 @@ export function CanvasLegendPanel({
                   </span>
                 )}
                 {entry.subDetail && (
-                  <span className="canvas-legend-subdetail" title="Ideal Demand Man Occ">
+                  <span className="canvas-legend-subdetail" title="Theoretical Operator Required">
                     {entry.subDetail}
                   </span>
                 )}

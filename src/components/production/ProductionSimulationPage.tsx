@@ -62,7 +62,7 @@ import {
   MachineAssignmentsTable,
   type MachineAssignmentsGroupBy,
 } from './MachineAssignmentsTable';
-import { buildCanvasLegendData, type LegendHover } from '../../lib/canvasLegend';
+import { buildCanvasLegendData, NO_ASSIGNMENT_LEGEND_ID, type LegendHover } from '../../lib/canvasLegend';
 import {
   operatorAssignmentLines,
   TASK_OPERATOR_FIELDS,
@@ -74,6 +74,7 @@ import { loadDefaultValuesOrBuiltIn } from '../../lib/defaultValuesStore';
 import { useAppConfig } from '../../context/appConfig';
 import { useOptimizedMachineCounts, type OptimizedCount } from '../../hooks/useOptimizedMachineCounts';
 import {
+  calculateOperatorTheoreticalOperators,
   calculateTheoreticalActivityBreakdown,
   setupOperatorSettings,
   theoreticalOperators,
@@ -1303,17 +1304,36 @@ function ProductionSetupEditor({
   });
   const [legendHover, setLegendHover] = useState<LegendHover>(null);
   const highlightedMachineIds = legendData.highlightFor(legendHover);
+  const operatorTheoreticalRequired = useMemo(
+    () =>
+      calculateOperatorTheoreticalOperators({
+        setup,
+        resolvedConstructions,
+        counts: optimizedCounts.counts,
+        assignmentByMachine,
+      }),
+    [setup, resolvedConstructions, optimizedCounts.counts, assignmentByMachine],
+  );
   const canvasLegend = (
     <CanvasLegendPanel
       constructionEntries={legendData.constructionEntries}
       operatorEntries={legendData.operatorEntries.map((entry) => {
         const opUtil = operatorUtilizationFor(entry.id);
         const forecast = opUtil?.forecastUtilizationPercent;
-        const ideal = opUtil?.utilizationPercent;
+        const isRealOperator = entry.id !== NO_ASSIGNMENT_LEGEND_ID;
+        const required = isRealOperator ? operatorTheoreticalRequired.get(entry.id) : undefined;
+        const subDetail =
+          !isRealOperator || !resolvedConstructions
+            ? undefined
+            : required !== undefined
+              ? required.toFixed(2)
+              : optimizedCounts.error
+                ? '—'
+                : '…';
         return {
           ...entry,
           detail: forecast === undefined ? undefined : `${forecast.toFixed(1)}%`,
-          subDetail: ideal === undefined ? undefined : `${ideal.toFixed(1)}%`,
+          subDetail,
         };
       })}
       groupEntries={legendData.groupEntries}
@@ -1337,6 +1357,7 @@ function ProductionSetupEditor({
     () => setup.assignments.filter((a) => a.constructionDetailId).map((a) => a.machineId),
     [setup.assignments],
   );
+  const plannedMachineIdSet = useMemo(() => new Set(allPlannedMachineIds), [allPlannedMachineIds]);
 
   const overallActivityBreakdown = useMemo(() => {
     if (!resolvedConstructions || allPlannedMachineIds.length === 0) return null;
@@ -1937,6 +1958,7 @@ function ProductionSetupEditor({
     key,
     title,
     occupation,
+    theoreticalOperators: theoreticalOpr,
     ids,
     setIds,
     excluded,
@@ -1949,6 +1971,7 @@ function ProductionSetupEditor({
     key: string;
     title: string;
     occupation: SelectionOccupation['allTask'] | undefined;
+    theoreticalOperators: number | undefined;
     ids: string[];
     setIds: (ids: string[]) => void;
     excluded: Set<string>;
@@ -1964,12 +1987,22 @@ function ProductionSetupEditor({
         {occupation && occupation.plannedMinutes > 0 && selectionOccupation && (
           <span
             className="production-assign-task-occupation"
-            title={`Man occupation of 1 operator doing this on the selection: ${occupation.plannedMinutes.toFixed(1)} min ideal demand of ${selectionOccupation.availableMinutes.toFixed(1)} min net available`}
+            title={`Man occupation of 1 operator doing this on the selection (${occupation.forecastUtilizationPercent.toFixed(2)}% forecast)${
+              theoreticalOpr !== undefined ? ` · Theoretical Operator Required: ${theoreticalOpr.toFixed(2)} #Opr` : ''
+            }`}
           >
             <span className={`planned-utilization-status planned-utilization-status-${occupationStatus(occupation.forecastUtilizationPercent)}`}>
               {occupation.forecastUtilizationPercent.toFixed(2)}%
             </span>
-            <span className="selection-occupation-ideal">ideal {occupation.utilizationPercent.toFixed(2)}%</span>
+            {theoreticalOpr !== undefined ? (
+              <span className="selection-occupation-opr" title="Theoretical Operator Required">
+                #Opr {theoreticalOpr.toFixed(2)}
+              </span>
+            ) : !optimizedCounts.error && (optimizedCounts.loading || selectionActivityBreakdown?.allTask.operators === undefined) ? (
+              <span className="selection-occupation-opr" title="Calculating Theoretical Operator Required">
+                #Opr …
+              </span>
+            ) : null}
           </span>
         )}
       </div>
@@ -2018,6 +2051,7 @@ function ProductionSetupEditor({
           key: 'multi',
           title: 'Multi Task',
           occupation: selectionOccupation?.allTask,
+          theoreticalOperators: selectionActivityBreakdown?.allTask.operators,
           ids: bulkMultiTaskIds,
           setIds: setBulkMultiTaskIds,
           excluded: selectionTaskIds,
@@ -2032,6 +2066,7 @@ function ProductionSetupEditor({
             key: family,
             title: TASK_OPERATOR_LABELS[family],
             occupation: selectionOccupation?.activities.find((row) => row.key === family),
+            theoreticalOperators: selectionActivityBreakdown?.activities.find((row) => row.key === family)?.operators,
             ids: bulkTaskIds[family],
             setIds: (ids) => setBulkTaskIds((prev) => ({ ...prev, [family]: ids })),
             excluded: selectionMultiTaskIds,
@@ -2553,6 +2588,7 @@ function ProductionSetupEditor({
         selectMachineGroups={false}
         onSelectionChange={setSelectedMachineIds}
         selectBoxDetails={selectBoxDetails}
+        plannedMachineIds={plannedMachineIdSet}
         machineAppearance={machineAppearance}
         toolbarStart={canvasViewSelect}
         selectionPanel={assignSelectionCard}

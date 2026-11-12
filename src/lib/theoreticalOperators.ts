@@ -10,6 +10,11 @@ import { productOperatorSettings } from './productCatalog';
 import { recommendedMachineCountForForecast } from './singleOperatorUtilization';
 import type { HistoricalFrequencyMap } from './frequencyCatalog';
 import { calculateSelectionOccupation } from './productionUtilization';
+import {
+  machineOperatorIds,
+  operatorSharesForActivity,
+  type ProductionActivityFamily,
+} from './productionActivityRouting';
 import type { ResolvedConstruction } from './productionConstructionResolver';
 
 /** What the Work Load Simulator's setup for a Construction Detail is built from. */
@@ -232,6 +237,23 @@ export interface TheoreticalActivityBreakdown {
 }
 
 /**
+ * Returns each active activity family's share of total ideal handling time on a single machine of a
+ * Construction Detail (shares are invariant across identical machines of the same Construction Detail).
+ */
+function constructionActivityShares(
+  setup: ProductionSetup,
+  resolvedConstructions: Map<string, ResolvedConstruction>,
+  sampleMachineId: string,
+): { family: ProductionActivityFamily; share: number }[] {
+  const rows = calculateSelectionOccupation(setup, resolvedConstructions, [sampleMachineId]).activities.filter(
+    (a) => a.plannedMinutes > 0,
+  );
+  const planned = rows.reduce((sum, a) => sum + a.plannedMinutes, 0);
+  if (planned <= 0) return [];
+  return rows.map((a) => ({ family: a.key as ProductionActivityFamily, share: a.plannedMinutes / planned }));
+}
+
+/**
  * Calculates theoretical operator required per activity family (Doffing, Loading, Fracture Repairing, etc.)
  * by splitting each Construction Detail's operators according to its activities' share of ideal handling time.
  */
@@ -266,13 +288,8 @@ export function calculateTheoreticalActivityBreakdown({
         (id) => map.get(id)?.constructionDetailId === row.productId,
       );
       if (machinesOfConstruction.length === 0) return;
-      const rows = calculateSelectionOccupation(setup, resolvedConstructions, machinesOfConstruction).activities.filter(
-        (a) => a.plannedMinutes > 0,
-      );
-      const planned = rows.reduce((sum, a) => sum + a.plannedMinutes, 0);
-      if (planned <= 0) return;
-      rows.forEach((a) =>
-        requiredByActivity.set(a.key, (requiredByActivity.get(a.key) ?? 0) + (row.operators * a.plannedMinutes) / planned),
+      constructionActivityShares(setup, resolvedConstructions, machinesOfConstruction[0]).forEach(({ family, share }) =>
+        requiredByActivity.set(family, (requiredByActivity.get(family) ?? 0) + row.operators * share),
       );
     });
   }
@@ -297,5 +314,73 @@ export function calculateTheoreticalActivityBreakdown({
         operators: requiredByActivity.get(row.key),
       })),
   };
+}
+
+/**
+ * Calculates Theoretical Operator Required (#Opr) per operator in `setup.operators` from their
+ * Multi Task and Split Task assignments across machines. Returns `undefined` for an operator
+ * whenever any Construction Detail on their assigned machines is still pending in `counts`.
+ */
+export function calculateOperatorTheoreticalOperators({
+  setup,
+  resolvedConstructions,
+  counts,
+  assignmentByMachine,
+}: {
+  setup: ProductionSetup;
+  resolvedConstructions: Map<string, ResolvedConstruction> | null;
+  counts: ReadonlyMap<string, { machinesPerOperator: number }>;
+  assignmentByMachine?: Map<string, ProductionMachineAssignment>;
+}): Map<string, number | undefined> {
+  const result = new Map<string, number | undefined>();
+  if (!resolvedConstructions) return result;
+
+  const setupOperatorIds = new Set(setup.operators.map((o) => o.id));
+  const totals = new Map<string, number>(setup.operators.map((o) => [o.id, 0]));
+  const blocked = new Set<string>();
+  const map = assignmentByMachine ?? new Map(setup.assignments.map((a) => [a.machineId, a]));
+  const weightsByProduct = new Map<string, { family: ProductionActivityFamily; weight: number }[] | 'pending'>();
+
+  setup.layout.forEach((machine) => {
+    const assignment = map.get(machine.id);
+    const productId = assignment?.constructionDetailId;
+    if (!productId) return;
+
+    let weights = weightsByProduct.get(productId);
+    if (weights === undefined) {
+      const count = counts.get(productId);
+      if (!count) {
+        weights = 'pending';
+      } else if (count.machinesPerOperator <= 0 || !resolvedConstructions.get(productId)) {
+        weights = [];
+      } else {
+        const perMachine = 1 / count.machinesPerOperator;
+        weights = constructionActivityShares(setup, resolvedConstructions, machine.id).map(({ family, share }) => ({
+          family,
+          weight: perMachine * share,
+        }));
+      }
+      weightsByProduct.set(productId, weights);
+    }
+
+    if (weights === 'pending') {
+      machineOperatorIds(assignment).forEach((opId) => {
+        if (setupOperatorIds.has(opId)) blocked.add(opId);
+      });
+      return;
+    }
+
+    weights.forEach(({ family, weight }) => {
+      operatorSharesForActivity(assignment, family).forEach(({ operatorId, share }) => {
+        if (!setupOperatorIds.has(operatorId)) return;
+        totals.set(operatorId, (totals.get(operatorId) ?? 0) + weight * share);
+      });
+    });
+  });
+
+  setup.operators.forEach((o) => {
+    result.set(o.id, blocked.has(o.id) ? undefined : (totals.get(o.id) ?? 0));
+  });
+  return result;
 }
 

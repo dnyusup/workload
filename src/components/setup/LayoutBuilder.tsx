@@ -320,7 +320,7 @@ function SelectCountBadge({
   details?: string[];
 }) {
   const longest = Math.max(text.length, ...details.map((line) => line.length));
-  const width = Math.max(64, longest * 7 + 16);
+  const width = Math.max(64, longest * 7 + 20);
   const height = details.length === 0 ? 22 : 22 + details.length * SELECT_BADGE_LINE_HEIGHT + 4;
   const x = anchor.x + 14 + width > viewSize.width ? anchor.x - 14 - width : anchor.x + 14;
   const y = anchor.y + 14 + height > viewSize.height ? anchor.y - 14 - height : anchor.y + 14;
@@ -349,6 +349,7 @@ export function LayoutBuilder({
   selectMachineGroups = true,
   onSelectionChange,
   selectBoxDetails,
+  plannedMachineIds,
   machineAppearance,
   sidePanel,
   selectionPanel,
@@ -388,6 +389,9 @@ export function LayoutBuilder({
   /** Extra lines under the live machine count while box-selecting, computed from the machines the
    * selection would hold on release (e.g. Production Setup's realtime man occupation). */
   selectBoxDetails?: (machineIds: string[]) => string[];
+  /** Optional set of machine ids that already have a Construction assigned ("Planned") — when
+   * provided, the box-selection header also displays how many selected machines are planned. */
+  plannedMachineIds?: ReadonlySet<string>;
   /** Optional per-machine visual overlay — used by Production Simulation to show planning status
    * (unplanned/planned/fully assigned), a unique border color per Construction, and a hover
    * tooltip with Construction + assigned operators. Omit for plain layout editing, where machines
@@ -1347,8 +1351,26 @@ export function LayoutBuilder({
     const hits = machinesInSelectBox(drag.startVb, drag.currentVb);
     const resulting = drag.rightClick ? hits : new Set([...selectedIds, ...hits]);
     const details = selectBoxDetails && resulting.size > 0 ? selectBoxDetails(Array.from(resulting)) : [];
-    if (drag.rightClick) return { text: `${hits.size} machine${hits.size === 1 ? '' : 's'}`, details };
-    return { text: `+${hits.size} → ${resulting.size} selected`, details };
+    const plannedCount = plannedMachineIds
+      ? [...resulting].reduce((count, id) => (plannedMachineIds.has(id) ? count + 1 : count), 0)
+      : undefined;
+    const formatCount = (n: number) => `${n} Machine${n === 1 ? '' : 's'}`;
+    if (drag.rightClick) {
+      return {
+        text:
+          plannedCount !== undefined
+            ? `${formatCount(hits.size)} - ${formatCount(plannedCount)} Planned`
+            : `${hits.size} machine${hits.size === 1 ? '' : 's'}`,
+        details,
+      };
+    }
+    return {
+      text:
+        plannedCount !== undefined
+          ? `+${hits.size} → ${formatCount(resulting.size)} - ${formatCount(plannedCount)} Planned`
+          : `+${hits.size} → ${resulting.size} selected`,
+      details,
+    };
   })();
 
   const soleSelected = selectedIds.size === 1 ? layout.find((m) => selectedIds.has(m.id)) : undefined;

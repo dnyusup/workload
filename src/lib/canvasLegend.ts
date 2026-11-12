@@ -12,7 +12,7 @@ export interface LegendEntry {
   count: number;
   /** Optional extra value shown before the count (e.g. an operator's forecast man occupation). */
   detail?: string;
-  /** Optional secondary value shown before the count (e.g. an operator's ideal demand man occupation). */
+  /** Optional secondary value shown before the count (e.g. an operator's theoretical operator required (#Opr)). */
   subDetail?: string;
 }
 
