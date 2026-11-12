@@ -995,30 +995,28 @@
   align-items: center;
   gap: 4px;
   min-width: 0;
+  white-space: nowrap;
 }
 
 .field-reset-btn {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  padding: 1px 6px;
-  border-radius: 5px;
-  border: 1px solid #334155;
-  background: #0f172a;
+  justify-content: center;
+  width: 20px;
+  height: 18px;
+  padding: 0;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
   color: #94a3b8;
-  font-size: 0.7rem;
-  font-weight: 500;
-  line-height: 1.4;
   cursor: pointer;
-  white-space: nowrap;
   flex-shrink: 0;
-  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  transition: color 0.15s ease, background 0.15s ease;
 }
 
 .field-reset-btn:hover:not(:disabled) {
   color: #38bdf8;
-  border-color: #38bdf8;
-  background: rgba(56, 189, 248, 0.12);
+  background: rgba(56, 189, 248, 0.15);
 }
 
 .field-reset-btn:disabled {
