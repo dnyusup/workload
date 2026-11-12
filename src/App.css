@@ -3515,6 +3515,12 @@
   font-size: 0.8rem;
 }
 
+.toolbar-export-btn {
+  padding: 6px 10px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
 /* Floating content inside the Layout Builder canvas (selection panel, legend overlay). */
 .layout-canvas-overlay {
   position: absolute;

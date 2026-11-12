@@ -80,6 +80,7 @@ import {
   theoreticalOperators,
 } from '../../lib/theoreticalOperators';
 import { TheoreticalOperatorsBadge } from './TheoreticalOperatorsBadge';
+import { downloadLayoutMappingExcel } from '../../lib/exportLayoutExcel';
 
 const TASK_PRIORITY_OPTIONS: { value: TaskPriorityMode; label: string }[] = [
   { value: 'nearest', label: 'Nearest Task' },
@@ -1118,6 +1119,7 @@ function ProductionSetupEditor({
   const [autoAssignScope, setAutoAssignScope] = useState<'selection' | 'all'>('selection');
   const [confirmDeleteAllOpen, setConfirmDeleteAllOpen] = useState(false);
   const [deletingAllOperators, setDeletingAllOperators] = useState(false);
+  const [exportingExcel, setExportingExcel] = useState(false);
   const [plannedUtilizationFullscreen, setPlannedUtilizationFullscreen] = useState(false);
   const plannedUtilizationPanelRef = useRef<HTMLDivElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -1425,17 +1427,50 @@ function ProductionSetupEditor({
     />
   );
 
+  const handleDownloadExcel = async () => {
+    if (exportingExcel || setup.layout.length === 0) return;
+    setExportingExcel(true);
+    setActionError(null);
+    try {
+      const theoreticalTotal =
+        !optimizedCounts.error && operatorRequirement.pending === 0 && !optimizedCounts.loading
+          ? operatorRequirement.total
+          : null;
+      await downloadLayoutMappingExcel({
+        setup,
+        areaByConstructionId,
+        productIdsInOrder: products.map((p) => p.mpp_wl_productsid),
+        theoreticalTotal,
+      });
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to export layout Excel.');
+    } finally {
+      setExportingExcel(false);
+    }
+  };
+
   const canvasViewSelect = (
-    <select
-      className="input toolbar-view-select"
-      value={canvasView}
-      onChange={(e) => changeCanvasView(e.target.value as CanvasViewMode)}
-      title="Color machines by Construction Detail or by assigned operators"
-      aria-label="Canvas view"
-    >
-      <option value="construction">Construction Detail View</option>
-      <option value="operator">Operator View</option>
-    </select>
+    <>
+      <Button
+        variant="secondary"
+        className="toolbar-export-btn"
+        onClick={() => void handleDownloadExcel()}
+        disabled={exportingExcel || setup.layout.length === 0}
+        title="Download Machine Layout mapping as formatted Excel (.xlsx)"
+      >
+        {exportingExcel ? 'Exporting…' : '📥 Download Excel'}
+      </Button>
+      <select
+        className="input toolbar-view-select"
+        value={canvasView}
+        onChange={(e) => changeCanvasView(e.target.value as CanvasViewMode)}
+        title="Color machines by Construction Detail or by assigned operators"
+        aria-label="Canvas view"
+      >
+        <option value="construction">Construction Detail View</option>
+        <option value="operator">Operator View</option>
+      </select>
+    </>
   );
 
   /** Applies a patch to the selected machines both locally (optimistic) and in Dataverse — every
