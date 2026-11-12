@@ -9,8 +9,9 @@ import { useAppConfig } from '../../context/appConfig';
 import { fetchAllPages } from '../../lib/dataversePaging';
 import { loadDefaultLayoutsOrNone, loadDefaultValuesOrBuiltIn } from '../../lib/defaultValuesStore';
 import { loadSavedLayouts } from '../../lib/savedLayoutsStore';
-import { applyFrequencyModeToConfig, buildConstructionConfig, withOptimizedAssignment } from '../../lib/constructionConfig';
+import { applyFrequencyModeToConfig, applyPoLengthCrSourceToConfig, buildConstructionConfig, withOptimizedAssignment } from '../../lib/constructionConfig';
 import { loadFrequencyCatalog, lookupHistoricalFrequency, computeFrequencyDateRange, type HistoricalFrequencyMap } from '../../lib/frequencyCatalog';
+import { loadRejectShortData, lookupHistoricalRejectShort, type HistoricalRejectShortMap } from '../../lib/rejectShortCatalog';
 import type { AppConfig, FrequencyMode } from '../../types';
 import { Card } from '../ui/Card';
 import { SearchableSelect } from '../ui/SearchableSelect';
@@ -46,8 +47,11 @@ export function ConstructionDetailSelector({
   const [detailRow, setDetailRow] = useState<Mpp_wl_outputmodelses | null>(null);
   const [freqCatalog, setFreqCatalog] = useState<HistoricalFrequencyMap | null>(null);
   const [loadingCatalog, setLoadingCatalog] = useState(false);
+  const [rejectShortCatalog, setRejectShortCatalog] = useState<HistoricalRejectShortMap | null>(null);
+  const [loadingRejectCatalog, setLoadingRejectCatalog] = useState(false);
 
   const frequencyMode: FrequencyMode = config.frequencyMode ?? 'manual';
+  const poLengthCrSource: FrequencyMode = config.poLengthCrSource ?? 'manual';
 
   useEffect(() => {
     let cancelled = false;
@@ -64,22 +68,66 @@ export function ConstructionDetailSelector({
   }, []);
 
   useEffect(() => {
-    if (config.frequencyMode === undefined || !config.frequencyStartDate || !config.frequencyEndDate) {
+    const currentProduct = products.find((p) => p.mpp_wl_productsid === config.selectedProductId);
+    const currentAreaCr =
+      Boolean(currentProduct) && (currentProduct?.mpp_area ?? config.spec.area ?? '').trim().toUpperCase() === 'CR';
+    if (poLengthCrSource !== 'historical' || !currentAreaCr) return;
+    let cancelled = false;
+    loadRejectShortData({
+      startDate: config.poLengthCrStartDate,
+      endDate: config.poLengthCrEndDate,
+    })
+      .then(({ catalog }) => {
+        if (!cancelled) setRejectShortCatalog(catalog);
+      })
+      .catch((err) => {
+        console.warn('Background load of MES_RejectShort catalog:', err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [poLengthCrSource, config.poLengthCrStartDate, config.poLengthCrEndDate, config.selectedProductId, config.spec.area, products]);
+
+  useEffect(() => {
+    if (
+      config.frequencyMode === undefined ||
+      !config.frequencyStartDate ||
+      !config.frequencyEndDate ||
+      config.poLengthCrSource === undefined ||
+      !config.poLengthCrStartDate ||
+      !config.poLengthCrEndDate
+    ) {
       void loadDefaultValuesOrBuiltIn().then((defaults) => {
         const defaultRange = computeFrequencyDateRange(
           defaults.frequencyDateRangeType,
           defaults.frequencyStartDate,
           defaults.frequencyEndDate,
         );
+        const defaultCrRange = computeFrequencyDateRange(
+          defaults.rejectShortDateRangeType,
+          defaults.rejectShortStartDate,
+          defaults.rejectShortEndDate,
+        );
         setConfig((prev) => ({
           ...prev,
           frequencyMode: prev.frequencyMode ?? defaults.frequencyMode ?? 'manual',
           frequencyStartDate: prev.frequencyStartDate || defaultRange.startDate,
           frequencyEndDate: prev.frequencyEndDate || defaultRange.endDate,
+          poLengthCrSource: prev.poLengthCrSource ?? defaults.poLengthCrSource ?? 'manual',
+          poLengthCrStartDate: prev.poLengthCrStartDate || defaultCrRange.startDate,
+          poLengthCrEndDate: prev.poLengthCrEndDate || defaultCrRange.endDate,
         }));
       });
     }
-  }, [config.frequencyMode, config.frequencyStartDate, config.frequencyEndDate, setConfig]);
+  }, [
+    config.frequencyMode,
+    config.frequencyStartDate,
+    config.frequencyEndDate,
+    config.poLengthCrSource,
+    config.poLengthCrStartDate,
+    config.poLengthCrEndDate,
+    setConfig,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -148,6 +196,17 @@ export function ConstructionDetailSelector({
       selectedProduct.mpp_tensilegroup,
     );
   }, [selectedProduct, freqCatalog]);
+
+  const isSelectedAreaCr = Boolean(selectedProduct) && (selectedProduct?.mpp_area ?? config.spec.area ?? '').trim().toUpperCase() === 'CR';
+  const matchedHistoricalRejectShort = useMemo(() => {
+    if (!selectedProduct || !isSelectedAreaCr) return null;
+    return lookupHistoricalRejectShort(
+      rejectShortCatalog,
+      selectedProduct.mpp_productspecification,
+      selectedProduct.mpp_laylength,
+      selectedProduct.mpp_tensilegroup,
+    );
+  }, [selectedProduct, isSelectedAreaCr, rejectShortCatalog]);
 
   const handleFrequencyModeChange = async (newMode: FrequencyMode) => {
     if (newMode === frequencyMode) return;
@@ -293,6 +352,152 @@ export function ConstructionDetailSelector({
     }
   };
 
+  const handlePoLengthCrSourceChange = async (newMode: FrequencyMode) => {
+    if (newMode === poLengthCrSource) return;
+    let catalog = rejectShortCatalog;
+    let startDate = config.poLengthCrStartDate;
+    let endDate = config.poLengthCrEndDate;
+    const defaults = await loadDefaultValuesOrBuiltIn();
+
+    if (newMode === 'historical') {
+      if (!startDate || !endDate) {
+        const defaultRange = computeFrequencyDateRange(
+          defaults.rejectShortDateRangeType,
+          defaults.rejectShortStartDate,
+          defaults.rejectShortEndDate,
+        );
+        startDate = startDate || defaultRange.startDate;
+        endDate = endDate || defaultRange.endDate;
+      }
+      setLoadingRejectCatalog(true);
+      try {
+        const res = await loadRejectShortData({ startDate, endDate });
+        catalog = res.catalog;
+        setRejectShortCatalog(catalog);
+      } catch (err) {
+        console.warn('Failed to load MES_RejectShort catalog:', err);
+      } finally {
+        setLoadingRejectCatalog(false);
+      }
+    }
+
+    if (selectedProduct) {
+      const updated = applyPoLengthCrSourceToConfig({
+        config: {
+          ...config,
+          poLengthCrSource: newMode,
+          poLengthCrStartDate: startDate,
+          poLengthCrEndDate: endDate,
+        },
+        product: selectedProduct,
+        mode: newMode,
+        catalog,
+        defaults,
+      });
+      const optimized = withOptimizedAssignment(updated);
+      setConfig(() => optimized);
+      onApplied?.(optimized);
+    } else {
+      setConfig((prev) => ({
+        ...prev,
+        poLengthCrSource: newMode,
+        poLengthCrStartDate: startDate,
+        poLengthCrEndDate: endDate,
+      }));
+    }
+  };
+
+  const handlePoLengthCrDateChange = async (field: 'poLengthCrStartDate' | 'poLengthCrEndDate', value: string) => {
+    const nextStart = field === 'poLengthCrStartDate' ? value : (config.poLengthCrStartDate ?? '');
+    const nextEnd = field === 'poLengthCrEndDate' ? value : (config.poLengthCrEndDate ?? '');
+
+    setConfig((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+
+    if (
+      poLengthCrSource === 'historical' &&
+      nextStart &&
+      nextEnd &&
+      /^\d{4}-\d{2}-\d{2}$/.test(nextStart) &&
+      /^\d{4}-\d{2}-\d{2}$/.test(nextEnd)
+    ) {
+      setLoadingRejectCatalog(true);
+      try {
+        const [res, defaults] = await Promise.all([
+          loadRejectShortData({ startDate: nextStart, endDate: nextEnd }),
+          loadDefaultValuesOrBuiltIn(),
+        ]);
+        setRejectShortCatalog(res.catalog);
+        if (selectedProduct) {
+          setConfig((prev) => {
+            const updated = applyPoLengthCrSourceToConfig({
+              config: {
+                ...prev,
+                poLengthCrStartDate: nextStart,
+                poLengthCrEndDate: nextEnd,
+              },
+              product: selectedProduct,
+              mode: 'historical',
+              catalog: res.catalog,
+              defaults,
+            });
+            const optimized = withOptimizedAssignment(updated);
+            onApplied?.(optimized);
+            return optimized;
+          });
+        }
+      } catch (err) {
+        console.warn('Failed to load MES_RejectShort catalog for updated dates:', err);
+      } finally {
+        setLoadingRejectCatalog(false);
+      }
+    }
+  };
+
+  const handleResetCrDateRange = async () => {
+    setLoadingRejectCatalog(true);
+    try {
+      const defaults = await loadDefaultValuesOrBuiltIn();
+      const defaultRange = computeFrequencyDateRange(
+        defaults.rejectShortDateRangeType,
+        defaults.rejectShortStartDate,
+        defaults.rejectShortEndDate,
+      );
+      const nextStart = defaultRange.startDate;
+      const nextEnd = defaultRange.endDate;
+
+      const res = await loadRejectShortData({ startDate: nextStart, endDate: nextEnd });
+      setRejectShortCatalog(res.catalog);
+
+      setConfig((prev) => {
+        const withDates: AppConfig = {
+          ...prev,
+          poLengthCrStartDate: nextStart,
+          poLengthCrEndDate: nextEnd,
+        };
+        if (selectedProduct) {
+          const updated = applyPoLengthCrSourceToConfig({
+            config: withDates,
+            product: selectedProduct,
+            mode: 'historical',
+            catalog: res.catalog,
+            defaults,
+          });
+          const optimized = withOptimizedAssignment(updated);
+          onApplied?.(optimized);
+          return optimized;
+        }
+        return withDates;
+      });
+    } catch (err) {
+      console.warn('Failed to reset to default Reject Short date range:', err);
+    } finally {
+      setLoadingRejectCatalog(false);
+    }
+  };
+
   const [filters, setFilters] = useState<Record<FilterKey, string>>({ area: '', mach: '', product: '' });
 
   // Each filter's options are narrowed by the OTHER filters (so every filter affects every other
@@ -365,6 +570,20 @@ export function ConstructionDetailSelector({
         }
       }
 
+      let crCatalog = rejectShortCatalog;
+      if (poLengthCrSource === 'historical' && area === 'CR') {
+        try {
+          const res = await loadRejectShortData({
+            startDate: config.poLengthCrStartDate,
+            endDate: config.poLengthCrEndDate,
+          });
+          crCatalog = res.catalog;
+          setRejectShortCatalog(crCatalog);
+        } catch {
+          // fallback to null
+        }
+      }
+
       const built = buildConstructionConfig({
         base: config,
         product,
@@ -373,6 +592,8 @@ export function ConstructionDetailSelector({
         layout: await defaultLayoutPromise,
         frequencyMode,
         frequencyCatalog: catalog,
+        poLengthCrSource,
+        rejectShortCatalog: crCatalog,
       });
       if (built.errors.length > 0) {
         setError(built.errors.join(' '));
@@ -524,6 +745,89 @@ export function ConstructionDetailSelector({
           </div>
         )}
       </div>
+
+      {isSelectedAreaCr && (
+        <div className="construction-selector-freq-bar">
+          <div className="construction-selector-freq-control">
+            <span className="field-label">PO Length CR Source:</span>
+            <div className="segmented-control">
+              <button
+                type="button"
+                className={`segmented-button ${poLengthCrSource === 'manual' ? 'active' : ''}`}
+                onClick={() => void handlePoLengthCrSourceChange('manual')}
+                disabled={loadingProducts || applying || loadingRejectCatalog}
+              >
+                Manual (WL_Products)
+              </button>
+              <button
+                type="button"
+                className={`segmented-button ${poLengthCrSource === 'historical' ? 'active' : ''}`}
+                onClick={() => void handlePoLengthCrSourceChange('historical')}
+                disabled={loadingProducts || applying || loadingRejectCatalog}
+              >
+                Historical (MES RejectShort)
+              </button>
+            </div>
+
+            {poLengthCrSource === 'historical' && (
+              <div className="construction-selector-date-range">
+                <span className="construction-selector-date-label">Range:</span>
+                <DateInput
+                  value={config.poLengthCrStartDate ?? ''}
+                  onChange={(v) => void handlePoLengthCrDateChange('poLengthCrStartDate', v)}
+                  disabled={loadingRejectCatalog || applying}
+                  className="construction-selector-date-input"
+                />
+                <span className="construction-selector-date-sep">to</span>
+                <DateInput
+                  value={config.poLengthCrEndDate ?? ''}
+                  onChange={(v) => void handlePoLengthCrDateChange('poLengthCrEndDate', v)}
+                  disabled={loadingRejectCatalog || applying}
+                  className="construction-selector-date-input"
+                />
+                <button
+                  type="button"
+                  className="construction-selector-date-reset"
+                  title="Reset to default Reject Short date range from Settings"
+                  aria-label="Reset to default Reject Short date range from Settings"
+                  disabled={loadingRejectCatalog || applying}
+                  onClick={() => void handleResetCrDateRange()}
+                >
+                  <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                    <path d="M3 3v5h5" />
+                  </svg>
+                </button>
+              </div>
+            )}
+
+            {loadingRejectCatalog && <span className="construction-selector-status">Loading Reject Short…</span>}
+          </div>
+
+          <div className="construction-selector-freq-info">
+            {poLengthCrSource === 'manual' ? (
+              <span className="badge badge-neutral" title="Using manual/default POlength1 from WL_Products or %SpoolLength default">
+                Manual CR POlength1={config.spec.poLength1 ?? 0} m
+              </span>
+            ) : matchedHistoricalRejectShort?.avgRejectMeterPerSpool != null &&
+              matchedHistoricalRejectShort.avgRejectMeterPerSpool > 0 ? (
+              <span
+                className="badge badge-success"
+                title={`Found in MES_RejectShort (Reject Spools: ${matchedHistoricalRejectShort.totalRejectSpool.toLocaleString()})`}
+              >
+                Historical (MES RejectShort): POlength1={config.spec.poLength1 ?? 0} m
+              </span>
+            ) : (
+              <span
+                className="badge badge-warning"
+                title="Product not found in MES_RejectShort, automatically falling back to manual/default POlength1"
+              >
+                ⚠️ RejectShort not found → Fallback: POlength1={config.spec.poLength1 ?? 0} m
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       {error && <p className="construction-selector-error">{error}</p>}
       {detailRow && (

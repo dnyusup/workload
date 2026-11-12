@@ -2423,20 +2423,17 @@ function ProductionSetupEditor({
                   onChange={(v) => onHeaderChange({ frequencyStartDate: v })}
                 />
               </Field>
-              <Field label="Frequency End Date" tooltip="End date for actual Power BI events filter (format: YYYY-MM-DD)">
-                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                  <DateInput
-                    value={setup.frequencyEndDate ?? ''}
-                    disabled={isReadOnly}
-                    onChange={(v) => onHeaderChange({ frequencyEndDate: v })}
-                  />
+              <Field
+                label="Frequency End Date"
+                tooltip="End date for actual Power BI events filter (format: YYYY-MM-DD)"
+                labelAction={
                   <button
                     type="button"
-                    className="btn btn-ghost"
-                    style={{ padding: '4px 8px', height: '36px', display: 'inline-flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap', fontSize: '0.78rem' }}
+                    className="field-reset-btn"
                     title="Reset date range to default from Settings"
                     disabled={isReadOnly}
-                    onClick={async () => {
+                    onClick={async (e) => {
+                      e.preventDefault();
                       const defaults = await loadDefaultValuesOrBuiltIn();
                       const range = computeFrequencyDateRange(
                         defaults.frequencyDateRangeType,
@@ -2449,13 +2446,19 @@ function ProductionSetupEditor({
                       });
                     }}
                   >
-                    <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round">
+                    <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" strokeWidth="2.3" fill="none" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
                       <path d="M3 3v5h5" />
                     </svg>
                     Reset
                   </button>
-                </div>
+                }
+              >
+                <DateInput
+                  value={setup.frequencyEndDate ?? ''}
+                  disabled={isReadOnly}
+                  onChange={(v) => onHeaderChange({ frequencyEndDate: v })}
+                />
               </Field>
             </>
           )}
@@ -2488,20 +2491,17 @@ function ProductionSetupEditor({
                   onChange={(v) => onHeaderChange({ poLengthCrStartDate: v })}
                 />
               </Field>
-              <Field label="PO Length CR End Date" tooltip="End date for MES_RejectShort Power BI filter (format: YYYY-MM-DD)">
-                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                  <DateInput
-                    value={setup.poLengthCrEndDate ?? ''}
-                    disabled={isReadOnly}
-                    onChange={(v) => onHeaderChange({ poLengthCrEndDate: v })}
-                  />
+              <Field
+                label="PO Length CR End Date"
+                tooltip="End date for MES_RejectShort Power BI filter (format: YYYY-MM-DD)"
+                labelAction={
                   <button
                     type="button"
-                    className="btn btn-ghost"
-                    style={{ padding: '4px 8px', height: '36px', display: 'inline-flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap', fontSize: '0.78rem' }}
+                    className="field-reset-btn"
                     title="Reset CR PO Length date range to default Reject Short range from Settings"
                     disabled={isReadOnly}
-                    onClick={async () => {
+                    onClick={async (e) => {
+                      e.preventDefault();
                       const defaults = await loadDefaultValuesOrBuiltIn();
                       const range = computeFrequencyDateRange(
                         defaults.rejectShortDateRangeType,
@@ -2514,13 +2514,19 @@ function ProductionSetupEditor({
                       });
                     }}
                   >
-                    <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round">
+                    <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" strokeWidth="2.3" fill="none" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
                       <path d="M3 3v5h5" />
                     </svg>
                     Reset
                   </button>
-                </div>
+                }
+              >
+                <DateInput
+                  value={setup.poLengthCrEndDate ?? ''}
+                  disabled={isReadOnly}
+                  onChange={(v) => onHeaderChange({ poLengthCrEndDate: v })}
+                />
               </Field>
             </>
           )}

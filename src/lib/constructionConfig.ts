@@ -5,7 +5,7 @@ import { deriveMachineSpec, ensureCoreActivities, syncAutoActivityValues } from 
 import type { DefaultValues } from './defaultValuesStore';
 import { getDefaultPoLengthForArea } from './defaultValuesStore';
 import { DEFAULT_PIXELS_PER_METER } from './layoutConstants';
-import { buildActivitiesFromRows, isLoadingTaskRow, mapProductToSpec, productOperatorSettings } from './productCatalog';
+import { buildActivitiesFromRows, isLoadingTaskRow, mapProductToSpec, productOperatorSettings, rebuildLoadingActivities } from './productCatalog';
 import type { SavedLayout } from './savedLayoutsStore';
 import { previewAssignedMachineIds, recommendedMachineCountForForecast } from './singleOperatorUtilization';
 import { resolveEffectiveFrequencies, type HistoricalFrequencyMap } from './frequencyCatalog';
@@ -111,6 +111,9 @@ export function buildConstructionConfig({
     frequencyMode: effectiveMode,
     frequencyStartDate: base.frequencyStartDate,
     frequencyEndDate: base.frequencyEndDate,
+    poLengthCrSource: effectiveCrMode,
+    poLengthCrStartDate: base.poLengthCrStartDate,
+    poLengthCrEndDate: base.poLengthCrEndDate,
     // A fresh assignment on the default layout, so it follows the default order from the top-left.
     ...(layout
       ? { layout: layout.machines, operatorStart: layout.operatorStart, walls: layout.walls, remarks: layout.remarks, assignedMachineIds: [] }
@@ -193,6 +196,67 @@ export function applyFrequencyModeToConfig({
   return {
     ...config,
     frequencyMode: mode,
+    spec: updatedSpec,
+    activities: updatedActivities,
+  };
+}
+
+/**
+ * Updates Area CR PO Length 1 (Manual / %SpoolLength fallback vs Historical MES_RejectShort) on an existing AppConfig
+ * and rebuilds Loading + auto activity values cleanly.
+ */
+export function applyPoLengthCrSourceToConfig({
+  config,
+  product,
+  mode,
+  catalog,
+  defaults,
+}: {
+  config: AppConfig;
+  product: Mpp_wl_productses;
+  mode: FrequencyMode;
+  catalog: HistoricalRejectShortMap | null;
+  defaults: DefaultValues;
+}): AppConfig {
+  const area = (product.mpp_area ?? config.spec.area ?? '').trim().toUpperCase();
+  if (area !== 'CR') {
+    return {
+      ...config,
+      poLengthCrSource: mode,
+    };
+  }
+
+  const manualRaw = product.mpp_polength1 != null ? Number(product.mpp_polength1) : 0;
+  const manualFallback =
+    Number.isFinite(manualRaw) && manualRaw > 0
+      ? manualRaw
+      : (getDefaultPoLengthForArea(defaults, 'CR', config.spec.spoolLength) ?? 0);
+
+  const effectivePo = resolveEffectiveCrPoLength({
+    manualPoLength1: manualFallback,
+    lookupParams: {
+      product: product.mpp_productspecification,
+      layLength: product.mpp_laylength,
+      tensileGroup: product.mpp_tensilegroup,
+    },
+    mode,
+    catalog,
+  });
+
+  const updatedSpec = {
+    ...config.spec,
+    poLength1: effectivePo.poLength1,
+  };
+
+  const rebuilt =
+    config.loadingActivityRows && config.loadingActivityRows.length > 0
+      ? rebuildLoadingActivities(config.activities, updatedSpec, config.loadingActivityRows).activities
+      : config.activities;
+  const updatedActivities = syncAutoActivityValues(rebuilt, updatedSpec);
+
+  return {
+    ...config,
+    poLengthCrSource: mode,
     spec: updatedSpec,
     activities: updatedActivities,
   };

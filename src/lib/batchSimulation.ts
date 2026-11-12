@@ -13,6 +13,7 @@ import { loadSavedLayouts } from './savedLayoutsStore';
 import { optimizeAndSimulate, type BatchSimulationResult } from './batchSimulationCore';
 import { calculateSingleOperatorForecast, forecastOutputSummary } from './singleOperatorUtilization';
 import { loadFrequencyCatalog, lookupHistoricalFrequency } from './frequencyCatalog';
+import { loadRejectShortData } from './rejectShortCatalog';
 
 /** Every batch result is saved as this version of the Construction Detail, replacing it if it exists. */
 const BATCH_VERSION = '0001';
@@ -122,6 +123,7 @@ export async function runBatchSimulation({
   base,
   updatedBy,
   frequencyMode = 'manual',
+  poLengthCrSource,
   onItemDone,
   isCancelled,
 }: {
@@ -129,20 +131,24 @@ export async function runBatchSimulation({
   base: AppConfig;
   updatedBy: string;
   frequencyMode?: FrequencyMode;
+  poLengthCrSource?: FrequencyMode;
   onItemDone: (entry: BatchLogEntry, index: number) => void;
   isCancelled: () => boolean;
 }): Promise<BatchLogEntry[]> {
   if (!updatedBy.trim()) throw new Error('The signed-in email is unavailable, so results cannot be saved.');
-  const [defaults, layoutIdsByArea, savedLayouts, outputRows, freqResult] = await Promise.all([
-    loadDefaultValues(),
+  const defaults = await loadDefaultValues();
+  const effectiveCrSource = poLengthCrSource ?? defaults.poLengthCrSource ?? 'manual';
+  const [layoutIdsByArea, savedLayouts, outputRows, freqResult, crResult] = await Promise.all([
     loadDefaultLayouts(),
     loadSavedLayouts(),
     fetchAllPages(Mpp_wl_outputmodelsesService.getAll, {
       select: ['mpp_wl_outputmodelsid', 'mpp_constructiondetailcode', 'mpp_version', 'mpp_versionremark'],
     }),
     frequencyMode === 'historical' ? loadFrequencyCatalog().catch(() => null) : Promise.resolve(null),
+    effectiveCrSource === 'historical' ? loadRejectShortData().catch(() => null) : Promise.resolve(null),
   ]);
   const frequencyCatalog = freqResult?.catalog ?? null;
+  const rejectShortCatalog = crResult?.catalog ?? null;
   const layoutById = new Map(savedLayouts.map((layout) => [layout.id, layout]));
   const detailKey = (detail: string) => detail.trim().toLowerCase();
   const version0001 = new Map<string, Mpp_wl_outputmodelses>();
@@ -249,6 +255,8 @@ export async function runBatchSimulation({
         layout,
         frequencyMode,
         frequencyCatalog,
+        poLengthCrSource: effectiveCrSource,
+        rejectShortCatalog,
       });
       if (built.errors.length > 0) {
         fail(built.errors.join(' '));

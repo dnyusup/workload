@@ -118,38 +118,90 @@ function PowerBiDateRangeRows({
   );
 }
 
-/** Reusable Live DAX filter preview card with copy button. */
-function DaxFilterPreviewBox({
+/** Modal popup showing the live DAX filter snippet & complete query for a Power BI MES source. */
+function DaxPreviewModal({
   title,
   snippet,
+  fullQuery,
   copied,
   onCopy,
+  onClose,
 }: {
   title: string;
   snippet: string;
+  fullQuery: string;
   copied: boolean;
   onCopy: () => void;
+  onClose: () => void;
 }) {
   return (
-    <div className="frequency-settings-dax-box">
-      <div className="frequency-settings-dax-header">
-        <div>
-          <span className="frequency-settings-dax-title">{title}</span>
-          <span className="frequency-settings-dax-sub">
-            This filter is automatically injected into Power Automate &amp; Semantic Model
-          </span>
+    <div className="modal-backdrop frequency-dax-overlay" onClick={onClose}>
+      <div
+        className="frequency-dax-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onClick={(e) => e.stopPropagation()}
+        style={{ maxWidth: '760px', width: '92vw', maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            padding: '16px 20px',
+            borderBottom: '1px solid #1e293b',
+            background: '#0b1120',
+          }}
+        >
+          <div>
+            <span style={{ color: '#38bdf8', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+              Power BI DAX Query Preview
+            </span>
+            <h3 style={{ margin: '4px 0 2px', fontSize: '1.15rem', color: '#f8fafc', fontWeight: 600 }}>{title}</h3>
+            <p style={{ margin: 0, fontSize: '0.82rem', color: '#94a3b8' }}>
+              This filter is automatically injected into Power Automate &amp; Semantic Model
+            </p>
+          </div>
+          <button type="button" className="modal-close" onClick={onClose} title="Close dialog">
+            ✕
+          </button>
         </div>
-        <div className="frequency-settings-dax-actions">
-          <Button
-            variant="secondary"
-            onClick={onCopy}
-            title="Copy complete DAX query according to current settings"
-          >
+
+        <div style={{ padding: '16px 20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div>
+            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#94a3b8', marginBottom: '6px' }}>
+              Active Plant &amp; Date Filter Snippet
+            </div>
+            <pre className="frequency-settings-dax-code" style={{ margin: 0 }}>{snippet}</pre>
+          </div>
+
+          <div>
+            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#94a3b8', marginBottom: '6px' }}>
+              Complete DAX Query
+            </div>
+            <pre className="frequency-settings-dax-code" style={{ margin: 0, maxHeight: '300px', overflowY: 'auto' }}>{fullQuery}</pre>
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+            gap: '8px',
+            padding: '12px 20px',
+            borderTop: '1px solid #1e293b',
+            background: '#0b1120',
+          }}
+        >
+          <Button variant="secondary" onClick={onCopy} title="Copy complete DAX query according to current settings">
             {copied ? '✓ DAX Copied!' : '📋 Copy DAX Query'}
+          </Button>
+          <Button variant="ghost" onClick={onClose}>
+            Close
           </Button>
         </div>
       </div>
-      <pre className="frequency-settings-dax-code">{snippet}</pre>
     </div>
   );
 }
@@ -163,6 +215,7 @@ function DefaultValuesCard() {
   const [message, setMessage] = useState<string | null>(null);
   const [copiedDax, setCopiedDax] = useState(false);
   const [copiedRejectShortDax, setCopiedRejectShortDax] = useState(false);
+  const [daxModalTarget, setDaxModalTarget] = useState<'frequency' | 'rejectShort' | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -458,15 +511,12 @@ function DefaultValuesCard() {
                 onChange={(v) => set('defaultCrPoLength1', v)}
               />
             </SettingRow>
+            <SettingRow label="DAX Query (MES_Frequency)">
+              <Button variant="secondary" onClick={() => setDaxModalTarget('frequency')}>
+                🔍 View DAX Query
+              </Button>
+            </SettingRow>
           </SettingGroup>
-
-          {/* Live DAX Filter Preview Box */}
-          <DaxFilterPreviewBox
-            title="🔍 Live DAX Filter Preview (MES_Frequency)"
-            snippet={daxFilterSnippet}
-            copied={copiedDax}
-            onCopy={handleCopyDax}
-          />
 
           <SettingGroup title="Reject Short & Power BI (MES Data)">
             <SettingRow
@@ -490,14 +540,33 @@ function DefaultValuesCard() {
               onEndDateChange={(v) => set('rejectShortEndDate', v)}
               computedRange={computedRejectShortRange}
             />
+            <SettingRow label="DAX Query (MES_RejectShort)">
+              <Button variant="secondary" onClick={() => setDaxModalTarget('rejectShort')}>
+                🔍 View DAX Query
+              </Button>
+            </SettingRow>
           </SettingGroup>
 
-          <DaxFilterPreviewBox
-            title="🔍 Live DAX Filter Preview (MES_RejectShort)"
-            snippet={rejectShortDaxFilterSnippet}
-            copied={copiedRejectShortDax}
-            onCopy={handleCopyRejectShortDax}
-          />
+          {daxModalTarget === 'frequency' && (
+            <DaxPreviewModal
+              title="Live DAX Filter Preview (MES_Frequency)"
+              snippet={daxFilterSnippet}
+              fullQuery={fullDaxQuery}
+              copied={copiedDax}
+              onCopy={handleCopyDax}
+              onClose={() => setDaxModalTarget(null)}
+            />
+          )}
+          {daxModalTarget === 'rejectShort' && (
+            <DaxPreviewModal
+              title="Live DAX Filter Preview (MES_RejectShort)"
+              snippet={rejectShortDaxFilterSnippet}
+              fullQuery={fullRejectShortDaxQuery}
+              copied={copiedRejectShortDax}
+              onCopy={handleCopyRejectShortDax}
+              onClose={() => setDaxModalTarget(null)}
+            />
+          )}
 
           <SettingGroup title="Shift & Breaks">
             <SettingRow label="Shift Time (min)">

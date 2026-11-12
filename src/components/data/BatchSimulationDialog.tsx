@@ -50,6 +50,7 @@ export function BatchSimulationDialog({
   const [entries, setEntries] = useState<(BatchLogEntry | undefined)[]>(() => new Array(products.length).fill(undefined));
   const [phase, setPhase] = useState<'confirm' | 'running' | 'done' | 'error'>('confirm');
   const [frequencyMode, setFrequencyMode] = useState<FrequencyMode>('manual');
+  const [poLengthCrSource, setPoLengthCrSource] = useState<FrequencyMode>('manual');
   const [defaultValues, setDefaultValues] = useState<DefaultValues | null>(null);
   const [fatalError, setFatalError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
@@ -62,6 +63,7 @@ export function BatchSimulationDialog({
     void loadDefaultValuesOrBuiltIn().then((defaults) => {
       setDefaultValues(defaults);
       if (defaults.frequencyMode) setFrequencyMode(defaults.frequencyMode);
+      if (defaults.poLengthCrSource) setPoLengthCrSource(defaults.poLengthCrSource);
     });
   }, []);
 
@@ -74,6 +76,7 @@ export function BatchSimulationDialog({
       base,
       updatedBy,
       frequencyMode,
+      poLengthCrSource,
       isCancelled: () => !run.alive || cancelledRef.current,
       onItemDone: (entry, index) => {
         if (!run.alive) return;
@@ -223,6 +226,41 @@ export function BatchSimulationDialog({
                     <span className="batch-fallback-note">
                       ⚡ <strong>Automatic Fallback:</strong> If a product is not found in MES Data, the simulation automatically falls back to manual values from WL_Products.
                     </span>
+                  </p>
+                </label>
+              </div>
+
+              <h4 className="batch-confirm-title" style={{ marginTop: '16px' }}>Select Area CR PO Length Source</h4>
+              <div className="batch-freq-options">
+                <label className={`batch-freq-card ${poLengthCrSource === 'manual' ? 'selected' : ''}`}>
+                  <div className="batch-freq-card-header">
+                    <input
+                      type="radio"
+                      name="batch-cr-po"
+                      value="manual"
+                      checked={poLengthCrSource === 'manual'}
+                      onChange={() => setPoLengthCrSource('manual')}
+                    />
+                    <strong className="batch-freq-card-title">Manual (WL_Products / % SpoolLength)</strong>
+                  </div>
+                  <p className="batch-freq-card-body">
+                    Uses POlength1 from WL_Products, or Default CR % SpoolLength when blank.
+                  </p>
+                </label>
+
+                <label className={`batch-freq-card ${poLengthCrSource === 'historical' ? 'selected' : ''}`}>
+                  <div className="batch-freq-card-header">
+                    <input
+                      type="radio"
+                      name="batch-cr-po"
+                      value="historical"
+                      checked={poLengthCrSource === 'historical'}
+                      onChange={() => setPoLengthCrSource('historical')}
+                    />
+                    <strong className="batch-freq-card-title">Historical (MES RejectShort)</strong>
+                  </div>
+                  <p className="batch-freq-card-body">
+                    Uses AVG Meter/Spool from MES_RejectShort by Product, LayLength, and Tensile, with automatic fallback to manual if missing.
                   </p>
                 </label>
               </div>

@@ -4,23 +4,29 @@ export function Field({
   label,
   hint,
   tooltip,
+  labelAction,
   children,
 }: {
   label: string;
   hint?: string;
   /** Explanation shown on hover of an ⓘ next to the label, instead of a hint line below. */
   tooltip?: string;
+  /** Optional compact action button/link shown on the right side of the label row. */
+  labelAction?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <label className="field">
-      <span className="field-label">
-        {label}
-        {tooltip && (
-          <span className="field-info" title={tooltip} aria-label={tooltip}>
-            ⓘ
-          </span>
-        )}
+      <span className={`field-label${labelAction ? ' field-label-row' : ''}`}>
+        <span className="field-label-text">
+          {label}
+          {tooltip && (
+            <span className="field-info" title={tooltip} aria-label={tooltip}>
+              ⓘ
+            </span>
+          )}
+        </span>
+        {labelAction}
       </span>
       {children}
       {hint && <span className="field-hint">{hint}</span>}

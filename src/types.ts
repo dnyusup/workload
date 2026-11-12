@@ -242,6 +242,10 @@ export interface AppConfig {
   frequencyMode?: FrequencyMode;
   frequencyStartDate?: string;
   frequencyEndDate?: string;
+  /** CR Pay-Off Length 1 source: 'manual' = from WL_Products (or CR %SpoolLength default); 'historical' = from MES_RejectShort (falls back to manual if missing). */
+  poLengthCrSource?: FrequencyMode;
+  poLengthCrStartDate?: string;
+  poLengthCrEndDate?: string;
 }
 
 export type MachineStatus = 'running' | 'needs-service' | 'being-serviced' | 'unassigned';
