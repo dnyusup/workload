@@ -537,7 +537,14 @@ function TheoreticalOperatorsDialog({
                     <td className="text-right">{row.fracturePerTon != null ? fmt(row.fracturePerTon) : '—'}</td>
                     <td className="text-right">{row.defectPerTon != null ? fmt(row.defectPerTon) : '—'}</td>
                     <td className="text-right">{row.diesPerTon != null ? fmt(row.diesPerTon) : '—'}</td>
-                    <td className="text-center">{renderRemarkBadge(row.frequencyRemark)}</td>
+                    <td className="text-center">
+                      {renderRemarkBadge(row.frequencyRemark)}
+                      {row.poLengthCrRemark && (
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '2px' }} title={`Area CR POlength1 = ${row.poLength1 != null ? fmt(row.poLength1) : '—'} m`}>
+                          CR PO: {row.poLength1 != null ? `${fmt(row.poLength1)}m ` : ''}({row.poLengthCrRemark})
+                        </div>
+                      )}
+                    </td>
                   </tr>
                 ))
               )}

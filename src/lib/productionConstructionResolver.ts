@@ -6,6 +6,7 @@ import { buildActivitiesFromRows, mapProductToSpec, productOperatorSettings, typ
 import { activityCycleLength, deriveMachineSpec, ensureCoreActivities, syncAutoActivityValues } from './calculations';
 import { fetchAllPages } from './dataversePaging';
 import { resolveEffectiveFrequencies, type HistoricalFrequencyMap } from './frequencyCatalog';
+import { resolveEffectiveCrPoLength, type HistoricalRejectShortMap } from './rejectShortCatalog';
 import { isWwdConstruction, getDynamicSpec, synthesizeDynamicSpec, findMatchingActivityConstruction } from './dynamicSpecStore';
 import { loadDefaultValuesOrBuiltIn, getDefaultPoLengthForArea } from './defaultValuesStore';
 
@@ -25,6 +26,8 @@ export interface ResolvedConstruction {
   /** The product's own Task/Doff Priority — where set, it wins over the setup's for its machines. */
   operatorSettings: ProductOperatorSettings;
   frequencyRemark?: FrequencyRemark;
+  /** For Area CR only: indicates whether POlength1 used Historical (MES_RejectShort) or Manual / Fallback. */
+  poLengthCrRemark?: FrequencyRemark;
 }
 
 export interface ConstructionAttributes {
@@ -60,6 +63,8 @@ export async function resolveConstructions(
   products: Mpp_wl_productses[],
   frequencyMode: FrequencyMode = 'manual',
   frequencyCatalog: HistoricalFrequencyMap | null = null,
+  poLengthCrSource: FrequencyMode = 'manual',
+  rejectShortCatalog: HistoricalRejectShortMap | null = null,
 ): Promise<{ resolved: Map<string, ResolvedConstruction>; errors: string[] }> {
   const resolved = new Map<string, ResolvedConstruction>();
   const errors: string[] = [];
@@ -108,8 +113,7 @@ export async function resolveConstructions(
           }
         }
 
-        const defaultPo = getDefaultPoLengthForArea(defaults, area);
-        const isAreaNoPo = defaultPo == null || defaultPo === 0;
+        const defaultPo = getDefaultPoLengthForArea(defaults, area, wwdSpec.standardLength);
 
         let spec: MachineSpecInput = {
           area,
@@ -126,7 +130,27 @@ export async function resolveConstructions(
           poLength3: 0,
         };
 
-        if (isAreaNoPo) {
+        const dynamicProductSpec = wwdSpec.baseConstruction.split('-')[1] ?? '';
+        let poLengthCrRemark: FrequencyRemark | undefined;
+        if (area === 'CR') {
+          poLengthCrRemark = poLengthCrSource === 'historical' ? 'Manual (Fallback)' : 'Manual';
+          if (poLengthCrSource === 'historical' && rejectShortCatalog) {
+            const effectivePo = resolveEffectiveCrPoLength({
+              manualPoLength1: spec.poLength1 ?? 0,
+              lookupParams: {
+                product: dynamicProductSpec,
+                layLength: wwdSpec.layLength,
+                tensileGroup: wwdSpec.tensileStrength,
+              },
+              mode: poLengthCrSource,
+              catalog: rejectShortCatalog,
+            });
+            spec = { ...spec, poLength1: effectivePo.poLength1 };
+            poLengthCrRemark = effectivePo.isHistoricalUsed ? 'Historical' : 'Manual (Fallback)';
+          }
+        }
+
+        if ((spec.poLength1 ?? 0) <= 0) {
           errors.push(`Warning: Dynamic Construction "${productId}" (Area ${area}) has null/blank PO Length 1. Please configure PO Length in WL_Products.`);
         }
 
@@ -141,7 +165,7 @@ export async function resolveConstructions(
             },
             lookupParams: {
               mach: machCode,
-              product: wwdSpec.baseConstruction.split('-')[1] ?? '',
+              product: dynamicProductSpec,
               layLength: wwdSpec.layLength,
               tensileGroup: wwdSpec.tensileStrength,
             },
@@ -214,6 +238,7 @@ export async function resolveConstructions(
           cycleLengths,
           operatorSettings: {},
           frequencyRemark,
+          poLengthCrRemark,
         });
         continue;
       }
@@ -223,13 +248,38 @@ export async function resolveConstructions(
     }
     let spec = mapProductToSpec(product);
     const prodArea = (product.mpp_area || '').trim().toUpperCase();
+    let hasMissingPo = false;
     if (product.mpp_polength1 == null || Number(product.mpp_polength1) === 0) {
-      const fallbackDefault = getDefaultPoLengthForArea(defaults, prodArea);
+      const fallbackDefault = getDefaultPoLengthForArea(defaults, prodArea, spec.spoolLength);
       if (fallbackDefault != null && fallbackDefault > 0) {
         spec.poLength1 = fallbackDefault;
       } else {
-        errors.push(`Warning: ${product.mpp_constructiondetailcode} (Area ${product.mpp_area || prodArea}) has null/blank PO Length 1 in WL_Products. Please configure PO Length in WL_Products.`);
+        hasMissingPo = true;
       }
+    }
+    let poLengthCrRemark: FrequencyRemark | undefined;
+    if (prodArea === 'CR') {
+      poLengthCrRemark = poLengthCrSource === 'historical' ? 'Manual (Fallback)' : 'Manual';
+      if (poLengthCrSource === 'historical' && rejectShortCatalog) {
+        const effectivePo = resolveEffectiveCrPoLength({
+          manualPoLength1: spec.poLength1 ?? 0,
+          lookupParams: {
+            product: product.mpp_productspecification,
+            layLength: product.mpp_laylength,
+            tensileGroup: product.mpp_tensilegroup,
+          },
+          mode: poLengthCrSource,
+          catalog: rejectShortCatalog,
+        });
+        spec = {
+          ...spec,
+          poLength1: effectivePo.poLength1,
+        };
+        poLengthCrRemark = effectivePo.isHistoricalUsed ? 'Historical' : 'Manual (Fallback)';
+      }
+    }
+    if (hasMissingPo && (spec.poLength1 ?? 0) <= 0) {
+      errors.push(`Warning: ${product.mpp_constructiondetailcode} (Area ${product.mpp_area || prodArea}) has null/blank PO Length 1 in WL_Products. Please configure PO Length in WL_Products.`);
     }
     let frequencyRemark: FrequencyRemark = frequencyMode === 'historical' ? 'Manual (Fallback)' : 'Manual';
     if (frequencyMode === 'historical' && frequencyCatalog) {
@@ -274,7 +324,8 @@ export async function resolveConstructions(
       errors.push(`${product.mpp_constructiondetailcode} has no Construction code set — cannot resolve its activities.`);
     }
 
-    const built = buildActivitiesFromRows(activityRows, product, derived.spoolWeight, spec.fracturePerTon);
+    const effectiveProduct = spec.poLength1 != null ? { ...product, mpp_polength1: spec.poLength1 } : product;
+    const built = buildActivitiesFromRows(activityRows, effectiveProduct, derived.spoolWeight, spec.fracturePerTon);
     const activities = syncAutoActivityValues(
       ensureCoreActivities(built.activities, derived.spoolWeight, spec.fracturePerTon),
       spec,
@@ -308,6 +359,7 @@ export async function resolveConstructions(
       cycleLengths,
       operatorSettings: productOperatorSettings(product),
       frequencyRemark,
+      poLengthCrRemark,
     });
   }
 

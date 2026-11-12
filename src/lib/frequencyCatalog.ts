@@ -568,6 +568,51 @@ export async function loadFrequencyCatalog(
 }
 
 /**
+ * Generic lookup helper on any normalized catalog keyed with product + layLength.
+ * Mendukung variasi tanda desimal koma vs titik (0,280 <-> 0.280) serta LayLength blank <-> 0.
+ */
+export function lookupCatalogWithVariants<T>(
+  catalog: ReadonlyMap<string, T> | null | undefined,
+  buildKey: (product: string | undefined | null, layLength: number | string | undefined | null) => string,
+  product: string | undefined | null,
+  layLength: number | string | undefined | null,
+): T | null {
+  if (!catalog) return null;
+
+  // 1. Direct lookup
+  const direct = catalog.get(buildKey(product, layLength));
+  if (direct) return direct;
+
+  // 2. Alternative LayLength representation ("" <-> "0")
+  const normLay = normalizeFrequencyKeyPart(layLength);
+  const altLay = normLay === '0' || normLay === '' ? (normLay === '0' ? '' : '0') : null;
+  if (altLay !== null) {
+    const matchAltLay = catalog.get(buildKey(product, altLay));
+    if (matchAltLay) return matchAltLay;
+  }
+
+  // 3. Comma <-> dot decimal separator in product spec (e.g. "0,280" vs "0.280")
+  const prodStr = String(product ?? '').trim();
+  const altProduct = prodStr.includes(',')
+    ? prodStr.replace(/,/g, '.')
+    : prodStr.includes('.')
+      ? prodStr.replace(/\./g, ',')
+      : null;
+
+  if (altProduct) {
+    const matchAltProd = catalog.get(buildKey(altProduct, layLength));
+    if (matchAltProd) return matchAltProd;
+
+    if (altLay !== null) {
+      const matchBoth = catalog.get(buildKey(altProduct, altLay));
+      if (matchBoth) return matchBoth;
+    }
+  }
+
+  return null;
+}
+
+/**
  * Mencari historical frequency berdasarkan spesifikasi produk.
  * Menjaga ketat spesifikasi produk (1X0.32, 0.32, dan 0,320 adalah produk berbeda).
  * Mendukung variasi tanda desimal koma vs titik (0,280 <-> 0.280) serta LayLength blank <-> 0 untuk WWD.
@@ -579,47 +624,12 @@ export function lookupHistoricalFrequency(
   layLength: number | string | undefined | null,
   tensileGroup: string | undefined | null,
 ): HistoricalFrequencyItem | null {
-  if (!catalog) return null;
-
-  // 1. Direct lookup
-  const key = buildFrequencyLookupKey(mach, product, layLength, tensileGroup);
-  const direct = catalog.get(key);
-  if (direct) return direct;
-
-  // 2. Check alternative LayLength representation:
-  // For WWD or zero-lay machines, DimProduct[LayLength] in Power BI MES is often BLANK/NULL (""),
-  // whereas in WL_Products it is stored as 0 ("0").
-  const normLay = normalizeFrequencyKeyPart(layLength);
-  const altLay = normLay === '0' || normLay === '' ? (normLay === '0' ? '' : '0') : null;
-  if (altLay !== null) {
-    const keyAltLay = buildFrequencyLookupKey(mach, product, altLay, tensileGroup);
-    const matchAltLay = catalog.get(keyAltLay);
-    if (matchAltLay) return matchAltLay;
-  }
-
-  // 3. Check comma <-> dot decimal separator in product spec (e.g. "0,280" vs "0.280")
-  // Strictly preserves product identity (e.g. 1X0.32, 0.32, and 0,320 are strictly separate)
-  const prodStr = String(product ?? '').trim();
-  let altProduct: string | null = null;
-  if (prodStr.includes(',')) {
-    altProduct = prodStr.replace(/,/g, '.');
-  } else if (prodStr.includes('.')) {
-    altProduct = prodStr.replace(/\./g, ',');
-  }
-
-  if (altProduct) {
-    const keyAltProd = buildFrequencyLookupKey(mach, altProduct, layLength, tensileGroup);
-    const matchAltProd = catalog.get(keyAltProd);
-    if (matchAltProd) return matchAltProd;
-
-    if (altLay !== null) {
-      const keyBoth = buildFrequencyLookupKey(mach, altProduct, altLay, tensileGroup);
-      const matchBoth = catalog.get(keyBoth);
-      if (matchBoth) return matchBoth;
-    }
-  }
-
-  return null;
+  return lookupCatalogWithVariants(
+    catalog,
+    (prod, lay) => buildFrequencyLookupKey(mach, prod, lay, tensileGroup),
+    product,
+    layLength,
+  );
 }
 
 export interface EffectiveFrequencyResult {

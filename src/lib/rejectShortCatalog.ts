@@ -1,3 +1,4 @@
+import type { FrequencyMode } from '../types';
 import { WL_RejectShortService } from '../generated/services/WL_RejectShortService';
 import { loadDefaultValuesOrBuiltIn, type FrequencyDateRangeType } from './defaultValuesStore';
 import {
@@ -5,6 +6,8 @@ import {
   cleanFloat,
   computeFrequencyDateRange,
   getField,
+  lookupCatalogWithVariants,
+  normalizeFrequencyKeyPart,
   normalizeLayLength,
   parseFlowResultRows,
   type DateRangeParts,
@@ -155,8 +158,151 @@ export interface LoadRejectShortOptions {
   forceRefresh?: boolean;
 }
 
-const rejectShortCache = new Map<string, RejectShortRecord[]>();
-const inFlightPromises = new Map<string, Promise<{ records: RejectShortRecord[] }>>();
+export interface HistoricalRejectShortItem {
+  construction: string;
+  layLength: string;
+  tensileStrength: string;
+  totalRejectKG: number;
+  totalRejectSpool: number;
+  totalRejectMeter: number;
+  avgRejectMeterPerSpool: number | null;
+  recordCount: number;
+}
+
+export type HistoricalRejectShortMap = Map<string, HistoricalRejectShortItem>;
+
+/**
+ * Builds normalized lookup key for MES_RejectShort -> WL_Products Area CR join:
+ * Product (WL_Products.mpp_productspecification) = Construction (DimProduct[Construction])
+ * LayLength (WL_Products.mpp_laylength) = LayLength (DimProduct[LayLength])
+ * TensileGroup (WL_Products.mpp_tensilegroup) = TensileStrength (DimProduct[TensileStrength])
+ */
+export function buildRejectShortLookupKey(
+  product: string | undefined | null,
+  layLength: number | string | undefined | null,
+  tensileGroup: string | undefined | null,
+): string {
+  return [
+    normalizeFrequencyKeyPart(product),
+    normalizeFrequencyKeyPart(layLength),
+    normalizeFrequencyKeyPart(tensileGroup),
+  ].join('|');
+}
+
+/**
+ * Aggregates RejectShort records per (Construction, LayLength, TensileStrength) using
+ * spool-weighted average: sum(TotalRejectMeter) / sum(TotalRejectSpool).
+ */
+export function buildHistoricalRejectShortMap(records: RejectShortRecord[]): HistoricalRejectShortMap {
+  const groups = new Map<string, RejectShortRecord[]>();
+
+  for (const rec of records) {
+    const key = buildRejectShortLookupKey(rec.construction, rec.layLength, rec.tensileStrength);
+    if (!key || key === '||') continue;
+    const list = groups.get(key);
+    if (list) list.push(rec);
+    else groups.set(key, [rec]);
+  }
+
+  const catalog: HistoricalRejectShortMap = new Map();
+  for (const [key, list] of groups.entries()) {
+    let totalRejectKG = 0;
+    let totalRejectSpool = 0;
+    let totalRejectMeter = 0;
+    const validAvgs: number[] = [];
+
+    for (const r of list) {
+      totalRejectKG += r.totalRejectKG > 0 ? r.totalRejectKG : 0;
+      totalRejectSpool += r.totalRejectSpool > 0 ? r.totalRejectSpool : 0;
+      totalRejectMeter += r.totalRejectMeter > 0 ? r.totalRejectMeter : 0;
+      if (Number.isFinite(r.avgRejectMeterPerSpool) && r.avgRejectMeterPerSpool > 0) {
+        validAvgs.push(r.avgRejectMeterPerSpool);
+      }
+    }
+
+    const weightedAvg =
+      totalRejectSpool > 0 && totalRejectMeter > 0
+        ? Number((totalRejectMeter / totalRejectSpool).toFixed(2))
+        : validAvgs.length > 0
+          ? Number((validAvgs.reduce((acc, v) => acc + v, 0) / validAvgs.length).toFixed(2))
+          : null;
+
+    const first = list[0];
+    catalog.set(key, {
+      construction: first.construction,
+      layLength: String(first.layLength),
+      tensileStrength: first.tensileStrength,
+      totalRejectKG: Number(totalRejectKG.toFixed(3)),
+      totalRejectSpool: Number(totalRejectSpool.toFixed(2)),
+      totalRejectMeter: Number(totalRejectMeter.toFixed(2)),
+      avgRejectMeterPerSpool: weightedAvg,
+      recordCount: list.length,
+    });
+  }
+
+  return catalog;
+}
+
+export function lookupHistoricalRejectShort(
+  catalog: HistoricalRejectShortMap | null | undefined,
+  product: string | undefined | null,
+  layLength: number | string | undefined | null,
+  tensileGroup: string | undefined | null,
+): HistoricalRejectShortItem | null {
+  return lookupCatalogWithVariants(
+    catalog,
+    (prod, lay) => buildRejectShortLookupKey(prod, lay, tensileGroup),
+    product,
+    layLength,
+  );
+}
+
+export interface EffectiveCrPoLengthResult {
+  poLength1: number;
+  isHistoricalUsed: boolean;
+}
+
+/**
+ * Resolves Area CR PO Length 1: uses historical AVG meter/spool from MES_RejectShort
+ * when mode === 'historical' and matched with > 0; otherwise falls back to manual/default PO Length 1.
+ */
+export function resolveEffectiveCrPoLength({
+  manualPoLength1,
+  lookupParams,
+  mode,
+  catalog,
+}: {
+  manualPoLength1: number;
+  lookupParams: {
+    product: string | undefined | null;
+    layLength: number | string | undefined | null;
+    tensileGroup: string | undefined | null;
+  };
+  mode: FrequencyMode;
+  catalog: HistoricalRejectShortMap | null | undefined;
+}): EffectiveCrPoLengthResult {
+  if (mode === 'historical' && catalog) {
+    const match = lookupHistoricalRejectShort(
+      catalog,
+      lookupParams.product,
+      lookupParams.layLength,
+      lookupParams.tensileGroup,
+    );
+    if (match?.avgRejectMeterPerSpool != null && Number.isFinite(match.avgRejectMeterPerSpool) && match.avgRejectMeterPerSpool > 0) {
+      return {
+        poLength1: match.avgRejectMeterPerSpool,
+        isHistoricalUsed: true,
+      };
+    }
+  }
+  return {
+    poLength1: manualPoLength1,
+    isHistoricalUsed: false,
+  };
+}
+
+const rejectShortCache = new Map<string, { records: RejectShortRecord[]; catalog: HistoricalRejectShortMap }>();
+const inFlightPromises = new Map<string, Promise<{ records: RejectShortRecord[]; catalog: HistoricalRejectShortMap }>>();
 
 /**
  * Executes Power Automate flow `WL_RejectShort` against the Power BI Semantic Model
@@ -164,33 +310,37 @@ const inFlightPromises = new Map<string, Promise<{ records: RejectShortRecord[] 
  */
 export async function loadRejectShortData(
   options?: LoadRejectShortOptions,
-): Promise<{ records: RejectShortRecord[] }> {
+): Promise<{ records: RejectShortRecord[]; catalog: HistoricalRejectShortMap }> {
   const forceRefresh = options?.forceRefresh ?? false;
   const defaults = await loadDefaultValuesOrBuiltIn();
 
   const plant = options?.plant?.trim() || defaults.rejectShortPlant?.trim() || defaults.frequencyPlant?.trim() || 'PTBI';
   const dateRangeType: FrequencyDateRangeType = options?.dateRangeType ?? defaults.rejectShortDateRangeType;
 
+  const hasExplicitDates =
+    Boolean(options?.startDate && options?.endDate) &&
+    /^\d{4}-\d{2}-\d{2}$/.test(options!.startDate!) &&
+    /^\d{4}-\d{2}-\d{2}$/.test(options!.endDate!);
+
   const customStart = options?.startDate || defaults.rejectShortStartDate;
   const customEnd = options?.endDate || defaults.rejectShortEndDate;
-  const { startDate, endDate, startParts, endParts } =
-    options?.startDate && options?.endDate
-      ? computeFrequencyDateRange('custom', options.startDate, options.endDate)
-      : computeFrequencyDateRange(dateRangeType, customStart, customEnd);
+  const { startDate, endDate, startParts, endParts } = hasExplicitDates
+    ? computeFrequencyDateRange('custom', options!.startDate!, options!.endDate!)
+    : computeFrequencyDateRange(dateRangeType, customStart, customEnd);
 
   const cacheKey = `${plant}|${startDate}|${endDate}`;
   const daxQuery = generateRejectShortDax({ plant, startParts, endParts });
 
   lastActiveRejectShortFilterParams = {
     plant,
-    dateRangeType,
+    dateRangeType: hasExplicitDates ? 'custom' : dateRangeType,
     startDate,
     endDate,
     daxQuery,
   };
 
   if (!forceRefresh && rejectShortCache.has(cacheKey)) {
-    return { records: rejectShortCache.get(cacheKey)! };
+    return rejectShortCache.get(cacheKey)!;
   }
 
   if (!forceRefresh && inFlightPromises.has(cacheKey)) {
@@ -212,8 +362,10 @@ export async function loadRejectShortData(
 
       const parsed = parseFlowResultRows(response.data?.result, 'WL_RejectShort');
       const records = parseRejectShortRows(parsed);
-      rejectShortCache.set(cacheKey, records);
-      return { records };
+      const catalog = buildHistoricalRejectShortMap(records);
+      const result = { records, catalog };
+      rejectShortCache.set(cacheKey, result);
+      return result;
     } finally {
       inFlightPromises.delete(cacheKey);
     }

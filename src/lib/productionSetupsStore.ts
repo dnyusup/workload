@@ -194,6 +194,13 @@ export async function loadProductionSetup(id: string, constructionLabelById: Map
     ),
     frequencyStartDate: header.mpp_frequencystartdate ? header.mpp_frequencystartdate.slice(0, 10) : undefined,
     frequencyEndDate: header.mpp_frequencyenddate ? header.mpp_frequencyenddate.slice(0, 10) : undefined,
+    poLengthCrSource: (
+      (header.mpp_polengthcrsource ?? '').trim().toLowerCase() === 'historical'
+        ? 'historical'
+        : 'manual'
+    ),
+    poLengthCrStartDate: header.mpp_polengthcrstartdate ? header.mpp_polengthcrstartdate.slice(0, 10) : undefined,
+    poLengthCrEndDate: header.mpp_polengthcrenddate ? header.mpp_polengthcrenddate.slice(0, 10) : undefined,
     updatedAt: header.modifiedon ? new Date(header.modifiedon).getTime() : Date.now(),
     createdByEmail: header.mpp_creator_email ?? '',
     createdByName: (header as { createdbyname?: string }).createdbyname ?? '',
@@ -221,6 +228,11 @@ export async function createProductionSetup(
     defaults.frequencyStartDate,
     defaults.frequencyEndDate,
   );
+  const defaultCrDates = computeFrequencyDateRange(
+    defaults.rejectShortDateRangeType,
+    defaults.rejectShortStartDate,
+    defaults.rejectShortEndDate,
+  );
   const headerResult = await Mpp_wl_productionsetupsesService.create({
     mpp_name: name,
     mpp_layoutsnapshotjson: serializeLayoutBlob(layout, operatorStart, walls, remarks),
@@ -241,6 +253,9 @@ export async function createProductionSetup(
     mpp_frequencystartdate: defaultDates.startDate,
     mpp_frequencyenddate: defaultDates.endDate,
     mpp_planningtype: defaults.frequencyMode ?? 'manual',
+    mpp_polengthcrsource: defaults.poLengthCrSource ?? 'manual',
+    mpp_polengthcrstartdate: defaultCrDates.startDate,
+    mpp_polengthcrenddate: defaultCrDates.endDate,
     // Active state, matching WL_Layouts' `0 | 1` statecode enum.
     statecode: 0,
   });
@@ -290,6 +305,9 @@ export async function createProductionSetup(
     frequencyMode: defaults.frequencyMode ?? 'manual',
     frequencyStartDate: defaultDates.startDate,
     frequencyEndDate: defaultDates.endDate,
+    poLengthCrSource: defaults.poLengthCrSource ?? 'manual',
+    poLengthCrStartDate: defaultCrDates.startDate,
+    poLengthCrEndDate: defaultCrDates.endDate,
     updatedAt: Date.now(),
   };
 }
@@ -314,6 +332,9 @@ export async function updateProductionSetupHeader(
       | 'frequencyMode'
       | 'frequencyStartDate'
       | 'frequencyEndDate'
+      | 'poLengthCrSource'
+      | 'poLengthCrStartDate'
+      | 'poLengthCrEndDate'
       | 'sharedEmail'
       | 'sharedRole'
     >
@@ -344,6 +365,15 @@ export async function updateProductionSetupHeader(
   }
   if (patch.frequencyEndDate !== undefined) {
     fields.mpp_frequencyenddate = patch.frequencyEndDate || null;
+  }
+  if (patch.poLengthCrSource !== undefined) {
+    fields.mpp_polengthcrsource = patch.poLengthCrSource;
+  }
+  if (patch.poLengthCrStartDate !== undefined) {
+    fields.mpp_polengthcrstartdate = patch.poLengthCrStartDate || null;
+  }
+  if (patch.poLengthCrEndDate !== undefined) {
+    fields.mpp_polengthcrenddate = patch.poLengthCrEndDate || null;
   }
   if (patch.sharedEmail !== undefined) {
     fields.mpp_shared_email = patch.sharedEmail || null;
@@ -394,6 +424,9 @@ export async function duplicateProductionSetup(
     mpp_frequencystartdate: source.frequencyStartDate,
     mpp_frequencyenddate: source.frequencyEndDate,
     mpp_planningtype: source.frequencyMode ?? 'manual',
+    mpp_polengthcrsource: source.poLengthCrSource ?? 'manual',
+    mpp_polengthcrstartdate: source.poLengthCrStartDate,
+    mpp_polengthcrenddate: source.poLengthCrEndDate,
     statecode: 0,
   });
   if (!headerResult.success || !headerResult.data) {

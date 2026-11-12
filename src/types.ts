@@ -520,6 +520,10 @@ export interface ProductionSetup {
   frequencyMode?: FrequencyMode;
   frequencyStartDate?: string;
   frequencyEndDate?: string;
+  /** CR Pay-Off Length 1 source: 'manual' = from WL_Products (or %SpoolLength default); 'historical' = from MES_RejectShort (falls back to manual if missing). */
+  poLengthCrSource?: FrequencyMode;
+  poLengthCrStartDate?: string;
+  poLengthCrEndDate?: string;
   updatedAt: number;
   createdByEmail?: string;
   createdByName?: string;

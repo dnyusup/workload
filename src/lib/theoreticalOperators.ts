@@ -9,6 +9,7 @@ import { loadSavedLayouts, type SavedLayout } from './savedLayoutsStore';
 import { productOperatorSettings } from './productCatalog';
 import { recommendedMachineCountForForecast } from './singleOperatorUtilization';
 import type { HistoricalFrequencyMap } from './frequencyCatalog';
+import type { HistoricalRejectShortMap } from './rejectShortCatalog';
 import { calculateSelectionOccupation } from './productionUtilization';
 import {
   machineOperatorIds,
@@ -73,6 +74,9 @@ export interface SetupOperatorSettings {
   frequencyMode?: FrequencyMode;
   frequencyStartDate?: string;
   frequencyEndDate?: string;
+  poLengthCrSource?: FrequencyMode;
+  poLengthCrStartDate?: string;
+  poLengthCrEndDate?: string;
 }
 
 export function setupOperatorSettings(setup: ProductionSetup): SetupOperatorSettings {
@@ -94,6 +98,9 @@ export function setupOperatorSettings(setup: ProductionSetup): SetupOperatorSett
     frequencyMode: setup.frequencyMode ?? 'manual',
     frequencyStartDate: setup.frequencyStartDate,
     frequencyEndDate: setup.frequencyEndDate,
+    poLengthCrSource: setup.poLengthCrSource ?? 'manual',
+    poLengthCrStartDate: setup.poLengthCrStartDate,
+    poLengthCrEndDate: setup.poLengthCrEndDate,
   };
 }
 
@@ -110,6 +117,7 @@ export function optimizeConfigFor(
   inputs: OptimizeInputs,
   settings: SetupOperatorSettings,
   frequencyCatalog?: HistoricalFrequencyMap | null,
+  rejectShortCatalog?: HistoricalRejectShortMap | null,
 ): { config: AppConfig; hasDefaultLayout: boolean } {
   const area = (product.mpp_area ?? '').trim().toUpperCase();
   const layout = inputs.layoutByArea.get(area) ?? null;
@@ -124,6 +132,8 @@ export function optimizeConfigFor(
     layout,
     frequencyMode: settings.frequencyMode,
     frequencyCatalog,
+    poLengthCrSource: settings.poLengthCrSource,
+    rejectShortCatalog,
   });
   const own = productOperatorSettings(product);
   const config: AppConfig = {
@@ -168,6 +178,8 @@ export interface TheoreticalOperatorRow {
   defectPerTon?: number;
   diesPerTon?: number;
   frequencyRemark?: 'Historical' | 'Manual (Fallback)' | 'Manual';
+  poLength1?: number;
+  poLengthCrRemark?: 'Historical' | 'Manual (Fallback)' | 'Manual';
 }
 
 /** Theoretical Operator Required: each machine needs 1 ÷ (# Assigned Machines of its Construction
@@ -204,6 +216,8 @@ export function theoreticalOperators(
     const defectPerTon = resolved?.spec.defectsPerTon ?? (prod?.mpp_defectston != null ? Number(prod.mpp_defectston) : undefined);
     const diesPerTon = resolved?.spec.diesPerTon ?? (prod?.mpp_dieston != null ? Number(prod.mpp_dieston) : undefined);
     const frequencyRemark = resolved?.frequencyRemark;
+    const poLength1 = resolved?.spec.poLength1;
+    const poLengthCrRemark = resolved?.poLengthCrRemark;
 
     rows.push({
       productId,
@@ -216,6 +230,8 @@ export function theoreticalOperators(
       defectPerTon,
       diesPerTon,
       frequencyRemark,
+      poLength1,
+      poLengthCrRemark,
     });
   });
   rows.sort((a, b) => b.operators - a.operators || a.constructionDetail.localeCompare(b.constructionDetail, undefined, { numeric: true }));

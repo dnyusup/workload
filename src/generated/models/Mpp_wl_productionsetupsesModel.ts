@@ -30,6 +30,9 @@ export interface Mpp_wl_productionsetupsesBase {
   mpp_optimizemodel?: string;
   mpp_pixelspermeter?: number;
   mpp_planningtype?: string;
+  mpp_polengthcrenddate?: string;
+  mpp_polengthcrsource?: string;
+  mpp_polengthcrstartdate?: string;
   mpp_rpc?: number;
   mpp_shared_email?: string;
   mpp_shared_role?: string;

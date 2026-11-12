@@ -275,6 +275,28 @@
           "x-ms-schema-name": "mpp_PlanningType",
           "maxLength": 100
         },
+        "mpp_polengthcrenddate": {
+          "type": "string",
+          "title": "POlengthCREndDate",
+          "x-ms-dataverse-attribute": "mpp_polengthcrenddate",
+          "x-ms-dataverse-type": "DateTimeType",
+          "x-ms-schema-name": "mpp_POlengthCREndDate"
+        },
+        "mpp_polengthcrsource": {
+          "type": "string",
+          "title": "POlengthCRSource",
+          "x-ms-dataverse-attribute": "mpp_polengthcrsource",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "mpp_POlengthCRSource",
+          "maxLength": 100
+        },
+        "mpp_polengthcrstartdate": {
+          "type": "string",
+          "title": "POlengthCRStartDate",
+          "x-ms-dataverse-attribute": "mpp_polengthcrstartdate",
+          "x-ms-dataverse-type": "DateTimeType",
+          "x-ms-schema-name": "mpp_POlengthCRStartDate"
+        },
         "mpp_rpc": {
           "type": "string",
           "title": "RPC",

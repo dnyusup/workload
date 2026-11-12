@@ -81,6 +81,7 @@ import {
 } from '../../lib/theoreticalOperators';
 import { TheoreticalOperatorsBadge } from './TheoreticalOperatorsBadge';
 import { downloadLayoutMappingExcel } from '../../lib/exportLayoutExcel';
+import { loadRejectShortData, type HistoricalRejectShortMap } from '../../lib/rejectShortCatalog';
 
 const TASK_PRIORITY_OPTIONS: { value: TaskPriorityMode; label: string }[] = [
   { value: 'nearest', label: 'Nearest Task' },
@@ -565,6 +566,7 @@ export function ProductionSimulationPage({
   };
 
   const [freqCatalog, setFreqCatalog] = useState<HistoricalFrequencyMap | null>(null);
+  const [rejectShortCatalog, setRejectShortCatalog] = useState<HistoricalRejectShortMap | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -582,6 +584,9 @@ export function ProductionSimulationPage({
   const selectedFrequencyMode = selectedSetup?.frequencyMode;
   const selectedFrequencyStartDate = selectedSetup?.frequencyStartDate;
   const selectedFrequencyEndDate = selectedSetup?.frequencyEndDate;
+  const selectedPoCrSource = selectedSetup?.poLengthCrSource;
+  const selectedPoCrStartDate = selectedSetup?.poLengthCrStartDate;
+  const selectedPoCrEndDate = selectedSetup?.poLengthCrEndDate;
 
   // When selected setup changes or has historical frequency, load catalog for its specific date range
   useEffect(() => {
@@ -605,6 +610,28 @@ export function ProductionSimulationPage({
     selectedFrequencyEndDate,
   ]);
 
+  // When selected setup uses Historical RejectShort for CR PO Length, load RejectShort catalog for its date range
+  useEffect(() => {
+    if (!selectedSetupIdForFreq || selectedPoCrSource !== 'historical') return;
+    let cancelled = false;
+    loadRejectShortData({
+      startDate: selectedPoCrStartDate,
+      endDate: selectedPoCrEndDate,
+    })
+      .then(({ catalog }) => {
+        if (!cancelled) setRejectShortCatalog(catalog);
+      })
+      .catch((err) => console.warn('MES_RejectShort catalog load for setup:', err));
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    selectedSetupIdForFreq,
+    selectedPoCrSource,
+    selectedPoCrStartDate,
+    selectedPoCrEndDate,
+  ]);
+
   /** Optimistic local-state patch for the currently loaded setup — callers that already wrote
    * their own change to Dataverse (add/remove operator, bulk assign, CSV import, header edits)
    * use this just to keep the in-memory copy in sync, not to trigger any persistence itself. */
@@ -624,7 +651,14 @@ export function ProductionSimulationPage({
     [selectedSetup],
   );
   const operatorSettings = useMemo(() => (selectedSetup ? setupOperatorSettings(selectedSetup) : null), [selectedSetup]);
-  const optimizedCounts = useOptimizedMachineCounts(plannedProductIds, products, simulatorConfig, operatorSettings, freqCatalog);
+  const optimizedCounts = useOptimizedMachineCounts(
+    plannedProductIds,
+    products,
+    simulatorConfig,
+    operatorSettings,
+    freqCatalog,
+    rejectShortCatalog,
+  );
 
   const [runState, setRunState] = useState<{ setup: ProductionSetup; resolved: Map<string, ResolvedConstruction>; errors: string[] } | null>(null);
   const [resolving, setResolving] = useState(false);
@@ -643,10 +677,11 @@ export function ProductionSimulationPage({
     );
     let cancelled = false;
     const freqMode = selectedSetup.frequencyMode ?? 'manual';
+    const poCrSource = selectedSetup.poLengthCrSource ?? 'manual';
     Promise.resolve()
       .then(() => {
         if (!cancelled) setPlannedResolution((previous) => ({ ...previous, loading: true, errors: [] }));
-        return resolveConstructions(productIds, products, freqMode, freqCatalog);
+        return resolveConstructions(productIds, products, freqMode, freqCatalog, poCrSource, rejectShortCatalog);
       })
       .then(({ resolved, errors }) => {
         if (!cancelled) {
@@ -671,7 +706,15 @@ export function ProductionSimulationPage({
     return () => {
       cancelled = true;
     };
-  }, [selectedSetup, products, loadingProducts, selectedSetup?.frequencyMode, freqCatalog]);
+  }, [
+    selectedSetup,
+    products,
+    loadingProducts,
+    selectedSetup?.frequencyMode,
+    freqCatalog,
+    selectedSetup?.poLengthCrSource,
+    rejectShortCatalog,
+  ]);
 
   const runSimulation = async (setup: ProductionSetup) => {
     if (loadingProducts) return;
@@ -704,7 +747,28 @@ export function ProductionSimulationPage({
           // fallback
         }
       }
-      const { resolved, errors } = await resolveConstructions(productIds, products, freqMode, catalog);
+      const poCrSource = setup.poLengthCrSource ?? 'manual';
+      let crCatalog = rejectShortCatalog;
+      if (poCrSource === 'historical') {
+        try {
+          const res = await loadRejectShortData({
+            startDate: setup.poLengthCrStartDate,
+            endDate: setup.poLengthCrEndDate,
+          });
+          crCatalog = res.catalog;
+          setRejectShortCatalog(crCatalog);
+        } catch {
+          // fallback
+        }
+      }
+      const { resolved, errors } = await resolveConstructions(
+        productIds,
+        products,
+        freqMode,
+        catalog,
+        poCrSource,
+        crCatalog,
+      );
       setRunState({ setup, resolved, errors });
     } finally {
       setResolving(false);
@@ -2382,6 +2446,71 @@ function ProductionSetupEditor({
                       onHeaderChange({
                         frequencyStartDate: range.startDate,
                         frequencyEndDate: range.endDate,
+                      });
+                    }}
+                  >
+                    <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                      <path d="M3 3v5h5" />
+                    </svg>
+                    Reset
+                  </button>
+                </div>
+              </Field>
+            </>
+          )}
+          <Field label="PO Length CR Source" tooltip="Area CR POlength1 source: Manual from WL_Products (or CR %SpoolLength default) or Historical AVG Meter/Spool from MES_RejectShort (falls back to manual if missing)">
+            <SelectInput
+              value={setup.poLengthCrSource ?? 'manual'}
+              options={FREQUENCY_MODE_OPTIONS}
+              disabled={isReadOnly}
+              onChange={(v) => {
+                const nextMode = v as FrequencyMode;
+                if (nextMode === 'historical' && (!setup.poLengthCrStartDate || !setup.poLengthCrEndDate)) {
+                  const defaultRange = computeFrequencyDateRange();
+                  onHeaderChange({
+                    poLengthCrSource: nextMode,
+                    poLengthCrStartDate: setup.poLengthCrStartDate || defaultRange.startDate,
+                    poLengthCrEndDate: setup.poLengthCrEndDate || defaultRange.endDate,
+                  });
+                } else {
+                  onHeaderChange({ poLengthCrSource: nextMode });
+                }
+              }}
+            />
+          </Field>
+          {setup.poLengthCrSource === 'historical' && (
+            <>
+              <Field label="PO Length CR Start Date" tooltip="Start date for MES_RejectShort Power BI filter (format: YYYY-MM-DD)">
+                <DateInput
+                  value={setup.poLengthCrStartDate ?? ''}
+                  disabled={isReadOnly}
+                  onChange={(v) => onHeaderChange({ poLengthCrStartDate: v })}
+                />
+              </Field>
+              <Field label="PO Length CR End Date" tooltip="End date for MES_RejectShort Power BI filter (format: YYYY-MM-DD)">
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                  <DateInput
+                    value={setup.poLengthCrEndDate ?? ''}
+                    disabled={isReadOnly}
+                    onChange={(v) => onHeaderChange({ poLengthCrEndDate: v })}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    style={{ padding: '4px 8px', height: '36px', display: 'inline-flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap', fontSize: '0.78rem' }}
+                    title="Reset CR PO Length date range to default Reject Short range from Settings"
+                    disabled={isReadOnly}
+                    onClick={async () => {
+                      const defaults = await loadDefaultValuesOrBuiltIn();
+                      const range = computeFrequencyDateRange(
+                        defaults.rejectShortDateRangeType,
+                        defaults.rejectShortStartDate,
+                        defaults.rejectShortEndDate,
+                      );
+                      onHeaderChange({
+                        poLengthCrStartDate: range.startDate,
+                        poLengthCrEndDate: range.endDate,
                       });
                     }}
                   >

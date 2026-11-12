@@ -47,6 +47,8 @@ export interface DefaultValues {
   frequencyStartDate: string;
   /** End date (YYYY-MM-DD) when custom date range is selected */
   frequencyEndDate: string;
+  /** CR PO Length 1 source default: 'manual' (from WL_Products) or 'historical' (from MES_RejectShort) */
+  poLengthCrSource: FrequencyMode;
   /** Plant Name for MES_RejectShort Power BI Semantic Model filter, e.g. 'PTBI' */
   rejectShortPlant: string;
   /** Date range filter preset for MES_RejectShort DimDate[Date] */
@@ -79,7 +81,7 @@ export interface DefaultValues {
   defaultIpPoLength1: number | null;
   /** Default PO length 1 (m) for Area CH (null = blank/manual setup required) */
   defaultChPoLength1: number | null;
-  /** Default PO length 1 (m) for Area CR (null = blank/manual setup required) */
+  /** Default PO length 1 (% of SpoolLength, e.g. 200 = 200% * SpoolLength) for Area CR (null = blank/manual setup required) */
   defaultCrPoLength1: number | null;
 }
 
@@ -106,6 +108,7 @@ export const BUILT_IN_DEFAULTS: DefaultValues = {
   frequencyDateRangeType: 'last7Days',
   frequencyStartDate: '2026-10-20',
   frequencyEndDate: '2026-10-27',
+  poLengthCrSource: 'manual',
   rejectShortPlant: 'PTBI',
   rejectShortDateRangeType: 'last7Days',
   rejectShortStartDate: '2026-10-20',
@@ -148,6 +151,7 @@ const PARAMETER_NAMES: Record<keyof DefaultValues, string> = {
   frequencyDateRangeType: 'FrequencyDateRangeType',
   frequencyStartDate: 'FrequencyStartDate',
   frequencyEndDate: 'FrequencyEndDate',
+  poLengthCrSource: 'PoLengthCrSource',
   rejectShortPlant: 'RejectShortPlant',
   rejectShortDateRangeType: 'RejectShortDateRangeType',
   rejectShortStartDate: 'RejectShortStartDate',
@@ -194,7 +198,7 @@ function parseValue<K extends keyof DefaultValues>(key: K, raw: string | undefin
     const mode = text.toLowerCase();
     return (mode === 'nearest' || mode === 'quickest' ? mode : undefined) as DefaultValues[K] | undefined;
   }
-  if (key === 'frequencyMode') {
+  if (key === 'frequencyMode' || key === 'poLengthCrSource') {
     const mode = text.toLowerCase();
     return (mode === 'historical' || mode === 'manual' ? mode : undefined) as DefaultValues[K] | undefined;
   }
@@ -279,10 +283,15 @@ function formatValue(key: keyof DefaultValues, value: DefaultValues[keyof Defaul
 /**
  * Returns the default Pay-Off length / weight for a given Area from Setting -> Default Values.
  * - Area WW, BA, CA, IS, IP: weight in kilograms (kg)
- * - Area BU, CB, SP, CH, CR: length in meters (m)
+ * - Area BU, CB, SP, CH: length in meters (m)
+ * - Area CR: configured as % of SpoolLength (e.g. 200 -> 200% * spoolLength). Requires spoolLength > 0.
  * Returns null if no default is configured for that Area.
  */
-export function getDefaultPoLengthForArea(defaults: DefaultValues, area: string | undefined): number | null {
+export function getDefaultPoLengthForArea(
+  defaults: DefaultValues,
+  area: string | undefined,
+  spoolLength?: number | null,
+): number | null {
   const a = (area || '').trim().toUpperCase();
   switch (a) {
     case 'WW':
@@ -303,8 +312,12 @@ export function getDefaultPoLengthForArea(defaults: DefaultValues, area: string 
       return defaults.defaultIpPoLength1 ?? null;
     case 'CH':
       return defaults.defaultChPoLength1 ?? null;
-    case 'CR':
-      return defaults.defaultCrPoLength1 ?? null;
+    case 'CR': {
+      const percent = defaults.defaultCrPoLength1;
+      if (percent == null || !Number.isFinite(percent) || percent <= 0) return null;
+      if (spoolLength == null || !Number.isFinite(spoolLength) || spoolLength <= 0) return null;
+      return Number(((percent / 100) * spoolLength).toFixed(2));
+    }
     default:
       return null;
   }

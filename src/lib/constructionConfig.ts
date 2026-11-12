@@ -3,11 +3,13 @@ import type { Mpp_wl_productses } from '../generated/models/Mpp_wl_productsesMod
 import type { AppConfig, FrequencyMode } from '../types';
 import { deriveMachineSpec, ensureCoreActivities, syncAutoActivityValues } from './calculations';
 import type { DefaultValues } from './defaultValuesStore';
+import { getDefaultPoLengthForArea } from './defaultValuesStore';
 import { DEFAULT_PIXELS_PER_METER } from './layoutConstants';
 import { buildActivitiesFromRows, isLoadingTaskRow, mapProductToSpec, productOperatorSettings } from './productCatalog';
 import type { SavedLayout } from './savedLayoutsStore';
 import { previewAssignedMachineIds, recommendedMachineCountForForecast } from './singleOperatorUtilization';
 import { resolveEffectiveFrequencies, type HistoricalFrequencyMap } from './frequencyCatalog';
+import { resolveEffectiveCrPoLength, type HistoricalRejectShortMap } from './rejectShortCatalog';
 
 /**
  * The Work Load Simulator setup for one Construction Detail: its spec from WL_Products, its
@@ -24,6 +26,8 @@ export function buildConstructionConfig({
   layout,
   frequencyMode,
   frequencyCatalog,
+  poLengthCrSource,
+  rejectShortCatalog,
 }: {
   base: AppConfig;
   product: Mpp_wl_productses;
@@ -33,8 +37,32 @@ export function buildConstructionConfig({
   layout: SavedLayout | null;
   frequencyMode?: FrequencyMode;
   frequencyCatalog?: HistoricalFrequencyMap | null;
+  poLengthCrSource?: FrequencyMode;
+  rejectShortCatalog?: HistoricalRejectShortMap | null;
 }): { config: AppConfig; errors: string[] } {
   let spec = mapProductToSpec(product);
+  const prodArea = (product.mpp_area ?? '').trim().toUpperCase();
+  if (product.mpp_polength1 == null || Number(product.mpp_polength1) === 0) {
+    const fallbackDefault = getDefaultPoLengthForArea(defaults, prodArea, spec.spoolLength);
+    if (fallbackDefault != null && fallbackDefault > 0) {
+      spec.poLength1 = fallbackDefault;
+    }
+  }
+  const effectiveCrMode = poLengthCrSource ?? defaults.poLengthCrSource ?? 'manual';
+  if (prodArea === 'CR' && effectiveCrMode === 'historical' && rejectShortCatalog) {
+    const effectivePo = resolveEffectiveCrPoLength({
+      manualPoLength1: spec.poLength1 ?? 0,
+      lookupParams: {
+        product: product.mpp_productspecification,
+        layLength: product.mpp_laylength,
+        tensileGroup: product.mpp_tensilegroup,
+      },
+      mode: effectiveCrMode,
+      catalog: rejectShortCatalog,
+    });
+    spec = { ...spec, poLength1: effectivePo.poLength1 };
+  }
+
   const effectiveMode = frequencyMode ?? base.frequencyMode ?? defaults.frequencyMode ?? 'manual';
   if (effectiveMode === 'historical' && frequencyCatalog) {
     const effective = resolveEffectiveFrequencies({
@@ -73,7 +101,8 @@ export function buildConstructionConfig({
 
   const productSettings = productOperatorSettings(product);
   const derived = deriveMachineSpec(spec);
-  const built = buildActivitiesFromRows(activityRows, product, derived.spoolWeight, spec.fracturePerTon);
+  const effectiveProduct = spec.poLength1 != null ? { ...product, mpp_polength1: spec.poLength1 } : product;
+  const built = buildActivitiesFromRows(activityRows, effectiveProduct, derived.spoolWeight, spec.fracturePerTon);
   // Synced the way Start does it (auto Num/Dem, Dies/Defect per ton), so a batch run, a replay and a
   // run started from the setup all simulate the very same Activity Table.
   const activities = syncAutoActivityValues(ensureCoreActivities(built.activities, derived.spoolWeight, spec.fracturePerTon), spec);

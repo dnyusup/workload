@@ -620,8 +620,8 @@ export function ImportConstructionFromMesDialog({
         const defectRate = freqItem?.defectPerTon ?? spec.defectPerTon ?? defaults.defaultDefectPerTon ?? 0;
 
         // Default PO Length 1 per Area from Settings:
-        // Area WW, BA, CA, IS, IP use kg; BU, CB, SP, CH, CR use meters
-        const poLength1 = getDefaultPoLengthForArea(defaults, itemArea);
+        // Area WW, BA, CA, IS, IP use kg; BU, CB, SP, CH use meters; CR uses % of SpoolLength
+        const poLength1 = getDefaultPoLengthForArea(defaults, itemArea, spec.standardLength);
 
         const nullValue: undefined = null as unknown as undefined;
         const payload: Omit<Mpp_wl_productsesBase, 'mpp_wl_productsid'> = {

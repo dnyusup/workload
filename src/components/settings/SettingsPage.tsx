@@ -448,8 +448,8 @@ function DefaultValuesCard() {
               />
             </SettingRow>
             <SettingRow
-              label="Default CR PO Length 1 (m)"
-              tooltip="Default Pay-Off Length 1 (meters) for Area CR. Leave blank/null if no default value is desired (requires manual setup in WL_Products)."
+              label="Default CR PO Length 1 (% SpoolLength)"
+              tooltip="Default Pay-Off Length 1 for Area CR expressed as % of SpoolLength (e.g. 200 = 200% × SpoolLength, 50 = 50% × SpoolLength). Leave blank/null if no default value is desired (requires manual setup in WL_Products)."
             >
               <OptionalNumberInput
                 value={draft.defaultCrPoLength1}
@@ -469,6 +469,16 @@ function DefaultValuesCard() {
           />
 
           <SettingGroup title="Reject Short & Power BI (MES Data)">
+            <SettingRow
+              label="Default CR PO Length Source"
+              tooltip="Default Pay-Off Length 1 source for Area CR in new Production Setups: Manual (WL_Products / % SpoolLength) or Historical AVG Meter/Spool from MES_RejectShort."
+            >
+              <SelectInput
+                value={draft.poLengthCrSource}
+                options={FREQUENCY_MODE_OPTIONS}
+                onChange={(v) => set('poLengthCrSource', v)}
+              />
+            </SettingRow>
             <PowerBiDateRangeRows
               plant={draft.rejectShortPlant}
               onPlantChange={(v) => set('rejectShortPlant', v)}

@@ -9,6 +9,7 @@ import {
   type SetupOperatorSettings,
 } from '../lib/theoreticalOperators';
 import type { HistoricalFrequencyMap } from '../lib/frequencyCatalog';
+import type { HistoricalRejectShortMap } from '../lib/rejectShortCatalog';
 
 export interface OptimizedCount {
   machinesPerOperator: number;
@@ -70,6 +71,7 @@ export function useOptimizedMachineCounts(
   base: AppConfig,
   settings: SetupOperatorSettings | null,
   frequencyCatalog?: HistoricalFrequencyMap | null,
+  rejectShortCatalog?: HistoricalRejectShortMap | null,
 ) {
   /** Keyed `<settings>
 <productId>`. */
@@ -101,13 +103,16 @@ export function useOptimizedMachineCounts(
   }, []);
 
   const idsKey = [...new Set(productIds)].sort().join('|');
-  const catalogKey = settings?.frequencyMode === 'historical' ? (frequencyCatalog ? 'loaded' : 'pending') : '';
-  const settingsKey = settings ? `${JSON.stringify(settings)}:${catalogKey}` : '';
+  const freqCatalogKey = settings?.frequencyMode === 'historical' ? (frequencyCatalog ? 'loaded' : 'pending') : '';
+  const crCatalogKey = settings?.poLengthCrSource === 'historical' ? (rejectShortCatalog ? 'loaded' : 'pending') : '';
+  const settingsKey = settings ? `${JSON.stringify(settings)}:${freqCatalogKey}|${crCatalogKey}` : '';
   const settingsRef = useRef(settings);
   const frequencyCatalogRef = useRef(frequencyCatalog);
+  const rejectShortCatalogRef = useRef(rejectShortCatalog);
   useEffect(() => {
     settingsRef.current = settings;
     frequencyCatalogRef.current = frequencyCatalog;
+    rejectShortCatalogRef.current = rejectShortCatalog;
   });
   useEffect(() => {
     const runner = runnerRef.current;
@@ -130,6 +135,7 @@ ${id}`;
           inputs,
           currentSettings,
           frequencyCatalogRef.current,
+          rejectShortCatalogRef.current,
         );
         const machinesPerOperator = await runner.run(config);
         if (!alive) return;
@@ -144,7 +150,7 @@ ${id}`;
         if (!finished.has(id)) requestedIds.delete(keyOf(id));
       });
     };
-  }, [idsKey, settingsKey, inputs, products, frequencyCatalog]);
+  }, [idsKey, settingsKey, inputs, products, frequencyCatalog, rejectShortCatalog]);
 
   /** This settings' counts, by Construction Detail id. */
   const counts = useMemo(() => {
