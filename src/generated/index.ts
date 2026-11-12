@@ -17,6 +17,7 @@ export * as Mpp_wl_usersesModel from './models/Mpp_wl_usersesModel';
 export * as Office365UsersModel from './models/Office365UsersModel';
 export * as WL_ActualOutputModel from './models/WL_ActualOutputModel';
 export * as WL_FrequencyModel from './models/WL_FrequencyModel';
+export * as WL_RejectShortModel from './models/WL_RejectShortModel';
 
 // Services
 export * from './services/Mpp_wl_activitiesService';
@@ -31,3 +32,4 @@ export * from './services/Mpp_wl_usersesService';
 export * from './services/Office365UsersService';
 export * from './services/WL_ActualOutputService';
 export * from './services/WL_FrequencyService';
+export * from './services/WL_RejectShortService';

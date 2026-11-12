@@ -47,6 +47,14 @@ export interface DefaultValues {
   frequencyStartDate: string;
   /** End date (YYYY-MM-DD) when custom date range is selected */
   frequencyEndDate: string;
+  /** Plant Name for MES_RejectShort Power BI Semantic Model filter, e.g. 'PTBI' */
+  rejectShortPlant: string;
+  /** Date range filter preset for MES_RejectShort DimDate[Date] */
+  rejectShortDateRangeType: FrequencyDateRangeType;
+  /** Start date (YYYY-MM-DD) when custom date range is selected for MES_RejectShort */
+  rejectShortStartDate: string;
+  /** End date (YYYY-MM-DD) when custom date range is selected for MES_RejectShort */
+  rejectShortEndDate: string;
   /** Default fallback rate for Fracture/Ton if not found in product or WL_Frequency */
   defaultFracturePerTon: number;
   /** Default fallback rate for Defect/Ton if not found in product or WL_Frequency */
@@ -98,6 +106,10 @@ export const BUILT_IN_DEFAULTS: DefaultValues = {
   frequencyDateRangeType: 'last7Days',
   frequencyStartDate: '2026-10-20',
   frequencyEndDate: '2026-10-27',
+  rejectShortPlant: 'PTBI',
+  rejectShortDateRangeType: 'last7Days',
+  rejectShortStartDate: '2026-10-20',
+  rejectShortEndDate: '2026-10-27',
   defaultFracturePerTon: 0,
   defaultDefectPerTon: 0,
   defaultDiesPerTon: 0,
@@ -136,6 +148,10 @@ const PARAMETER_NAMES: Record<keyof DefaultValues, string> = {
   frequencyDateRangeType: 'FrequencyDateRangeType',
   frequencyStartDate: 'FrequencyStartDate',
   frequencyEndDate: 'FrequencyEndDate',
+  rejectShortPlant: 'RejectShortPlant',
+  rejectShortDateRangeType: 'RejectShortDateRangeType',
+  rejectShortStartDate: 'RejectShortStartDate',
+  rejectShortEndDate: 'RejectShortEndDate',
   defaultFracturePerTon: 'DefaultFracturePerTon',
   defaultDefectPerTon: 'DefaultDefectPerTon',
   defaultDiesPerTon: 'DefaultDiesPerTon',
@@ -182,7 +198,7 @@ function parseValue<K extends keyof DefaultValues>(key: K, raw: string | undefin
     const mode = text.toLowerCase();
     return (mode === 'historical' || mode === 'manual' ? mode : undefined) as DefaultValues[K] | undefined;
   }
-  if (key === 'frequencyDateRangeType') {
+  if (key === 'frequencyDateRangeType' || key === 'rejectShortDateRangeType') {
     const valid: FrequencyDateRangeType[] = [
       'last7Days',
       'last14Days',
@@ -194,10 +210,10 @@ function parseValue<K extends keyof DefaultValues>(key: K, raw: string | undefin
     ];
     return (valid.includes(text as FrequencyDateRangeType) ? (text as FrequencyDateRangeType) : undefined) as DefaultValues[K] | undefined;
   }
-  if (key === 'frequencyPlant') {
+  if (key === 'frequencyPlant' || key === 'rejectShortPlant') {
     return (text !== '' ? text : undefined) as DefaultValues[K] | undefined;
   }
-  if (key === 'frequencyStartDate' || key === 'frequencyEndDate') {
+  if (key === 'frequencyStartDate' || key === 'frequencyEndDate' || key === 'rejectShortStartDate' || key === 'rejectShortEndDate') {
     return (text !== '' ? text : undefined) as DefaultValues[K] | undefined;
   }
   const nullablePoKeys: (keyof DefaultValues)[] = [

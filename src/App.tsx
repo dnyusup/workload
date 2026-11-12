@@ -24,6 +24,7 @@ import { SettingsPage } from './components/settings/SettingsPage';
 import { GuidancePage } from './components/guidance/GuidancePage';
 import { FrequencyManager } from './components/data/FrequencyManager';
 import { ActualOutputManager } from './components/data/ActualOutputManager';
+import { RejectShortManager } from './components/data/RejectShortManager';
 import './App.css';
 
 const ROLE_LABEL: Record<string, string> = { admin: 'Admin', contribute: 'Contribute', guest: 'Guest' };
@@ -35,6 +36,7 @@ const PAGE_DESCRIPTION: Record<AppPage, string> = {
   activities: 'Configure machine activity times and rules',
   frequency: 'Historical defect, fracture, and dies frequency from Power BI semantic model',
   actualOutput: 'Shift actual machine output and productivity from Power BI MES data (WL_ActualOutput)',
+  rejectShort: 'Short-length non-conformity reject metrics from Power BI MES data (WL_RejectShort)',
   outputModels: 'Review saved workload simulation outputs',
   users: 'Manage user access and roles',
   settings: 'Application settings, such as default values for new setups',
@@ -171,6 +173,7 @@ function AppShell() {
           {activePage === 'activities' && <ActivitiesManager initialConstructionFilter={activitiesConstructionFilter} />}
           {activePage === 'frequency' && <FrequencyManager />}
           {activePage === 'actualOutput' && <ActualOutputManager />}
+          {activePage === 'rejectShort' && <RejectShortManager />}
           {activePage === 'outputModels' && (
             <OutputModelsManager
               onUseStartCondition={(row, snapshot) => {

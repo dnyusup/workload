@@ -167,7 +167,7 @@ export interface HistoricalFrequencyItem {
 
 export type HistoricalFrequencyMap = Map<string, HistoricalFrequencyItem>;
 
-function getField(row: Record<string, unknown>, ...candidates: string[]): unknown {
+export function getField(row: Record<string, unknown>, ...candidates: string[]): unknown {
   for (const c of candidates) {
     if (row[c] !== undefined && row[c] !== null) return row[c];
     if (row[`[${c}]`] !== undefined && row[`[${c}]`] !== null) return row[`[${c}]`];
@@ -185,10 +185,67 @@ function getField(row: Record<string, unknown>, ...candidates: string[]): unknow
   return undefined;
 }
 
-function parseNumber(value: unknown): number | null {
+export function parseNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null;
   const num = typeof value === 'number' ? value : parseFloat(String(value).replace(/,/g, ''));
   return Number.isFinite(num) ? num : null;
+}
+
+/**
+ * Builds the parameter payload sent to Power Automate flows triggered by Power Apps (V2)
+ * accepting PlantName, StartDate, and EndDate (including Swagger key aliases text, date, date_1).
+ */
+export function buildPlantDateFlowPayload(
+  plant: string,
+  startDate: string,
+  endDate: string,
+  daxQuery: string,
+): Record<string, string> {
+  return {
+    // Parameter names as defined in PowerApps (V2) trigger
+    PlantName: plant,
+    StartDate: startDate,
+    EndDate: endDate,
+    // camelCase aliases
+    plantName: plant,
+    startDate,
+    endDate,
+    plant,
+    // Power Automate internal type keys for Text and Date inputs
+    text: plant,
+    date: startDate,
+    date_1: endDate,
+    text_1: startDate,
+    text_2: endDate,
+    // Full query string
+    daxQuery,
+    DaxQuery: daxQuery,
+  };
+}
+
+/**
+ * Unwraps and parses the `result` payload returned by a Power BI Power Automate flow
+ * (`firstTableRows` JSON string or array of row objects).
+ */
+export function parseFlowResultRows(rawResult: unknown, flowLabel = 'Flow'): Record<string, unknown>[] {
+  if (!rawResult || rawResult === '[]') {
+    return [];
+  }
+
+  let parsed: unknown = rawResult;
+  if (typeof rawResult === 'string') {
+    try {
+      parsed = JSON.parse(rawResult);
+    } catch {
+      throw new Error(`${flowLabel}: Failed to parse flow output result as JSON: ${rawResult.slice(0, 150)}`);
+    }
+  }
+
+  if (!Array.isArray(parsed)) {
+    throw new Error(`${flowLabel}: Query result is not an array of data rows.`);
+  }
+
+  return parsed as Record<string, unknown>[];
 }
 
 /** Menghilangkan artefak binary floating point precision (seperti 14.000000000000002 -> 14) */
@@ -196,6 +253,15 @@ export function cleanFloat(value: unknown, precision = 4): number | null {
   const num = parseNumber(value);
   if (num === null) return null;
   return Number(num.toFixed(precision));
+}
+
+/**
+ * Normalisasi LayLength sesuai regulasi MES_Frequency:
+ * membersihkan artefak floating-point hingga 2 desimal jika numerik, atau mengembalikan string trimmed.
+ */
+export function normalizeLayLength(value: unknown): number | string {
+  const cleaned = cleanFloat(value, 2);
+  return cleaned !== null ? cleaned : String(value ?? '').trim();
 }
 
 export function normalizeFrequencyKeyPart(val: unknown): string {
@@ -250,8 +316,7 @@ export function parseFrequencyRows(rawItems: Record<string, unknown>[]): Frequen
     const group = String(getField(raw, 'McGroup[Group]', '[McGroup].[Group]', 'Group', 'McGroup') ?? '').trim();
     const construction = String(getField(raw, 'DimProduct[Construction]', '[DimProduct].[Construction]', 'Construction', 'DimProduct') ?? '').trim();
     const layLengthRaw = getField(raw, 'DimProduct[LayLength]', '[DimProduct].[LayLength]', 'LayLength');
-    const layLengthClean = cleanFloat(layLengthRaw, 2);
-    const layLength = layLengthClean !== null ? layLengthClean : String(layLengthRaw ?? '').trim();
+    const layLength = normalizeLayLength(layLengthRaw);
     const tensileStrength = String(getField(raw, 'DimProduct[TensileStrength]', '[DimProduct].[TensileStrength]', 'TensileStrength') ?? '').trim();
 
     let area = String(getField(raw, 'Area', '[Area]') ?? '').trim();
@@ -467,26 +532,7 @@ export async function loadFrequencyCatalog(
         daxQuery,
       };
 
-      const payload = {
-        // Parameter names as defined in PowerApps (V2) trigger
-        PlantName: plant,
-        StartDate: startDate,
-        EndDate: endDate,
-        // camelCase aliases
-        plantName: plant,
-        startDate,
-        endDate,
-        plant,
-        // Power Automate internal type keys for Text and Date inputs
-        text: plant,
-        date: startDate,
-        date_1: endDate,
-        text_1: startDate,
-        text_2: endDate,
-        // Full query string
-        daxQuery,
-        DaxQuery: daxQuery,
-      };
+      const payload = buildPlantDateFlowPayload(plant, startDate, endDate, daxQuery);
 
       console.log('[WL_Frequency] Sending parameters to flow:', payload);
       const response = await WL_FrequencyService.Run(payload as unknown as Parameters<typeof WL_FrequencyService.Run>[0]);
@@ -496,29 +542,13 @@ export async function loadFrequencyCatalog(
         throw new Error(response.error?.message || 'Call to Power Automate flow WL_Frequency failed.');
       }
 
-      const rawResult = response.data?.result;
-
-      if (!rawResult || rawResult === '[]') {
-        console.warn('[WL_Frequency] Flow returned empty data (rawResult):', rawResult);
+      const parsed = parseFlowResultRows(response.data?.result, 'WL_Frequency');
+      if (parsed.length === 0 && (!response.data?.result || response.data.result === '[]')) {
+        console.warn('[WL_Frequency] Flow returned empty data (rawResult):', response.data?.result);
         const emptyCatalog: HistoricalFrequencyMap = new Map();
         const emptyRes = { catalog: emptyCatalog, records: [] as FrequencyRecord[] };
         catalogCacheMap.set(cacheKey, emptyRes);
         return emptyRes;
-      }
-
-      let parsed: Record<string, unknown>[] = [];
-      if (typeof rawResult === 'string') {
-        try {
-          parsed = JSON.parse(rawResult);
-        } catch {
-          throw new Error('Failed to parse flow output result as JSON: ' + rawResult.slice(0, 150));
-        }
-      } else if (Array.isArray(rawResult)) {
-        parsed = rawResult;
-      }
-
-      if (!Array.isArray(parsed)) {
-        throw new Error('Query result is not an array of data rows.');
       }
 
       const records = parseFrequencyRows(parsed);

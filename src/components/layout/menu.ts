@@ -1,6 +1,6 @@
 import type { UserRole } from '../../context/AuthContext';
 
-export type AppPage = 'simulator' | 'layouts' | 'production' | 'products' | 'activities' | 'frequency' | 'actualOutput' | 'outputModels' | 'users' | 'settings' | 'guidance';
+export type AppPage = 'simulator' | 'layouts' | 'production' | 'products' | 'activities' | 'frequency' | 'actualOutput' | 'rejectShort' | 'outputModels' | 'users' | 'settings' | 'guidance';
 
 export interface MenuItem {
   page: AppPage;
@@ -15,6 +15,7 @@ export const MENU: MenuItem[] = [
   { page: 'production', label: 'Production Simulation', icon: '🏭', roles: ['admin', 'contribute'] },
   { page: 'frequency', label: 'MES_Frequency', icon: '📈', roles: ['admin', 'contribute'] },
   { page: 'actualOutput', label: 'MES_ActualOutput', icon: '⚡', roles: ['admin', 'contribute'] },
+  { page: 'rejectShort', label: 'MES_RejectShort', icon: '✂️', roles: ['admin', 'contribute'] },
   { page: 'products', label: 'WL_Products', icon: '📦', roles: ['admin'] },
   { page: 'activities', label: 'WL_Activities', icon: '⏱️', roles: ['admin'] },
   { page: 'outputModels', label: 'WL_Outputmodels', icon: '📊', roles: ['admin'] },
@@ -38,7 +39,7 @@ export const MENU_GROUPS: MenuGroup[] = [
   {
     id: 'mes',
     label: 'MES Data',
-    pages: ['frequency', 'actualOutput'],
+    pages: ['frequency', 'actualOutput', 'rejectShort'],
   },
   {
     id: 'catalogs',

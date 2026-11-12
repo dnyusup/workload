@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { FrequencyMode, TaskPriorityMode, WaitingModel } from '../../types';
 import { BUILT_IN_DEFAULTS, loadDefaultValues, saveDefaultValues, type DefaultValues, type FrequencyDateRangeType } from '../../lib/defaultValuesStore';
-import { computeFrequencyDateRange, generateDaxQuery } from '../../lib/frequencyCatalog';
+import { computeFrequencyDateRange, generateDaxQuery, type DateRangeParts } from '../../lib/frequencyCatalog';
+import { generateRejectShortDax } from '../../lib/rejectShortCatalog';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { DateInput, NumberInput, OptionalNumberInput, SelectInput, TextInput } from '../ui/Field';
@@ -36,6 +37,123 @@ const DATE_RANGE_OPTIONS: { value: FrequencyDateRangeType; label: string }[] = [
   { value: 'custom', label: 'Custom (Select Start & End Date)' },
 ];
 
+function formatDateRangeBadge(type: FrequencyDateRangeType): string {
+  const match = DATE_RANGE_OPTIONS.find((opt) => opt.value === type);
+  return match ? match.label.split(' (')[0] : 'Last 7 Days';
+}
+
+function formatDaxFilterSnippet(plant: string, computedRange: DateRangeParts, reasonCode?: string): string {
+  const safePlant = plant.trim() || 'PTBI';
+  const reasonLine = reasonCode ? `\nTREATAS({"${reasonCode}"}, DimReasonCode[Code]),` : '';
+  return `-- Filter Plant
+TREATAS({"${safePlant}"}, DimPlantRegion[PlantName]),${reasonLine}
+
+-- 2. FILTER DATE BETWEEN (START DATE & END DATE)
+FILTER(
+    ALL(DimDate[Date]), 
+    DimDate[Date] >= DATE(${computedRange.startParts.year}, ${computedRange.startParts.month}, ${computedRange.startParts.day}) && DimDate[Date] <= DATE(${computedRange.endParts.year}, ${computedRange.endParts.month}, ${computedRange.endParts.day})
+)`;
+}
+
+/** Shared Plant & Date Range inputs + active range preview used for Power BI MES Data sources. */
+function PowerBiDateRangeRows({
+  plant,
+  onPlantChange,
+  dateRangeType,
+  onDateRangeTypeChange,
+  startDate,
+  onStartDateChange,
+  endDate,
+  onEndDateChange,
+  computedRange,
+}: {
+  plant: string;
+  onPlantChange: (v: string) => void;
+  dateRangeType: FrequencyDateRangeType;
+  onDateRangeTypeChange: (v: FrequencyDateRangeType) => void;
+  startDate: string;
+  onStartDateChange: (v: string) => void;
+  endDate: string;
+  onEndDateChange: (v: string) => void;
+  computedRange: DateRangeParts;
+}) {
+  return (
+    <>
+      <SettingRow
+        label="Plant Name (Power BI DimPlantRegion)"
+        tooltip="Plant name filtered with TREATAS in Power BI Semantic Model (e.g. PTBI)."
+      >
+        <TextInput value={plant} placeholder="PTBI" onChange={onPlantChange} />
+      </SettingRow>
+      <SettingRow
+        label="Date Range Filter (DimDate)"
+        tooltip="Date range filter mode for DAX query. If selecting Custom, specify Start Date and End Date below."
+      >
+        <SelectInput
+          value={dateRangeType}
+          options={DATE_RANGE_OPTIONS}
+          onChange={(v) => onDateRangeTypeChange(v as FrequencyDateRangeType)}
+        />
+      </SettingRow>
+      {dateRangeType === 'custom' ? (
+        <>
+          <SettingRow label="Start Date">
+            <DateInput value={startDate} onChange={onStartDateChange} />
+          </SettingRow>
+          <SettingRow label="End Date">
+            <DateInput value={endDate} onChange={onEndDateChange} />
+          </SettingRow>
+        </>
+      ) : (
+        <SettingRow label="Active Calculated Date Range">
+          <div className="frequency-active-date-pill">
+            <span className="frequency-date-tag">📅 {computedRange.startDate}</span>
+            <span className="frequency-date-separator">to</span>
+            <span className="frequency-date-tag">📅 {computedRange.endDate}</span>
+            <span className="frequency-date-badge-type">{formatDateRangeBadge(dateRangeType)}</span>
+          </div>
+        </SettingRow>
+      )}
+    </>
+  );
+}
+
+/** Reusable Live DAX filter preview card with copy button. */
+function DaxFilterPreviewBox({
+  title,
+  snippet,
+  copied,
+  onCopy,
+}: {
+  title: string;
+  snippet: string;
+  copied: boolean;
+  onCopy: () => void;
+}) {
+  return (
+    <div className="frequency-settings-dax-box">
+      <div className="frequency-settings-dax-header">
+        <div>
+          <span className="frequency-settings-dax-title">{title}</span>
+          <span className="frequency-settings-dax-sub">
+            This filter is automatically injected into Power Automate &amp; Semantic Model
+          </span>
+        </div>
+        <div className="frequency-settings-dax-actions">
+          <Button
+            variant="secondary"
+            onClick={onCopy}
+            title="Copy complete DAX query according to current settings"
+          >
+            {copied ? '✓ DAX Copied!' : '📋 Copy DAX Query'}
+          </Button>
+        </div>
+      </div>
+      <pre className="frequency-settings-dax-code">{snippet}</pre>
+    </div>
+  );
+}
+
 function DefaultValuesCard() {
   const [saved, setSaved] = useState<DefaultValues | null>(null);
   const [draft, setDraft] = useState<DefaultValues>(BUILT_IN_DEFAULTS);
@@ -44,6 +162,7 @@ function DefaultValuesCard() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [copiedDax, setCopiedDax] = useState(false);
+  const [copiedRejectShortDax, setCopiedRejectShortDax] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -99,21 +218,39 @@ function DefaultValuesCard() {
   }, [draft.frequencyPlant, computedRange]);
 
   const daxFilterSnippet = useMemo(() => {
-    const plant = draft.frequencyPlant?.trim() || 'PTBI';
-    return `-- Filter Plant
-TREATAS({"${plant}"}, DimPlantRegion[PlantName]),
-
--- 2. FILTER DATE BETWEEN (START DATE & END DATE)
-FILTER(
-    ALL(DimDate[Date]), 
-    DimDate[Date] >= DATE(${computedRange.startParts.year}, ${computedRange.startParts.month}, ${computedRange.startParts.day}) && DimDate[Date] <= DATE(${computedRange.endParts.year}, ${computedRange.endParts.month}, ${computedRange.endParts.day})
-)`;
+    return formatDaxFilterSnippet(draft.frequencyPlant, computedRange);
   }, [draft.frequencyPlant, computedRange]);
 
   const handleCopyDax = () => {
     void navigator.clipboard.writeText(fullDaxQuery);
     setCopiedDax(true);
     setTimeout(() => setCopiedDax(false), 2500);
+  };
+
+  const computedRejectShortRange = useMemo(() => {
+    return computeFrequencyDateRange(
+      draft.rejectShortDateRangeType,
+      draft.rejectShortStartDate,
+      draft.rejectShortEndDate,
+    );
+  }, [draft.rejectShortDateRangeType, draft.rejectShortStartDate, draft.rejectShortEndDate]);
+
+  const fullRejectShortDaxQuery = useMemo(() => {
+    return generateRejectShortDax({
+      plant: draft.rejectShortPlant?.trim() || 'PTBI',
+      startParts: computedRejectShortRange.startParts,
+      endParts: computedRejectShortRange.endParts,
+    });
+  }, [draft.rejectShortPlant, computedRejectShortRange]);
+
+  const rejectShortDaxFilterSnippet = useMemo(() => {
+    return formatDaxFilterSnippet(draft.rejectShortPlant, computedRejectShortRange, '1233');
+  }, [draft.rejectShortPlant, computedRejectShortRange]);
+
+  const handleCopyRejectShortDax = () => {
+    void navigator.clipboard.writeText(fullRejectShortDaxQuery);
+    setCopiedRejectShortDax(true);
+    setTimeout(() => setCopiedRejectShortDax(false), 2500);
   };
 
   const isInvalidMaxIdealDemand = draft.manOcc100Percent && (draft.maxIdealDemandPercent == null || draft.maxIdealDemandPercent <= 100);
@@ -171,63 +308,17 @@ FILTER(
                 onChange={(v) => set('frequencyMode', v)}
               />
             </SettingRow>
-            <SettingRow
-              label="Plant Name (Power BI DimPlantRegion)"
-              tooltip="Plant name filtered with TREATAS in Power BI Semantic Model (e.g. PTBI)."
-            >
-              <TextInput
-                value={draft.frequencyPlant}
-                placeholder="PTBI"
-                onChange={(v) => set('frequencyPlant', v)}
-              />
-            </SettingRow>
-            <SettingRow
-              label="Date Range Filter (DimDate)"
-              tooltip="Date range filter mode for DAX query. If selecting Custom, specify Start Date and End Date below."
-            >
-              <SelectInput
-                value={draft.frequencyDateRangeType}
-                options={DATE_RANGE_OPTIONS}
-                onChange={(v) => set('frequencyDateRangeType', v as FrequencyDateRangeType)}
-              />
-            </SettingRow>
-            {draft.frequencyDateRangeType === 'custom' ? (
-              <>
-                <SettingRow label="Start Date">
-                  <DateInput
-                    value={draft.frequencyStartDate}
-                    onChange={(v) => set('frequencyStartDate', v)}
-                  />
-                </SettingRow>
-                <SettingRow label="End Date">
-                  <DateInput
-                    value={draft.frequencyEndDate}
-                    onChange={(v) => set('frequencyEndDate', v)}
-                  />
-                </SettingRow>
-              </>
-            ) : (
-              <SettingRow label="Active Calculated Date Range">
-                <div className="frequency-active-date-pill">
-                  <span className="frequency-date-tag">📅 {computedRange.startDate}</span>
-                  <span className="frequency-date-separator">to</span>
-                  <span className="frequency-date-tag">📅 {computedRange.endDate}</span>
-                  <span className="frequency-date-badge-type">
-                    {draft.frequencyDateRangeType === 'last14Days'
-                      ? 'Last 14 Days'
-                      : draft.frequencyDateRangeType === 'last30Days'
-                      ? 'Last 30 Days'
-                      : draft.frequencyDateRangeType === 'last3Months'
-                      ? 'Last 3 Months'
-                      : draft.frequencyDateRangeType === 'last6Months'
-                      ? 'Last 6 Months'
-                      : draft.frequencyDateRangeType === 'last1Year'
-                      ? 'Last 1 Year'
-                      : 'Last 7 Days'}
-                  </span>
-                </div>
-              </SettingRow>
-            )}
+            <PowerBiDateRangeRows
+              plant={draft.frequencyPlant}
+              onPlantChange={(v) => set('frequencyPlant', v)}
+              dateRangeType={draft.frequencyDateRangeType}
+              onDateRangeTypeChange={(v) => set('frequencyDateRangeType', v)}
+              startDate={draft.frequencyStartDate}
+              onStartDateChange={(v) => set('frequencyStartDate', v)}
+              endDate={draft.frequencyEndDate}
+              onEndDateChange={(v) => set('frequencyEndDate', v)}
+              computedRange={computedRange}
+            />
             <SettingRow
               label="Default Fr / Ton Fallback"
               tooltip="Fallback Fracture/Ton rate if product specification has no frequency in WL_Products or MES_Frequency (0 = no fallback)."
@@ -370,26 +461,33 @@ FILTER(
           </SettingGroup>
 
           {/* Live DAX Filter Preview Box */}
-          <div className="frequency-settings-dax-box">
-            <div className="frequency-settings-dax-header">
-              <div>
-                <span className="frequency-settings-dax-title">🔍 Live DAX Filter Preview</span>
-                <span className="frequency-settings-dax-sub">This filter is automatically injected into Power Automate & Semantic Model</span>
-              </div>
-              <div className="frequency-settings-dax-actions">
-                <Button
-                  variant="secondary"
-                  onClick={handleCopyDax}
-                  title="Copy complete DAX query according to current settings"
-                >
-                  {copiedDax ? '✓ DAX Copied!' : '📋 Copy DAX Query'}
-                </Button>
-              </div>
-            </div>
-            <pre className="frequency-settings-dax-code">
-              {daxFilterSnippet}
-            </pre>
-          </div>
+          <DaxFilterPreviewBox
+            title="🔍 Live DAX Filter Preview (MES_Frequency)"
+            snippet={daxFilterSnippet}
+            copied={copiedDax}
+            onCopy={handleCopyDax}
+          />
+
+          <SettingGroup title="Reject Short & Power BI (MES Data)">
+            <PowerBiDateRangeRows
+              plant={draft.rejectShortPlant}
+              onPlantChange={(v) => set('rejectShortPlant', v)}
+              dateRangeType={draft.rejectShortDateRangeType}
+              onDateRangeTypeChange={(v) => set('rejectShortDateRangeType', v)}
+              startDate={draft.rejectShortStartDate}
+              onStartDateChange={(v) => set('rejectShortStartDate', v)}
+              endDate={draft.rejectShortEndDate}
+              onEndDateChange={(v) => set('rejectShortEndDate', v)}
+              computedRange={computedRejectShortRange}
+            />
+          </SettingGroup>
+
+          <DaxFilterPreviewBox
+            title="🔍 Live DAX Filter Preview (MES_RejectShort)"
+            snippet={rejectShortDaxFilterSnippet}
+            copied={copiedRejectShortDax}
+            onCopy={handleCopyRejectShortDax}
+          />
 
           <SettingGroup title="Shift & Breaks">
             <SettingRow label="Shift Time (min)">
