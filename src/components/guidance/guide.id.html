@@ -459,9 +459,12 @@
     <h3>Doffing, Loading, dan sub-aktivitas</h3>
     <ul>
       <li><strong>Loading</strong> mengikuti POlength di WL_Products bila diisi. Area WW, BA, CA, IS, IP memakai Loading
-        berbasis berat yang dikerjakan di Pay Off (bisa memotong pertengahan runtime), sedangkan Area CR memakai aturan
-        mid-runtime yang sama berdasarkan panjang meter (<code>POlength1 / SpoolLength</code>, nilai desimal termasuk
-        <code>&lt; 1</code> diizinkan) dengan posisi operator 85% di Pay Off lalu pindah 15% ke Take Up.
+        berbasis berat yang dikerjakan di Pay Off (bisa memotong pertengahan runtime). Area CR dan Area CH memakai
+        <code>POlength1</code> dalam meter (tanpa sub-loading Partial) dengan posisi operator 85% di Pay Off lalu pindah
+        15% ke Take Up: Area CR memakai <code>POlength1 / SpoolLength</code> (nilai desimal termasuk <code>&lt; 1</code>
+        diizinkan) dan selalu bisa memotong pertengahan runtime; Area CH hanya memotong pertengahan runtime saat
+        denominator <code>&lt; 1</code>, sedangkan bila <code>&ge; 1</code> memakai
+        <code>ROUNDDOWN(POlength1 / SpoolLength)</code> dan selalu dikerjakan setelah Doffing.
       </li>
       <li>Kalau <strong>Loading Partial1 dan Partial2</strong> jatuh tempo bersamaan, keduanya diganti satu Loading
         Partial3.</li>

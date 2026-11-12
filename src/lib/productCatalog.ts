@@ -5,6 +5,7 @@ import type { ActivityConfig, MachCondition, MachineSpecInput, TaskPriorityMode 
 import {
   LENGTH_INTERRUPT_LOADING_AREAS,
   MID_RUNTIME_LOADING_AREAS,
+  ROUNDDOWN_LENGTH_INTERRUPT_LOADING_AREAS,
   WEIGHT_LOADING_AREAS,
   deriveMachineSpec,
   fractureRepairingDenominator,
@@ -12,7 +13,12 @@ import {
 } from './calculations';
 import { parseFrequencyType } from './frequencyTypes';
 
-export { WEIGHT_LOADING_AREAS, LENGTH_INTERRUPT_LOADING_AREAS, MID_RUNTIME_LOADING_AREAS };
+export {
+  WEIGHT_LOADING_AREAS,
+  LENGTH_INTERRUPT_LOADING_AREAS,
+  ROUNDDOWN_LENGTH_INTERRUPT_LOADING_AREAS,
+  MID_RUNTIME_LOADING_AREAS,
+};
 const DIES_CHANGE_AREAS = ['WW', 'BA', 'CA'];
 const DEFECT_REPAIRING_AREAS = ['CB', 'BU', 'SP', 'CH', 'CR'];
 
@@ -152,9 +158,13 @@ function rounddownRatio(value: number, divisor: number): number {
  * Loading is created, its denominator is POlength/SpoolWeight (decimal values are intentional),
  * and the simulation marks it due from fractional production progress, so it may interrupt a
  * spool before Doffing.
- * For CR, POlength1 is still a physical length in meters, and Loading uses the same mid-runtime
- * interrupt rule: only the parent Loading is created (when POlength1 > 0), with denominator =
- * POlength1/SpoolLength (decimal values including < 1 are intentional).
+ * For CR, POlength1 is a physical length in meters and Loading uses the mid-runtime interrupt rule
+ * with 85% Pay Off + 15% Take Up zones: only the parent Loading is created (when POlength1 > 0),
+ * with denominator = POlength1/SpoolLength (decimals including < 1 allowed).
+ * For CH, POlength1 is also in meters with 85% Pay Off + 15% Take Up zones and parent Loading only:
+ * when POlength1/SpoolLength >= 1, denominator = ROUNDDOWN(POlength1/SpoolLength) (same as BU) and
+ * Loading runs on whole-spool completion right after Doffing; only when < 1 does it keep the
+ * decimal denominator and interrupt mid-runtime like CR.
  *   - 1 filled: parent only, denominator = ROUNDDOWN(that length / SpoolLength).
  *   - 2 filled: parent denominator = ROUNDDOWN(MAX(length) / SpoolLength); one sub-loading, taken
  *     whole (time/numerator/denominator/machcondition) from the WL_Activities row
@@ -215,7 +225,7 @@ function buildLoadingActivities(
       machCondition: parseMachCondition(parentRow.mpp_machcondition),
       numeratorReadOnly: true,
       denominatorReadOnly: true,
-      loadingInterrupt: midRuntimeLoading,
+      loadingInterrupt: false,
       loadingZoneMode: loadingZoneModeFor(area, midRuntimeLoading),
     });
   }
@@ -228,10 +238,12 @@ function buildLoadingActivities(
       errors.push(`Loading denominator cannot be calculated because ${divisorName} is zero.`);
     } else if (parentRow) {
       const loading = activities[0];
-      loading.denominator = numeratorLength / divisor;
-      loading.loadingInterrupt = true;
+      const rawRatio = numeratorLength / divisor;
+      const useRounddown = !weightLoading && ROUNDDOWN_LENGTH_INTERRUPT_LOADING_AREAS.includes(area) && rawRatio >= 1;
+      loading.denominator = useRounddown ? Math.floor(rawRatio) : rawRatio;
+      loading.loadingInterrupt = !useRounddown;
     }
-    // Only the parent Loading is applicable for mid-runtime regulated areas (weight-based or CR).
+    // Only the parent Loading is applicable for regulated POlength1/weight areas (weight-based, CR, or CH).
     return { activities, errors };
   }
 

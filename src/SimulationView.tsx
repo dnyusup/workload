@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import type { AppConfig } from './types';
 import { useSimulation } from './hooks/useSimulation';
 import { LayoutCanvas } from './components/simulation/LayoutCanvas';
+import { isMidRuntimeLoading } from './lib/calculations';
 import { Dashboard } from './components/simulation/Dashboard';
 import { Controls } from './components/simulation/Controls';
 import { OutputModelSaveDialog } from './components/simulation/OutputModelSaveDialog';
@@ -340,6 +341,7 @@ export function SimulationView({
         <LayoutCanvas
           state={state}
           area={config.spec.area}
+          hideSpoolLabels={isMidRuntimeLoading(config.activities, config.spec.area)}
           walls={config.walls}
           remarks={config.remarks}
           fullscreenControls={

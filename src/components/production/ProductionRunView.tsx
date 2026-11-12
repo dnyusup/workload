@@ -1,11 +1,9 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { machineLocalFrame } from '../../lib/layoutConstants';
-import { MID_RUNTIME_LOADING_AREAS } from '../../lib/productCatalog';
+import { isMidRuntimeLoading } from '../../lib/calculations';
 import type { ProductionMachineAssignment, ProductionSetup, ProductionSimulationState } from '../../types';
 import type { ResolvedConstruction } from '../../lib/productionConstructionResolver';
 import { useProductionSimulation } from '../../hooks/useProductionSimulation';
-
-const HIDDEN_SPOOL_LABEL_AREAS = new Set(MID_RUNTIME_LOADING_AREAS);
 import { MachineZoneLabels } from '../ui/MachineZoneLabels';
 import { MachineDonut } from '../simulation/MachineDonut';
 import {
@@ -141,8 +139,8 @@ export function ProductionRunView({
     [setup.assignments, allProductIds],
   );
   const assignmentByMachineId = useMemo(() => new Map(setup.assignments.map((a) => [a.machineId, a])), [setup.assignments]);
-  const areaByConstructionId = useMemo(
-    () => new Map([...resolved].map(([id, construction]) => [id, construction.spec.area.trim().toUpperCase()])),
+  const hideSpoolLabelByConstructionId = useMemo(
+    () => new Map([...resolved].map(([id, c]) => [id, isMidRuntimeLoading(c.activities, c.spec.area)])),
     [resolved],
   );
   const operatorLabelMap = useMemo(() => new Map(setup.operators.map((o) => [o.id, o.label])), [setup.operators]);
@@ -858,7 +856,7 @@ export function ProductionRunView({
                     selectedMachineId={selectedMachineId}
                     onSelectMachine={onSelectMachine}
                     assignmentByMachineId={assignmentByMachineId}
-                    areaByConstructionId={areaByConstructionId}
+                    hideSpoolLabelByConstructionId={hideSpoolLabelByConstructionId}
                     constructionColorMap={constructionColorMap}
                     operatorLabelById={operatorLabelById}
                     isDetailed={isDetailed}
@@ -1464,7 +1462,7 @@ const MachinesLayer = memo(function MachinesLayer({
   selectedMachineId,
   onSelectMachine,
   assignmentByMachineId,
-  areaByConstructionId,
+  hideSpoolLabelByConstructionId,
   constructionColorMap,
   operatorLabelById,
   isDetailed,
@@ -1476,7 +1474,7 @@ const MachinesLayer = memo(function MachinesLayer({
   selectedMachineId: string | null;
   onSelectMachine: (id: string) => void;
   assignmentByMachineId: Map<string, ProductionMachineAssignment>;
-  areaByConstructionId: Map<string, string>;
+  hideSpoolLabelByConstructionId: Map<string, boolean>;
   constructionColorMap: Map<string, string>;
   operatorLabelById: (id?: string) => string;
   isDetailed: boolean;
@@ -1505,7 +1503,9 @@ const MachinesLayer = memo(function MachinesLayer({
         const servicingOperator = servicingByMachineId.get(m.id);
         const zoneColors = machineZoneColors(m, servicingOperator?.serviceTasks ?? [], servicingOperator?.targetMachineId ?? null);
         const assignment = assignmentByMachineId.get(m.id);
-        const area = assignment?.constructionDetailId ? areaByConstructionId.get(assignment.constructionDetailId) : undefined;
+        const hideSpoolLabel = assignment?.constructionDetailId
+          ? (hideSpoolLabelByConstructionId.get(assignment.constructionDetailId) ?? false)
+          : false;
         const tooltip = isDetailed
           ? [
               `Machine ${m.label}`,
@@ -1535,7 +1535,7 @@ const MachinesLayer = memo(function MachinesLayer({
             takeupColor={zoneColors.takeup}
             isSelected={selectedMachineId === m.id}
             borderColor={assignment?.constructionDetailId ? constructionColorMap.get(assignment.constructionDetailId) : undefined}
-            showSpoolLabels={!HIDDEN_SPOOL_LABEL_AREAS.has((area ?? '').trim().toUpperCase())}
+            showSpoolLabels={!hideSpoolLabel}
             spoolsSinceLoading={m.spoolsSinceLoading}
             shiftSpoolsCompleted={m.shiftSpoolsCompleted}
             tooltip={tooltip}

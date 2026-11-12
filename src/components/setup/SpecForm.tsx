@@ -1,6 +1,10 @@
 import type { MachineSpecInput } from '../../types';
 import { deriveMachineSpec } from '../../lib/calculations';
-import { LENGTH_INTERRUPT_LOADING_AREAS, WEIGHT_LOADING_AREAS } from '../../lib/productCatalog';
+import {
+  LENGTH_INTERRUPT_LOADING_AREAS,
+  ROUNDDOWN_LENGTH_INTERRUPT_LOADING_AREAS,
+  WEIGHT_LOADING_AREAS,
+} from '../../lib/productCatalog';
 import { Card } from '../ui/Card';
 import { PRODUCT_AREAS } from '../../types';
 import { Field, NumberInput, SelectInput } from '../ui/Field';
@@ -21,6 +25,7 @@ export function SpecForm({
   const areaUpper = spec.area.trim().toUpperCase();
   const weightLoading = WEIGHT_LOADING_AREAS.includes(areaUpper);
   const lengthInterruptLoading = LENGTH_INTERRUPT_LOADING_AREAS.includes(areaUpper);
+  const rounddownLengthInterrupt = ROUNDDOWN_LENGTH_INTERRUPT_LOADING_AREAS.includes(areaUpper);
   const set = (key: keyof MachineSpecInput) => (v: number) => onChange({ ...spec, [key]: v });
   const setArea = (area: string) => onChange({ ...spec, area });
 
@@ -71,7 +76,9 @@ export function SpecForm({
           : weightLoading
             ? 'Loading every POlength ÷ SpoolWeight spools (only the first filled POlength is used for this Area). 0 = not filled.'
             : lengthInterruptLoading
-              ? 'Loading every POlength1 ÷ SpoolLength spools mid-runtime (decimal values including < 1 are allowed; only POlength1 is used for this Area). 0 = not filled.'
+              ? rounddownLengthInterrupt
+                ? 'Loading every ROUNDDOWN(POlength1 ÷ SpoolLength) spools after Doffing when >= 1, or mid-runtime when < 1 (only POlength1 is used for this Area). 0 = not filled.'
+                : 'Loading every POlength1 ÷ SpoolLength spools mid-runtime (decimal values including < 1 are allowed; only POlength1 is used for this Area). 0 = not filled.'
               : 'Loading every ROUNDDOWN(max POlength ÷ SpoolLength) spools; the other filled POlengths become Partial1/Partial2. 0 = not filled.'}
       </p>
       {loadingErrors.length > 0 && <p className="construction-selector-error">{loadingErrors.join(' ')}</p>}

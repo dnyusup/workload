@@ -5,10 +5,24 @@ const LINEAR_SPEED_FROM_SPEED_AREAS = ['WW', 'CH', 'CR', 'BA', 'CA', 'IS', 'IP']
 /** Areas whose Twist/min = Speed (not Speed*2); Linear Speed still uses the LayLength/1000*Twist/min formula. */
 const TWIST_EQUALS_SPEED_AREAS = ['SP', 'CB'];
 export const WEIGHT_LOADING_AREAS = ['WW', 'BA', 'CA', 'IS', 'IP'];
-export const LENGTH_INTERRUPT_LOADING_AREAS = ['CR'];
-export const MID_RUNTIME_LOADING_AREAS = [...WEIGHT_LOADING_AREAS, ...LENGTH_INTERRUPT_LOADING_AREAS];
+export const LENGTH_INTERRUPT_LOADING_AREAS = ['CR', 'CH'];
+/** Areas using length-based Loading (POlength1 in meters, 85% PO + 15% TU) whose denominator is
+ * rounded down like BU when >= 1 (triggering after Doffing), and mid-runtime only when < 1. */
+export const ROUNDDOWN_LENGTH_INTERRUPT_LOADING_AREAS = ['CH'];
+/** Areas whose Loading is ALWAYS mid-runtime regardless of denominator. */
+export const MID_RUNTIME_LOADING_AREAS = [...WEIGHT_LOADING_AREAS, 'CR'];
 
-/** Resolves the operator's Loading zone schedule for an Area: CR splits 85% at PO then 15% at TU,
+/** Whether Loading interrupts mid-runtime for a resolved activity list (with Area fallback). */
+export function isMidRuntimeLoading(
+  activities: readonly Pick<ActivityConfig, 'key' | 'loadingInterrupt'>[],
+  area?: string,
+): boolean {
+  const loading = activities.find((a) => a.key === 'loading');
+  if (loading) return Boolean(loading.loadingInterrupt);
+  return MID_RUNTIME_LOADING_AREAS.includes((area ?? '').trim().toUpperCase());
+}
+
+/** Resolves the operator's Loading zone schedule for an Area: CR and CH split 85% at PO then 15% at TU,
  * weight-based mid-runtime areas stay 100% at PO, and all other areas use PO -> Cradle -> TU. */
 export function loadingZoneModeFor(
   area: string | undefined,

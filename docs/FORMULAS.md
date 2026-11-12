@@ -88,6 +88,7 @@ Sumber: `buildLoadingActivities`, `rebuildLoadingActivities` di `productCatalog.
 |---|---|---|
 | Area WW/BA/CA/IS/IP (POlength = kg) | Denominator = `POlength pertama yang terisi / SpoolWeight` (desimal); engine memicu Loading dari progres fraksional (bisa memotong spool) | tidak ada |
 | Area CR (POlength1 = m) | Denominator = `POlength1 / SpoolLength` (desimal, boleh `< 1`); engine memicu Loading dari progres fraksional (bisa memotong spool), posisi operator 85% di Pay Off lalu pindah 15% ke Take Up | tidak ada |
+| Area CH (POlength1 = m) | Bila `< 1`: tetap desimal `POlength1 / SpoolLength` dan memicu Loading di pertengahan runtime seperti CR. Bila `≥ 1`: `ROUNDDOWN(POlength1 / SpoolLength)` (seperti BU) dan dikerjakan setelah Doffing saat spool selesai. Posisi operator selalu 85% di Pay Off lalu pindah 15% ke Take Up | tidak ada |
 | 1 POlength terisi | Denominator = `ROUNDDOWN(POlength / SpoolLength)` | tidak ada |
 | 2 POlength terisi | Denominator = `ROUNDDOWN(max POlength / SpoolLength)` | **Partial1**: Denominator = `ROUNDDOWN(POlength lain / SpoolLength)` |
 | 3 POlength terisi | sama (pakai max) | Dua sisanya: `ROUNDDOWN(PO/SpoolLength)`. Bila sama → hanya Partial1. Bila beda → yang kecil **Partial1**, yang besar **Partial2**; ditambah **Partial3** (dikerjakan bila Partial1 & Partial2 jatuh bersamaan) |
@@ -201,7 +202,7 @@ Sumber: [`src/lib/simulationEngine.ts`](../src/lib/simulationEngine.ts)
 | Pemicu | Selama `spool fraksional ≥ (event terpicu + 1) × siklus` → pasang task di mesin running acak (efektif setelah spool mesin itu selesai) |
 | Dies per event | 7 atau 26 (acak 50/50), dibatasi sisa planned dies; waktu = `time × jumlah dies` |
 
-### 7.4 Loading mid-runtime (WW/BA/CA/IS/IP berbasis berat & CR berbasis meter)
+### 7.4 Loading mid-runtime (WW/BA/CA/IS/IP berbasis berat, CR, serta CH saat `< 1`)
 
 Dipicu saat `spoolsSinceLoading + progres spool saat ini ≥ cycle Loading` → mesin langsung berhenti (memotong spool), termasuk bila `cycle < 1` (lebih dari satu Loading per spool). `spoolsSinceLoading` direset relatif terhadap progres spool saat ini setelah Loading selesai (pada akhir aktivitas Loading sebelum segmen RPC).
 
@@ -212,7 +213,7 @@ Dipicu saat `spoolsSinceLoading + progres spool saat ini ≥ cycle Loading` → 
 | **Nearest Task** | Jarak jalan (m) dari posisi operator ke mesin |
 | **Quickest Task** | `jalan ke zona pertama / WalkingSpeed + Σ dwell zona + Σ jalan antar zona / WalkingSpeed` |
 
-Jalan mengikuti rute yang menghindari badan mesin. Waktu servis dibagi ke zona mesin (Pay Off, Cradle, Take Up — khusus Loading Area WW/BA/CA/IS/IP 100% di Pay Off, Area CR 85% di Pay Off lalu 15% di Take Up); untuk Loading, sub-Loading, Fracture, dan Defect (bukan take-up-only), waktu jalan antar zona **termasuk** dalam `time` aktivitas: `dwell = max(0, time − waktu jalan antar zona)` dibagi proporsional per zona.
+Jalan mengikuti rute yang menghindari badan mesin. Waktu servis dibagi ke zona mesin (Pay Off, Cradle, Take Up — khusus Loading Area WW/BA/CA/IS/IP 100% di Pay Off, Area CR/CH 85% di Pay Off lalu 15% di Take Up); untuk Loading, sub-Loading, Fracture, dan Defect (bukan take-up-only), waktu jalan antar zona **termasuk** dalam `time` aktivitas: `dwell = max(0, time − waktu jalan antar zona)` dibagi proporsional per zona.
 
 ### 7.6 Estimate kejadian (Completed Activities "/ ~N")
 

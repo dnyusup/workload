@@ -450,9 +450,13 @@
     <h3>Doffing, Loading and sub-activities</h3>
     <ul>
       <li><strong>Loading</strong> follows POlength in WL_Products when it's filled. Areas WW, BA, CA, IS, IP use
-        weight-based Loading done at the Pay Off (can interrupt mid-runtime), while Area CR uses the same mid-runtime
-        interrupt rule based on length in meters (<code>POlength1 / SpoolLength</code>, decimals including
-        <code>&lt; 1</code> allowed) with the operator working 85% at Pay Off before moving 15% to Take Up.
+        weight-based Loading done at the Pay Off (can interrupt mid-runtime). Area CR and Area CH use
+        <code>POlength1</code>
+        in meters (no Partial sub-loadings) with the operator working 85% at Pay Off before moving 15% to Take Up:
+        Area CR uses <code>POlength1 / SpoolLength</code> (decimals including <code>&lt; 1</code> allowed) and always
+        interrupts mid-runtime; Area CH interrupts mid-runtime only when <code>POlength1 / SpoolLength &lt; 1</code>,
+        while for <code>&ge; 1</code> its denominator uses <code>ROUNDDOWN(POlength1 / SpoolLength)</code> and Loading
+        always runs right after Doffing.
       </li>
       <li>When <strong>Loading Partial1 and Partial2</strong> come due together, one Loading Partial3 replaces both.
       </li>

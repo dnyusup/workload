@@ -46,12 +46,14 @@ const HIDDEN_SPOOL_LABEL_AREAS = new Set(MID_RUNTIME_LOADING_AREAS);
 export function LayoutCanvas({
   state,
   area,
+  hideSpoolLabels,
   walls,
   remarks,
   fullscreenControls,
 }: {
   state: SimulationState;
   area?: string;
+  hideSpoolLabels?: boolean;
   /** Layout walls, drawn so it's clear why the operator walks around them. */
   walls?: LayoutWall[];
   /** Layout text notes — visual only, the operator walks through them. */
@@ -59,7 +61,7 @@ export function LayoutCanvas({
   fullscreenControls?: ReactNode;
 }) {
   const { machines, operator, metrics } = state;
-  const showSpoolLabels = !HIDDEN_SPOOL_LABEL_AREAS.has(area?.trim().toUpperCase() ?? '');
+  const showSpoolLabels = !(hideSpoolLabels ?? HIDDEN_SPOOL_LABEL_AREAS.has(area?.trim().toUpperCase() ?? ''));
   const [selectedMachineId, setSelectedMachineId] = useState<string | null>(null);
   const [selectedOperatorSegment, setSelectedOperatorSegment] = useState<number | null>(null);
   const isMovingBetweenMachines = operator.phase === 'walking';
