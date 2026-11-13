@@ -4,6 +4,7 @@ import type { FrequencyMode, ProductionMachineAssignment } from '../../types';
 import type { HistoricalFrequencyMap } from '../../lib/frequencyCatalog';
 import {
   type SetupFrequencyItem,
+  type FrequencyChangeItem,
   updateSetupFrequencyItem,
   syncSetupFrequenciesForAssignments,
   deleteSetupFrequencyItem,
@@ -21,6 +22,7 @@ export interface ProductionSetupFrequencyDialogProps {
   frequencyCatalog?: HistoricalFrequencyMap | null;
   items: SetupFrequencyItem[];
   onItemsChange: (items: SetupFrequencyItem[]) => void;
+  onShowSyncSummary?: (changes: FrequencyChangeItem[]) => void;
   isReadOnly?: boolean;
 }
 
@@ -35,6 +37,7 @@ export function ProductionSetupFrequencyDialog({
   frequencyCatalog = null,
   items,
   onItemsChange,
+  onShowSyncSummary,
   isReadOnly = false,
 }: ProductionSetupFrequencyDialogProps) {
   const [localItems, setLocalItems] = useState<SetupFrequencyItem[]>(items);
@@ -116,8 +119,7 @@ export function ProductionSetupFrequencyDialog({
     setSyncing(true);
     setFeedback(null);
     try {
-      const initialCount = localItems.length;
-      const updated = await syncSetupFrequenciesForAssignments({
+      const { items: updated, changes } = await syncSetupFrequenciesForAssignments({
         setupId,
         assignments: setupAssignments,
         products,
@@ -125,13 +127,16 @@ export function ProductionSetupFrequencyDialog({
         frequencyCatalog,
         existingItems: localItems,
       });
-      const added = updated.length - initialCount;
       setLocalItems(updated);
       onItemsChange(updated);
-      if (added > 0) {
-        setFeedback({ message: `Generated ${added} new frequency row(s) from current assignments.`, type: 'success' });
+      if (changes.length > 0) {
+        if (onShowSyncSummary) {
+          onShowSyncSummary(changes);
+        } else {
+          setFeedback({ message: `Updated ${changes.length} frequency rule(s).`, type: 'success' });
+        }
       } else {
-        setFeedback({ message: 'All assigned construction tuples already exist in this setup.', type: 'success' });
+        setFeedback({ message: 'All assigned construction tuples are already up to date.', type: 'success' });
       }
     } catch (err) {
       setFeedback({

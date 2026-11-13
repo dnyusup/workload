@@ -38,8 +38,10 @@ import {
   fetchSetupFrequencies,
   syncSetupFrequenciesForAssignments,
   type SetupFrequencyItem,
+  type FrequencyChangeItem,
 } from '../../lib/productionSetupFrequenciesStore';
 import { ProductionSetupFrequencyDialog } from '../setup/ProductionSetupFrequencyDialog';
+import { FrequencySyncSummaryDialog } from '../setup/FrequencySyncSummaryDialog';
 import {
   calculatePlannedUtilization,
   calculateSelectionOccupation,
@@ -575,6 +577,12 @@ export function ProductionSimulationPage({
   const [rejectShortCatalog, setRejectShortCatalog] = useState<HistoricalRejectShortMap | null>(null);
   const [setupFrequencies, setSetupFrequencies] = useState<SetupFrequencyItem[]>([]);
   const [showFrequencyDialog, setShowFrequencyDialog] = useState(false);
+  const [syncSummaryChanges, setSyncSummaryChanges] = useState<FrequencyChangeItem[] | null>(null);
+
+  const prevSetupIdForFreq = useRef<string | null>(null);
+  const prevFreqMode = useRef<string | undefined>(undefined);
+  const prevFreqStartDate = useRef<string | undefined>(undefined);
+  const prevFreqEndDate = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     let cancelled = false;
@@ -651,19 +659,39 @@ export function ProductionSimulationPage({
         cancelled = true;
       };
     }
+
+    const isInitialSetupLoad = prevSetupIdForFreq.current !== selectedSetupIdForFreq;
+    const isSourceOrDateChanged =
+      !isInitialSetupLoad &&
+      (prevFreqMode.current !== selectedFrequencyMode ||
+        (selectedFrequencyMode === 'historical' &&
+          (prevFreqStartDate.current !== selectedFrequencyStartDate ||
+            prevFreqEndDate.current !== selectedFrequencyEndDate)));
+
+    prevSetupIdForFreq.current = selectedSetupIdForFreq;
+    prevFreqMode.current = selectedFrequencyMode;
+    prevFreqStartDate.current = selectedFrequencyStartDate;
+    prevFreqEndDate.current = selectedFrequencyEndDate;
+
     fetchSetupFrequencies(selectedSetupIdForFreq)
       .then(async (freqs) => {
         if (cancelled) return;
         if (selectedSetup && selectedSetup.assignments.some((a) => a.constructionDetailId) && products.length > 0) {
-          const synced = await syncSetupFrequenciesForAssignments({
+          const { items: synced, changes } = await syncSetupFrequenciesForAssignments({
             setupId: selectedSetupIdForFreq,
             assignments: selectedSetup.assignments,
             products,
             frequencyMode: selectedFrequencyMode,
             frequencyCatalog: freqCatalog,
             existingItems: freqs,
+            updateExisting: true,
           });
-          if (!cancelled) setSetupFrequencies(synced);
+          if (!cancelled) {
+            setSetupFrequencies(synced);
+            if (isSourceOrDateChanged && changes.length > 0) {
+              setSyncSummaryChanges(changes);
+            }
+          }
         } else {
           setSetupFrequencies(freqs);
         }
@@ -678,6 +706,8 @@ export function ProductionSimulationPage({
     selectedSetup,
     products,
     selectedFrequencyMode,
+    selectedFrequencyStartDate,
+    selectedFrequencyEndDate,
     freqCatalog,
   ]);
 
@@ -1153,7 +1183,22 @@ export function ProductionSimulationPage({
           frequencyCatalog={freqCatalog}
           items={setupFrequencies}
           onItemsChange={(updated) => setSetupFrequencies(updated)}
+          onShowSyncSummary={(changes) => setSyncSummaryChanges(changes)}
           isReadOnly={isSharedLinkMode || !canEditSetup(selectedSetup, user)}
+        />
+      )}
+
+      {syncSummaryChanges && syncSummaryChanges.length > 0 && selectedSetup && (
+        <FrequencySyncSummaryDialog
+          isOpen={true}
+          onClose={() => setSyncSummaryChanges(null)}
+          setupName={selectedSetup.name}
+          changes={syncSummaryChanges}
+          frequencyMode={selectedSetup.frequencyMode}
+          dateRange={{
+            startDate: selectedSetup.frequencyStartDate,
+            endDate: selectedSetup.frequencyEndDate,
+          }}
         />
       )}
 

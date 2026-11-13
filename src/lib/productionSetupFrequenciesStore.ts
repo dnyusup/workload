@@ -107,11 +107,33 @@ export function buildSetupFrequencyKey(
   return buildFrequencyLookupKey(mach, construction, layLength, tensile);
 }
 
+export interface FrequencyChangeItem {
+  mach: string;
+  construction: string;
+  layLength: string;
+  tensile: string;
+  isNew: boolean;
+  oldFrt: number;
+  newFrt: number;
+  oldDeft: number;
+  newDeft: number;
+  oldDiest: number;
+  newDiest: number;
+  oldSource: string;
+  newSource: string;
+}
+
+export interface SyncSetupFrequenciesResult {
+  items: SetupFrequencyItem[];
+  changes: FrequencyChangeItem[];
+}
+
 /**
  * Synchronizes assigned constructions in a setup with WL_ProductionSetupFrequency:
- * For every assigned construction whose (Mach, Construction, LayLength, Tensile) tuple
- * does NOT yet exist for this setupId in WL_ProductionSetupFrequency, a new row is generated
- * and inserted into Dataverse.
+ * 1. Creates missing rows for any newly assigned construction tuple.
+ * 2. If updateExisting is true, updates existing rows (unless source === 'adjustment')
+ *    when frequencyMode changes (Manual <-> Historical) or when historical date range reloads.
+ * 3. Returns both the updated list of items and a detailed list of what changed.
  */
 export async function syncSetupFrequenciesForAssignments({
   setupId,
@@ -120,6 +142,7 @@ export async function syncSetupFrequenciesForAssignments({
   frequencyMode = 'manual',
   frequencyCatalog = null,
   existingItems = [],
+  updateExisting = true,
 }: {
   setupId: string;
   assignments: ProductionMachineAssignment[];
@@ -127,17 +150,20 @@ export async function syncSetupFrequenciesForAssignments({
   frequencyMode?: FrequencyMode;
   frequencyCatalog?: HistoricalFrequencyMap | null;
   existingItems?: SetupFrequencyItem[];
-}): Promise<SetupFrequencyItem[]> {
+  updateExisting?: boolean;
+}): Promise<SyncSetupFrequenciesResult> {
   if (!setupId || assignments.length === 0 || products.length === 0) {
-    return existingItems;
+    return { items: existingItems, changes: [] };
   }
 
   const productById = new Map(products.map((p) => [p.mpp_wl_productsid, p]));
-  const existingKeySet = new Set(
-    existingItems.map((item) =>
+  const existingItemMap = new Map<string, SetupFrequencyItem>();
+  for (const item of existingItems) {
+    existingItemMap.set(
       buildSetupFrequencyKey(item.mach, item.construction, item.layLength, item.tensile),
-    ),
-  );
+      item,
+    );
+  }
 
   // Group unique product tuples needed across all assignments
   const neededTuples = new Map<
@@ -162,27 +188,28 @@ export async function syncSetupFrequenciesForAssignments({
     const tensile = p.mpp_tensilegroup?.trim() ?? '';
 
     const key = buildSetupFrequencyKey(mach, construction, layLength, tensile);
-    if (!existingKeySet.has(key) && !neededTuples.has(key)) {
+    if (!neededTuples.has(key)) {
       neededTuples.set(key, { product: p, mach, construction, layLength, tensile });
     }
   }
 
   if (neededTuples.size === 0) {
-    return existingItems;
+    return { items: existingItems, changes: [] };
   }
 
-  const newlyCreated: SetupFrequencyItem[] = [];
+  const changes: FrequencyChangeItem[] = [];
+  const currentItems = [...existingItems];
 
-  for (const [, tuple] of neededTuples) {
+  for (const [key, tuple] of neededTuples) {
     const { product, mach, construction, layLength, tensile } = tuple;
     const manualFr = parseRate(product.mpp_fractureperton);
     const manualDef = parseRate(product.mpp_defectston);
     const manualDies = parseRate(product.mpp_dieston);
 
-    let frt = manualFr;
-    let deft = manualDef;
-    let diest = manualDies;
-    let source: SetupFrequencyItem['source'] = 'manual';
+    let targetFr = manualFr;
+    let targetDef = manualDef;
+    let targetDies = manualDies;
+    let targetSource: SetupFrequencyItem['source'] = 'manual';
 
     if (frequencyMode === 'historical' && frequencyCatalog) {
       const matched = lookupHistoricalFrequency(
@@ -194,40 +221,116 @@ export async function syncSetupFrequenciesForAssignments({
       );
 
       if (matched) {
-        frt = matched.fracturePerTon ?? manualFr;
-        deft = matched.defectPerTon ?? manualDef;
-        diest = matched.diesPerTon ?? manualDies;
-        source = 'historical';
+        targetFr = matched.fracturePerTon ?? manualFr;
+        targetDef = matched.defectPerTon ?? manualDef;
+        targetDies = matched.diesPerTon ?? manualDies;
+        targetSource = 'historical';
       } else {
-        source = 'fallback manual';
+        targetSource = 'fallback manual';
       }
     }
 
-    try {
-      const result = await Mpp_wl_productionsetupfrequenciesService.create({
-        mpp_productionsetupid: setupId,
-        mpp_mach: mach,
-        mpp_construction: construction,
-        mpp_laylength: layLength,
-        mpp_tensile: tensile,
-        mpp_frt: frt,
-        mpp_deft: deft,
-        mpp_diest: diest,
-        mpp_frequencysource: source,
-        statecode: 0,
-      });
+    // Check if row already exists (by pure key or by legacy key with full construction code)
+    const existing =
+      existingItemMap.get(key) ??
+      (product.mpp_constructioncode
+        ? existingItemMap.get(buildSetupFrequencyKey(mach, product.mpp_constructioncode, layLength, tensile))
+        : undefined);
 
-      if (result.success && result.data) {
-        const item = mapRecordToSetupFrequency(result.data);
-        newlyCreated.push(item);
-        existingKeySet.add(buildSetupFrequencyKey(mach, construction, layLength, tensile));
+    if (!existing) {
+      try {
+        const result = await Mpp_wl_productionsetupfrequenciesService.create({
+          mpp_productionsetupid: setupId,
+          mpp_mach: mach,
+          mpp_construction: construction,
+          mpp_laylength: layLength,
+          mpp_tensile: tensile,
+          mpp_frt: targetFr,
+          mpp_deft: targetDef,
+          mpp_diest: targetDies,
+          mpp_frequencysource: targetSource,
+          statecode: 0,
+        });
+
+        if (result.success && result.data) {
+          const item = mapRecordToSetupFrequency(result.data);
+          currentItems.push(item);
+          existingItemMap.set(key, item);
+          changes.push({
+            mach,
+            construction,
+            layLength,
+            tensile,
+            isNew: true,
+            oldFrt: 0,
+            newFrt: targetFr,
+            oldDeft: 0,
+            newDeft: targetDef,
+            oldDiest: 0,
+            newDiest: targetDies,
+            oldSource: '—',
+            newSource: targetSource,
+          });
+        }
+      } catch (err) {
+        console.warn(`[WL_ProductionSetupFrequency] Failed to insert row for ${construction}:`, err);
       }
-    } catch (err) {
-      console.warn(`[WL_ProductionSetupFrequency] Failed to insert row for ${construction}:`, err);
+    } else if (updateExisting) {
+      // Do not overwrite custom manual adjustments
+      if (existing.source === 'adjustment') {
+        continue;
+      }
+
+      const isRateChanged =
+        Math.abs(existing.frt - targetFr) > 0.0001 ||
+        Math.abs(existing.deft - targetDef) > 0.0001 ||
+        Math.abs(existing.diest - targetDies) > 0.0001;
+      const isSourceChanged = existing.source !== targetSource;
+      const isConstructionNameCleaned = existing.construction !== construction;
+
+      if (isRateChanged || isSourceChanged || isConstructionNameCleaned) {
+        try {
+          const ok = await Mpp_wl_productionsetupfrequenciesService.update(existing.id, {
+            mpp_mach: mach,
+            mpp_construction: construction,
+            mpp_laylength: layLength,
+            mpp_tensile: tensile,
+            mpp_frt: targetFr,
+            mpp_deft: targetDef,
+            mpp_diest: targetDies,
+            mpp_frequencysource: targetSource,
+          });
+
+          if (ok.success) {
+            changes.push({
+              mach,
+              construction,
+              layLength,
+              tensile,
+              isNew: false,
+              oldFrt: existing.frt,
+              newFrt: targetFr,
+              oldDeft: existing.deft,
+              newDeft: targetDef,
+              oldDiest: existing.diest,
+              newDiest: targetDies,
+              oldSource: existing.source,
+              newSource: targetSource,
+            });
+            existing.frt = targetFr;
+            existing.deft = targetDef;
+            existing.diest = targetDies;
+            existing.source = targetSource;
+            existing.construction = construction;
+          }
+        } catch (err) {
+          console.warn(`[WL_ProductionSetupFrequency] Failed to update row ${existing.id}:`, err);
+        }
+      }
     }
   }
 
-  return [...existingItems, ...newlyCreated];
+  return { items: currentItems, changes };
 }
 
 /** Updates a single frequency adjustment in Dataverse. */
