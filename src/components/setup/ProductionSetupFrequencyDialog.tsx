@@ -6,6 +6,7 @@ import {
   type SetupFrequencyItem,
   updateSetupFrequencyItem,
   syncSetupFrequenciesForAssignments,
+  deleteSetupFrequencyItem,
 } from '../../lib/productionSetupFrequenciesStore';
 import { Button } from '../ui/Button';
 
@@ -139,6 +140,33 @@ export function ProductionSetupFrequencyDialog({
       });
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const handleDeleteItem = async (item: SetupFrequencyItem) => {
+    if (isReadOnly || deletingId) return;
+    if (!window.confirm(`Delete frequency rule for "${item.mach} · ${item.construction}"?`)) return;
+    setDeletingId(item.id);
+    setFeedback(null);
+    try {
+      const ok = await deleteSetupFrequencyItem(item.id);
+      if (ok) {
+        const updated = localItems.filter((i) => i.id !== item.id);
+        setLocalItems(updated);
+        onItemsChange(updated);
+        setFeedback({ message: `Deleted frequency row for ${item.construction}.`, type: 'success' });
+      } else {
+        setFeedback({ message: `Failed to delete row for ${item.construction}.`, type: 'error' });
+      }
+    } catch (err) {
+      setFeedback({
+        message: `Delete failed: ${err instanceof Error ? err.message : 'Unknown error'}`,
+        type: 'error',
+      });
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -323,14 +351,13 @@ export function ProductionSetupFrequencyDialog({
                     <th style={{ width: '105px' }} className="text-right">Def/T</th>
                     <th style={{ width: '105px' }} className="text-right">Dies/T</th>
                     <th style={{ width: '135px' }} className="text-center">Frequency Source</th>
+                    <th style={{ width: '60px' }} className="text-center">Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredItems.map((item) => {
                     const isDirty = editedIds.has(item.id);
-                    if (!isOpen) return null;
-
-  return (
+                    return (
                       <tr key={item.id} className={isDirty ? 'setup-freq-row-dirty' : undefined}>
                         <td className="mach-col">
                           <strong>{item.mach || '—'}</strong>
@@ -380,6 +407,21 @@ export function ProductionSetupFrequencyDialog({
                             {item.source === 'fallback manual' && 'Fallback Manual'}
                             {item.source === 'manual' && 'Manual'}
                           </span>
+                        </td>
+                        <td className="text-center">
+                          <button
+                            type="button"
+                            className="field-reset-btn setup-freq-del-btn"
+                            title={`Delete frequency rule for ${item.mach} - ${item.construction}`}
+                            aria-label="Delete rule"
+                            disabled={isReadOnly || deletingId === item.id}
+                            onClick={() => handleDeleteItem(item)}
+                          >
+                            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2" fill="none">
+                              <path d="M3 6h18" />
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                            </svg>
+                          </button>
                         </td>
                       </tr>
                     );

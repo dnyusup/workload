@@ -9,7 +9,7 @@ import { resolveEffectiveFrequencies, type HistoricalFrequencyMap } from './freq
 import { resolveEffectiveCrPoLength, type HistoricalRejectShortMap } from './rejectShortCatalog';
 import { isWwdConstruction, getDynamicSpec, synthesizeDynamicSpec, findMatchingActivityConstruction } from './dynamicSpecStore';
 import { loadDefaultValuesOrBuiltIn, getDefaultPoLengthForArea } from './defaultValuesStore';
-import { buildSetupFrequencyKey, type SetupFrequencyItem } from './productionSetupFrequenciesStore';
+import { buildSetupFrequencyKey, extractPureConstruction, type SetupFrequencyItem } from './productionSetupFrequenciesStore';
 
 export type FrequencyRemark = 'Adjustment' | 'Historical' | 'Manual (Fallback)' | 'Manual';
 
@@ -348,20 +348,20 @@ export async function resolveConstructions(
     }
 
     if (setupFreqLookup) {
-      const constr = product.mpp_constructioncode?.trim() || product.mpp_productspecification?.trim() || '';
+      const pureConstr = extractPureConstruction(product);
       const sfKey = buildSetupFrequencyKey(
         product.mpp_machinecode,
-        constr,
+        pureConstr,
         product.mpp_laylength,
         product.mpp_tensilegroup,
       );
       const matchedSetupFreq =
         setupFreqLookup.get(sfKey) ??
-        (product.mpp_productspecification
+        (product.mpp_constructioncode
           ? setupFreqLookup.get(
               buildSetupFrequencyKey(
                 product.mpp_machinecode,
-                product.mpp_productspecification,
+                product.mpp_constructioncode,
                 product.mpp_laylength,
                 product.mpp_tensilegroup,
               ),

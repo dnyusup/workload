@@ -8325,6 +8325,16 @@
   border: 1px solid rgba(148, 163, 184, 0.25);
 }
 
+.setup-freq-del-btn {
+  color: #94a3b8;
+  padding: 4px;
+}
+
+.setup-freq-del-btn:hover:not(:disabled) {
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.15);
+}
+
 .setup-frequency-dialog-footer {
   display: flex;
   justify-content: space-between;

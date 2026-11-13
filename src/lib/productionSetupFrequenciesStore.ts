@@ -74,6 +74,27 @@ export async function fetchSetupFrequencies(setupId: string): Promise<SetupFrequ
 }
 
 /**
+ * Extracts the pure construction name (e.g. "3X0.27") without Mach prefix, Lay Length, Tensile, or Spool Type.
+ */
+export function extractPureConstruction(product: {
+  mpp_productspecification?: string | null;
+  mpp_constructioncode?: string | null;
+}): string {
+  const spec = (product.mpp_productspecification ?? '').trim();
+  if (spec) return spec;
+
+  const code = (product.mpp_constructioncode ?? '').trim();
+  if (!code) return '';
+
+  // If in format Mach-Construction-LayLength-Tensile-SpoolType (e.g. BOS-3X0.27-14-HT-BS40)
+  const parts = code.split('-');
+  if (parts.length >= 3) {
+    return parts[1].trim();
+  }
+  return code;
+}
+
+/**
  * Builds a composite lookup key for matching products with setup frequency entries:
  * Mach|Construction|LayLength|Tensile
  */
@@ -136,7 +157,7 @@ export async function syncSetupFrequenciesForAssignments({
     if (!p) continue;
 
     const mach = p.mpp_machinecode?.trim() ?? '';
-    const construction = p.mpp_constructioncode?.trim() || p.mpp_productspecification?.trim() || '';
+    const construction = extractPureConstruction(p);
     const layLength = p.mpp_laylength != null ? String(p.mpp_laylength).trim() : '';
     const tensile = p.mpp_tensilegroup?.trim() ?? '';
 
@@ -167,7 +188,7 @@ export async function syncSetupFrequenciesForAssignments({
       const matched = lookupHistoricalFrequency(
         frequencyCatalog,
         mach,
-        product.mpp_productspecification || construction,
+        construction,
         product.mpp_laylength,
         tensile,
       );
@@ -229,6 +250,17 @@ export async function updateSetupFrequencyItem(
     return result.success;
   } catch (err) {
     console.error(`[WL_ProductionSetupFrequency] Failed to update row ${id}:`, err);
+    return false;
+  }
+}
+
+/** Deletes a single frequency row from WL_ProductionSetupFrequency in Dataverse. */
+export async function deleteSetupFrequencyItem(id: string): Promise<boolean> {
+  try {
+    const result = await Mpp_wl_productionsetupfrequenciesService.delete(id);
+    return result.success;
+  } catch (err) {
+    console.error(`[WL_ProductionSetupFrequency] Failed to delete row ${id}:`, err);
     return false;
   }
 }
