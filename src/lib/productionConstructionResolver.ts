@@ -9,8 +9,9 @@ import { resolveEffectiveFrequencies, type HistoricalFrequencyMap } from './freq
 import { resolveEffectiveCrPoLength, type HistoricalRejectShortMap } from './rejectShortCatalog';
 import { isWwdConstruction, getDynamicSpec, synthesizeDynamicSpec, findMatchingActivityConstruction } from './dynamicSpecStore';
 import { loadDefaultValuesOrBuiltIn, getDefaultPoLengthForArea } from './defaultValuesStore';
+import { buildSetupFrequencyKey, type SetupFrequencyItem } from './productionSetupFrequenciesStore';
 
-export type FrequencyRemark = 'Historical' | 'Manual (Fallback)' | 'Manual';
+export type FrequencyRemark = 'Adjustment' | 'Historical' | 'Manual (Fallback)' | 'Manual';
 
 export interface ResolvedConstruction {
   productId: string;
@@ -65,10 +66,26 @@ export async function resolveConstructions(
   frequencyCatalog: HistoricalFrequencyMap | null = null,
   poLengthCrSource: FrequencyMode = 'manual',
   rejectShortCatalog: HistoricalRejectShortMap | null = null,
+  setupFrequencies?: SetupFrequencyItem[] | Map<string, SetupFrequencyItem> | null,
 ): Promise<{ resolved: Map<string, ResolvedConstruction>; errors: string[] }> {
   const resolved = new Map<string, ResolvedConstruction>();
   const errors: string[] = [];
   if (productIds.length === 0) return { resolved, errors };
+
+  let setupFreqLookup: Map<string, SetupFrequencyItem> | null = null;
+  if (setupFrequencies) {
+    if (setupFrequencies instanceof Map) {
+      setupFreqLookup = setupFrequencies;
+    } else if (Array.isArray(setupFrequencies)) {
+      setupFreqLookup = new Map();
+      for (const item of setupFrequencies) {
+        setupFreqLookup.set(
+          buildSetupFrequencyKey(item.mach, item.construction, item.layLength, item.tensile),
+          item,
+        );
+      }
+    }
+  }
 
   const productById = new Map(products.map((p) => [p.mpp_wl_productsid, p]));
   const activitiesByConstruction = new Map<string, Mpp_wl_activities[]>();
@@ -179,6 +196,29 @@ export async function resolveConstructions(
             defectsPerTon: effective.defectsPerTon,
           };
           frequencyRemark = effective.isHistoricalUsed ? 'Historical' : 'Manual (Fallback)';
+        }
+
+        if (setupFreqLookup) {
+          const machCode = area === 'WW' ? 'WWD' : (wwdSpec.machineCode || wwdSpec.baseConstruction.split('-')[0] || area);
+          const sfKey = buildSetupFrequencyKey(machCode, dynamicProductSpec || wwdSpec.baseConstruction, wwdSpec.layLength, wwdSpec.tensileStrength);
+          const matchedSetupFreq = setupFreqLookup.get(sfKey);
+          if (matchedSetupFreq) {
+            spec = {
+              ...spec,
+              fracturePerTon: matchedSetupFreq.frt,
+              defectsPerTon: matchedSetupFreq.deft,
+              diesPerTon: matchedSetupFreq.diest,
+            };
+            if (matchedSetupFreq.source === 'adjustment') {
+              frequencyRemark = 'Adjustment';
+            } else if (matchedSetupFreq.source === 'historical') {
+              frequencyRemark = 'Historical';
+            } else if (matchedSetupFreq.source === 'fallback manual') {
+              frequencyRemark = 'Manual (Fallback)';
+            } else {
+              frequencyRemark = 'Manual';
+            }
+          }
         }
 
         const derived = deriveMachineSpec(spec);
@@ -306,6 +346,46 @@ export async function resolveConstructions(
       };
       frequencyRemark = effective.isHistoricalUsed ? 'Historical' : 'Manual (Fallback)';
     }
+
+    if (setupFreqLookup) {
+      const constr = product.mpp_constructioncode?.trim() || product.mpp_productspecification?.trim() || '';
+      const sfKey = buildSetupFrequencyKey(
+        product.mpp_machinecode,
+        constr,
+        product.mpp_laylength,
+        product.mpp_tensilegroup,
+      );
+      const matchedSetupFreq =
+        setupFreqLookup.get(sfKey) ??
+        (product.mpp_productspecification
+          ? setupFreqLookup.get(
+              buildSetupFrequencyKey(
+                product.mpp_machinecode,
+                product.mpp_productspecification,
+                product.mpp_laylength,
+                product.mpp_tensilegroup,
+              ),
+            )
+          : undefined);
+      if (matchedSetupFreq) {
+        spec = {
+          ...spec,
+          fracturePerTon: matchedSetupFreq.frt,
+          defectsPerTon: matchedSetupFreq.deft,
+          diesPerTon: matchedSetupFreq.diest,
+        };
+        if (matchedSetupFreq.source === 'adjustment') {
+          frequencyRemark = 'Adjustment';
+        } else if (matchedSetupFreq.source === 'historical') {
+          frequencyRemark = 'Historical';
+        } else if (matchedSetupFreq.source === 'fallback manual') {
+          frequencyRemark = 'Manual (Fallback)';
+        } else {
+          frequencyRemark = 'Manual';
+        }
+      }
+    }
+
     const derived = deriveMachineSpec(spec);
     const construction = product.mpp_constructioncode?.trim();
 

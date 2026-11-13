@@ -16,7 +16,7 @@ import {
   operatorSharesForActivity,
   type ProductionActivityFamily,
 } from './productionActivityRouting';
-import type { ResolvedConstruction } from './productionConstructionResolver';
+import type { FrequencyRemark, ResolvedConstruction } from './productionConstructionResolver';
 
 /** What the Work Load Simulator's setup for a Construction Detail is built from. */
 export interface OptimizeInputs {
@@ -177,9 +177,9 @@ export interface TheoreticalOperatorRow {
   fracturePerTon?: number;
   defectPerTon?: number;
   diesPerTon?: number;
-  frequencyRemark?: 'Historical' | 'Manual (Fallback)' | 'Manual';
+  frequencyRemark?: FrequencyRemark;
   poLength1?: number;
-  poLengthCrRemark?: 'Historical' | 'Manual (Fallback)' | 'Manual';
+  poLengthCrRemark?: FrequencyRemark;
 }
 
 /** Theoretical Operator Required: each machine needs 1 ÷ (# Assigned Machines of its Construction

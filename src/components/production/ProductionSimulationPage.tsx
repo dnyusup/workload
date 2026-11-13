@@ -35,6 +35,12 @@ import { fetchAllPages } from '../../lib/dataversePaging';
 import type { Mpp_wl_productses } from '../../generated/models/Mpp_wl_productsesModel';
 import { resolveConstructions, type ResolvedConstruction } from '../../lib/productionConstructionResolver';
 import {
+  fetchSetupFrequencies,
+  syncSetupFrequenciesForAssignments,
+  type SetupFrequencyItem,
+} from '../../lib/productionSetupFrequenciesStore';
+import { ProductionSetupFrequencyDialog } from '../setup/ProductionSetupFrequencyDialog';
+import {
   calculatePlannedUtilization,
   calculateSelectionOccupation,
   type PlannedUtilization,
@@ -567,6 +573,8 @@ export function ProductionSimulationPage({
 
   const [freqCatalog, setFreqCatalog] = useState<HistoricalFrequencyMap | null>(null);
   const [rejectShortCatalog, setRejectShortCatalog] = useState<HistoricalRejectShortMap | null>(null);
+  const [setupFrequencies, setSetupFrequencies] = useState<SetupFrequencyItem[]>([]);
+  const [showFrequencyDialog, setShowFrequencyDialog] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -632,6 +640,47 @@ export function ProductionSimulationPage({
     selectedPoCrEndDate,
   ]);
 
+  // Load and auto-sync WL_productionsetupfrequency for the active setup
+  useEffect(() => {
+    let cancelled = false;
+    if (!selectedSetupIdForFreq) {
+      Promise.resolve().then(() => {
+        if (!cancelled) setSetupFrequencies([]);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+    fetchSetupFrequencies(selectedSetupIdForFreq)
+      .then(async (freqs) => {
+        if (cancelled) return;
+        if (selectedSetup && selectedSetup.assignments.some((a) => a.constructionDetailId) && products.length > 0) {
+          const synced = await syncSetupFrequenciesForAssignments({
+            setupId: selectedSetupIdForFreq,
+            assignments: selectedSetup.assignments,
+            products,
+            frequencyMode: selectedFrequencyMode,
+            frequencyCatalog: freqCatalog,
+            existingItems: freqs,
+          });
+          if (!cancelled) setSetupFrequencies(synced);
+        } else {
+          setSetupFrequencies(freqs);
+        }
+      })
+      .catch((err) => console.warn('WL_productionsetupfrequency load failed:', err));
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    selectedSetupIdForFreq,
+    selectedSetup,
+    products,
+    selectedFrequencyMode,
+    freqCatalog,
+  ]);
+
   /** Optimistic local-state patch for the currently loaded setup — callers that already wrote
    * their own change to Dataverse (add/remove operator, bulk assign, CSV import, header edits)
    * use this just to keep the in-memory copy in sync, not to trigger any persistence itself. */
@@ -681,7 +730,7 @@ export function ProductionSimulationPage({
     Promise.resolve()
       .then(() => {
         if (!cancelled) setPlannedResolution((previous) => ({ ...previous, loading: true, errors: [] }));
-        return resolveConstructions(productIds, products, freqMode, freqCatalog, poCrSource, rejectShortCatalog);
+        return resolveConstructions(productIds, products, freqMode, freqCatalog, poCrSource, rejectShortCatalog, setupFrequencies);
       })
       .then(({ resolved, errors }) => {
         if (!cancelled) {
@@ -714,6 +763,7 @@ export function ProductionSimulationPage({
     freqCatalog,
     selectedSetup?.poLengthCrSource,
     rejectShortCatalog,
+    setupFrequencies,
   ]);
 
   const runSimulation = async (setup: ProductionSetup) => {
@@ -768,6 +818,7 @@ export function ProductionSimulationPage({
         catalog,
         poCrSource,
         crCatalog,
+        setupFrequencies,
       );
       setRunState({ setup, resolved, errors });
     } finally {
@@ -1046,6 +1097,7 @@ export function ProductionSimulationPage({
                   }
             }
             onShare={!isSharedLinkMode && canShare(selectedSetup) ? () => setSharingSetup(selectedSetup) : undefined}
+            onOpenFrequencyDialog={() => setShowFrequencyDialog(true)}
             resolving={resolving}
             plannedUtilization={plannedResolution.utilization}
             plannedUtilizationErrors={plannedResolution.errors}
@@ -1089,6 +1141,22 @@ export function ProductionSimulationPage({
         />
       )}
 
+      {showFrequencyDialog && selectedSetup && (
+        <ProductionSetupFrequencyDialog
+          isOpen={showFrequencyDialog}
+          onClose={() => setShowFrequencyDialog(false)}
+          setupId={selectedSetup.id}
+          setupName={selectedSetup.name}
+          setupAssignments={selectedSetup.assignments}
+          products={products}
+          frequencyMode={selectedSetup.frequencyMode}
+          frequencyCatalog={freqCatalog}
+          items={setupFrequencies}
+          onItemsChange={(updated) => setSetupFrequencies(updated)}
+          isReadOnly={isSharedLinkMode || !canEditSetup(selectedSetup, user)}
+        />
+      )}
+
       {duplicatingId && duplicateProgress && (
         <BlockingProgressOverlay
           title="Duplicating Production Setup…"
@@ -1119,6 +1187,7 @@ function ProductionSetupEditor({
   onProductsUpdated,
   onDuplicate,
   onShare,
+  onOpenFrequencyDialog,
   resolving,
   plannedUtilization,
   plannedUtilizationErrors,
@@ -1136,6 +1205,7 @@ function ProductionSetupEditor({
   onProductsUpdated?: (products: Mpp_wl_productses[]) => void;
   onDuplicate?: () => void;
   onShare?: () => void;
+  onOpenFrequencyDialog?: () => void;
   resolving: boolean;
   plannedUtilization: PlannedUtilization | null;
   plannedUtilizationErrors: string[];
@@ -2394,7 +2464,30 @@ function ProductionSetupEditor({
           <Field label="Task Priority">
             <SelectInput value={setup.taskPriority} options={TASK_PRIORITY_OPTIONS} onChange={(v) => onHeaderChange({ taskPriority: v })} disabled={isReadOnly} />
           </Field>
-          <Field label="Frequency Source" tooltip="Frequency value source: Manual from WL_Products or Historical from MES Data (automatically falls back to manual if not in MES Data)">
+          <Field
+            label="Frequency Source"
+            tooltip="Frequency value source: Manual from WL_Products or Historical from MES Data (automatically falls back to manual if not in MES Data)"
+            labelAction={
+              onOpenFrequencyDialog && (
+                <button
+                  type="button"
+                  className="field-reset-btn"
+                  title="View & Adjust Setup Frequencies (WL_productionsetupfrequency)"
+                  aria-label="View & Adjust Setup Frequencies"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onOpenFrequencyDialog();
+                  }}
+                >
+                  <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" strokeWidth="2" fill="none">
+                    <path d="M3 3h18v18H3z" />
+                    <path d="M3 9h18" />
+                    <path d="M9 21V9" />
+                  </svg>
+                </button>
+              )
+            }
+          >
             <SelectInput
               value={setup.frequencyMode ?? 'manual'}
               options={FREQUENCY_MODE_OPTIONS}
@@ -2427,38 +2520,90 @@ function ProductionSetupEditor({
                 label="Frequency End Date"
                 tooltip="End date for actual Power BI events filter (format: YYYY-MM-DD)"
                 labelAction={
-                  <button
-                    type="button"
-                    className="field-reset-btn"
-                    title="Reset date range to default from Settings"
-                    aria-label="Reset date range to default from Settings"
-                    disabled={isReadOnly}
-                    onClick={async (e) => {
-                      e.preventDefault();
-                      const defaults = await loadDefaultValuesOrBuiltIn();
-                      const range = computeFrequencyDateRange(
-                        defaults.frequencyDateRangeType,
-                        defaults.frequencyStartDate,
-                        defaults.frequencyEndDate,
-                      );
-                      onHeaderChange({
-                        frequencyStartDate: range.startDate,
-                        frequencyEndDate: range.endDate,
-                      });
-                    }}
-                  >
-                    <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-                      <path d="M3 3v5h5" />
-                    </svg>
-                  </button>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <button
+                      type="button"
+                      className="field-reset-btn"
+                      title="Reset date range to default from Settings"
+                      aria-label="Reset date range to default from Settings"
+                      disabled={isReadOnly}
+                      onClick={async (e) => {
+                        e.preventDefault();
+                        const defaults = await loadDefaultValuesOrBuiltIn();
+                        const range = computeFrequencyDateRange(
+                          defaults.frequencyDateRangeType,
+                          defaults.frequencyStartDate,
+                          defaults.frequencyEndDate,
+                        );
+                        onHeaderChange({
+                          frequencyStartDate: range.startDate,
+                          frequencyEndDate: range.endDate,
+                        });
+                      }}
+                    >
+                      <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                        <path d="M3 3v5h5" />
+                      </svg>
+                    </button>
+                    {onOpenFrequencyDialog && (
+                      <button
+                        type="button"
+                        className="field-reset-btn"
+                        title="View & Adjust Setup Frequencies (WL_productionsetupfrequency)"
+                        aria-label="View & Adjust Setup Frequencies"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          onOpenFrequencyDialog();
+                        }}
+                      >
+                        <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" strokeWidth="2" fill="none">
+                          <path d="M3 3h18v18H3z" />
+                          <path d="M3 9h18" />
+                          <path d="M9 21V9" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
                 }
               >
-                <DateInput
-                  value={setup.frequencyEndDate ?? ''}
-                  disabled={isReadOnly}
-                  onChange={(v) => onHeaderChange({ frequencyEndDate: v })}
-                />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <DateInput
+                      value={setup.frequencyEndDate ?? ''}
+                      disabled={isReadOnly}
+                      onChange={(v) => onHeaderChange({ frequencyEndDate: v })}
+                    />
+                  </div>
+                  {onOpenFrequencyDialog && (
+                    <button
+                      type="button"
+                      className="field-reset-btn"
+                      style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '6px',
+                        border: '1px solid #334155',
+                        background: '#1e293b',
+                        color: '#38bdf8',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        flexShrink: 0,
+                      }}
+                      title="View & Adjust Setup Frequencies (WL_productionsetupfrequency)"
+                      aria-label="View & Adjust Setup Frequencies"
+                      onClick={onOpenFrequencyDialog}
+                    >
+                      <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none">
+                        <path d="M3 3h18v18H3z" />
+                        <path d="M3 9h18" />
+                        <path d="M9 21V9" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
               </Field>
             </>
           )}

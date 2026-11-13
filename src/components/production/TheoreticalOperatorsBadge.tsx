@@ -314,6 +314,13 @@ function TheoreticalOperatorsDialog({
 
   const renderRemarkBadge = (remark?: string) => {
     if (!remark) return <span className="freq-badge freq-badge-none">—</span>;
+    if (remark === 'Adjustment') {
+      return (
+        <span className="freq-badge freq-badge-adjustment" title="Frequency rate adjusted for this setup (WL_productionsetupfrequency)">
+          Adjustment
+        </span>
+      );
+    }
     if (remark === 'Historical') {
       return (
         <span className="freq-badge freq-badge-historical" title="Frequency rate taken from historical MES data">

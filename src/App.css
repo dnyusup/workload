@@ -2702,7 +2702,7 @@
   height: 100%;
   background: linear-gradient(90deg, #38bdf8, #818cf8);
   border-radius: 999px;
-  transition: width 0.05s linear;
+  transition: none;
 }
 
 .progress-bar.scrubbable .progress-thumb {
@@ -6615,6 +6615,12 @@
   letter-spacing: 0.02em;
 }
 
+.freq-badge-adjustment {
+  background: rgba(168, 85, 247, 0.18);
+  color: #c084fc;
+  border: 1px solid rgba(168, 85, 247, 0.4);
+}
+
 .freq-badge-historical {
   background: rgba(16, 185, 129, 0.15);
   color: #34d399;
@@ -7971,6 +7977,373 @@
   border-top: 1px solid #1e293b;
   padding-top: 14px;
 }
+
+/* Production Setup Frequencies Dialog (WL_productionsetupfrequency) */
+.setup-frequency-overlay {
+  z-index: 1300;
+}
+
+.setup-frequency-dialog {
+  width: min(1120px, 96vw);
+  max-height: 88vh;
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 16px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: #e2e8f0;
+}
+
+.setup-frequency-dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #1e293b;
+  background: #111827;
+}
+
+.setup-frequency-title-area {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.setup-frequency-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: rgba(56, 189, 248, 0.12);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.25);
+}
+
+.setup-frequency-dialog-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: #f8fafc;
+}
+
+.setup-frequency-dialog-subtitle {
+  margin: 3px 0 0;
+  font-size: 0.82rem;
+  color: #94a3b8;
+}
+
+.setup-freq-dirty-tag {
+  color: #fbbf24;
+  font-weight: 500;
+}
+
+.setup-frequency-close-btn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 1.4rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  line-height: 1;
+  transition: color 0.15s;
+}
+
+.setup-frequency-close-btn:hover {
+  color: #f8fafc;
+}
+
+.setup-freq-feedback-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  font-size: 0.82rem;
+}
+
+.setup-freq-feedback-bar.success {
+  background: rgba(34, 197, 94, 0.12);
+  color: #4ade80;
+  border-bottom: 1px solid rgba(34, 197, 94, 0.25);
+}
+
+.setup-freq-feedback-bar.error {
+  background: rgba(239, 68, 68, 0.12);
+  color: #f87171;
+  border-bottom: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+.setup-freq-feedback-bar button {
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 0 4px;
+}
+
+.setup-frequency-dialog-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: #0b1220;
+  border-bottom: 1px solid #1e293b;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.setup-frequency-filter-pills {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.setup-freq-pill {
+  background: #1e293b;
+  border: 1px solid #334155;
+  color: #94a3b8;
+  border-radius: 9999px;
+  padding: 4px 12px;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.setup-freq-pill:hover {
+  color: #f8fafc;
+  border-color: #475569;
+}
+
+.setup-freq-pill.active {
+  background: #38bdf8;
+  color: #0f172a;
+  border-color: #38bdf8;
+  font-weight: 600;
+}
+
+.setup-freq-pill.pill-adjustment.active {
+  background: #c084fc;
+  color: #0f172a;
+  border-color: #c084fc;
+}
+
+.setup-freq-pill.pill-historical.active {
+  background: #34d399;
+  color: #0f172a;
+  border-color: #34d399;
+}
+
+.setup-freq-pill.pill-fallback.active {
+  background: #fbbf24;
+  color: #0f172a;
+  border-color: #fbbf24;
+}
+
+.setup-freq-pill.pill-manual.active {
+  background: #94a3b8;
+  color: #0f172a;
+  border-color: #94a3b8;
+}
+
+.setup-frequency-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.setup-freq-search-box {
+  position: relative;
+  width: 250px;
+}
+
+.setup-freq-search-input {
+  width: 100%;
+  padding: 6px 26px 6px 10px;
+  border-radius: 6px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  color: #f8fafc;
+  font-size: 0.8rem;
+  box-sizing: border-box;
+}
+
+.setup-freq-search-input:focus {
+  outline: none;
+  border-color: #38bdf8;
+}
+
+.setup-freq-search-clear {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 2px 4px;
+}
+
+.setup-frequency-dialog-body {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 250px;
+  max-height: 55vh;
+  padding: 0;
+}
+
+.setup-frequency-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  color: #94a3b8;
+  text-align: center;
+}
+
+.setup-frequency-empty-hint {
+  font-size: 0.82rem;
+  color: #64748b;
+  margin-top: 6px;
+}
+
+.setup-frequency-table-wrap {
+  overflow-x: auto;
+}
+
+.setup-frequency-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  text-align: left;
+}
+
+.setup-frequency-table thead {
+  position: sticky;
+  top: 0;
+  background: #111827;
+  z-index: 10;
+  border-bottom: 2px solid #1e293b;
+}
+
+.setup-frequency-table th {
+  padding: 10px 12px;
+  font-weight: 600;
+  color: #94a3b8;
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.setup-frequency-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #1e293b;
+  color: #e2e8f0;
+  vertical-align: middle;
+}
+
+.setup-frequency-table tbody tr:hover {
+  background: rgba(30, 41, 59, 0.45);
+}
+
+.setup-frequency-table tr.setup-freq-row-dirty {
+  background: rgba(251, 191, 36, 0.06);
+}
+
+.setup-frequency-table tr.setup-freq-row-dirty td {
+  border-color: rgba(251, 191, 36, 0.2);
+}
+
+.setup-frequency-table .mach-col {
+  font-variant-numeric: tabular-nums;
+  color: #38bdf8;
+}
+
+.setup-frequency-table .construction-col {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.setup-freq-rate-input {
+  width: 78px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  color: #f8fafc;
+  font-size: 0.82rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.setup-freq-rate-input:focus {
+  outline: none;
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+}
+
+.setup-freq-source-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border-radius: 9999px;
+  white-space: nowrap;
+}
+
+.setup-freq-source-badge.badge-adjustment {
+  background: rgba(168, 85, 247, 0.18);
+  color: #c084fc;
+  border: 1px solid rgba(168, 85, 247, 0.4);
+}
+
+.setup-freq-source-badge.badge-historical {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+.setup-freq-source-badge.badge-fallback-manual {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.setup-freq-source-badge.badge-manual {
+  background: rgba(148, 163, 184, 0.12);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.setup-frequency-dialog-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  border-top: 1px solid #1e293b;
+  background: #111827;
+}
+
+.setup-freq-footer-info {
+  font-size: 0.78rem;
+  color: #94a3b8;
+}
+
+.setup-freq-footer-actions {
+  display: flex;
+  gap: 8px;
+}
+
 
 
 
