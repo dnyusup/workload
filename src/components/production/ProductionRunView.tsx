@@ -271,6 +271,9 @@ export function ProductionRunView({
 
   const handleSeek = (min: number) => {
     if (livePlaying) controls.pause();
+    if (!activeReplayRecord && localReplayRecord) {
+      setActiveReplayRecord(localReplayRecord);
+    }
     setReplayMinute(min);
   };
 
@@ -946,7 +949,7 @@ export function ProductionRunView({
             : undefined
         }
         onSeek={handleSeek}
-        maxSeekMinutes={activeReplayRecord ? setup.shiftTime : Math.max(metrics.clockMin, liveState.metrics.clockMin)}
+        maxSeekMinutes={activeReplayRecord || localReplayRecord ? setup.shiftTime : Math.max(metrics.clockMin, liveState.metrics.clockMin)}
         isReplay={isReplayMode}
       />
       {state.finished && <span className="finished-badge">Shift complete</span>}

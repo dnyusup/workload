@@ -37,9 +37,9 @@ export function machineZoneColors(
   const hasFracture = pending.has('fractureRepairing');
   const hasDiesChange = pending.has('diesChange');
   const hasDefectRepairing = pending.has('defectRepairing');
-  const hasDoffing = pending.has('doffing');
+  const hasDoffing = pending.has('doffing') || [...pending].some((key) => key.startsWith('doffing'));
   const hasLoading = pending.has('loading');
-  const hasSubLoading = [...pending].some((key) => key.startsWith('loading-'));
+  const hasSubLoading = [...pending].some((key) => key.startsWith('loading-') || key.startsWith('loading:'));
   const colors = { payoff: null as string | null, takeup: null as string | null };
 
   if (hasFracture) {

@@ -342,41 +342,76 @@ export function interpolateReplaySnapshot(
         status = isBeingServiced ? 'being-serviced' : 'needs-service';
         runtimePaused = true;
 
-        let activityKey: string;
-        let activityLabel: string;
-        if (isWaiting) {
-          activityKey = activeSeg.kind.startsWith('waiting:')
-            ? activeSeg.kind.replace(/^waiting:(rpc:)?/, '')
-            : 'waiting';
-          activityLabel = activeSeg.label.replace(/^Waiting for\s*/i, '') || activityKey;
-        } else {
-          activityKey = activeSeg.kind.replace(/^rpc:/, '');
-          activityLabel = activeSeg.label || activityKey;
+        // Find the downtime stop boundaries around activeSeg
+        let stopStartMin = 0;
+        let stopEndMin = replay.shiftTimeMin;
+        for (const seg of m.timeline) {
+          const isRun = seg.kind === 'running' || seg.kind.startsWith('running:');
+          if (isRun && seg.endMin <= activeSeg.startMin) {
+            stopStartMin = Math.max(stopStartMin, seg.endMin);
+          }
+          if (isRun && seg.startMin >= activeSeg.endMin) {
+            stopEndMin = Math.min(stopEndMin, seg.startMin);
+            break;
+          }
         }
 
-        pendingTasks = [{
-          activity: activityKey as ActivityKey,
-          label: activityLabel,
-          timeMinutes: 0,
-        }];
+        // Collect all distinct activities occurring in this contiguous downtime stop.
+        // A stop can require multiple activities (e.g. Doffing on TU and Loading on PO).
+        // Any activity whose servicing has not completed before `minute` is still pending/active.
+        const stopTasksMap = new Map<ActivityKey, string>();
+        let hasDoffingInStop = false;
+        let doffingEndMin = 0;
 
-        if (activityKey === 'doffing') {
-          // Full spool waiting for doffing or being doffed -> 100% full spool donut!
-          runtimeRemainingMin = null;
-          nextCompletionAt = minute;
+        for (const seg of m.timeline) {
+          if (seg.startMin >= stopEndMin || seg.endMin <= stopStartMin) continue;
+          const isRun = seg.kind === 'running' || seg.kind.startsWith('running:') || seg.kind === 'idle';
+          if (isRun) continue;
+
+          const actKey = seg.kind.replace(/^waiting:/, '').replace(/^rpc:/, '') as ActivityKey;
+          const actLabel = seg.label.replace(/^Waiting for\s*/i, '') || actKey;
+
+          if (actKey === 'doffing' || actKey.startsWith('doffing')) {
+            hasDoffingInStop = true;
+            doffingEndMin = Math.max(doffingEndMin, seg.endMin);
+          }
+
+          if (seg.endMin > minute && !stopTasksMap.has(actKey)) {
+            stopTasksMap.set(actKey, actLabel);
+          }
+        }
+
+        pendingTasks = Array.from(stopTasksMap.entries()).map(([activity, label]) => ({
+          activity,
+          label,
+          timeMinutes: 0,
+        }));
+
+        // Spool progress regulation:
+        // If doffing was scheduled for this stop and has not completed before `minute`,
+        // the spool is 100% full (full spool donut).
+        // Once doffing completes, the new spool is mounted (0% progress) while subsequent tasks (like loading) proceed.
+        if (hasDoffingInStop) {
+          if (minute <= doffingEndMin) {
+            runtimeRemainingMin = null;
+            nextCompletionAt = minute;
+          } else {
+            runtimeRemainingMin = runtime;
+            nextCompletionAt = minute + runtime;
+          }
         } else {
           // Mid-spool interrupt (fracture or mid-runtime loading): compute running time on this spool
           const lastDoff = [...m.timeline]
             .reverse()
-            .find((seg) => seg.endMin <= activeSeg.startMin && (seg.kind === 'doffing' || seg.kind === 'waiting:doffing'));
+            .find((seg) => seg.endMin <= stopStartMin && (seg.kind === 'doffing' || seg.kind === 'waiting:doffing'));
           const lastDoffEnd = lastDoff ? lastDoff.endMin : 0;
           let runSince = 0;
           for (const s of m.timeline) {
-            if (s.startMin >= activeSeg.startMin) break;
+            if (s.startMin >= stopStartMin) break;
             if (s.endMin <= lastDoffEnd) continue;
             if (s.kind === 'running' || s.kind.startsWith('running:')) {
               const sStart = Math.max(lastDoffEnd, s.startMin);
-              const sEnd = Math.min(activeSeg.startMin, s.endMin);
+              const sEnd = Math.min(stopStartMin, s.endMin);
               if (sEnd > sStart) runSince += sEnd - sStart;
             }
           }
@@ -444,7 +479,12 @@ export function interpolateReplaySnapshot(
   activeOperators.forEach((op) => {
     if (op.phase === 'servicing' && op.targetMachineId) {
       const targetM = machineMap.get(op.targetMachineId);
-      if (targetM && targetM.pendingTasks.length > 0) {
+      const opSeg = op.timeline.find((s) => s.startMin <= minute && s.endMin > minute);
+      if (opSeg && opSeg.kind !== 'walking' && opSeg.kind !== 'idle' && opSeg.kind !== 'lunch' && opSeg.kind !== 'meeting' && opSeg.kind !== 'otherBreak') {
+        const actKey = opSeg.kind.replace(/^rpc:/, '') as ActivityKey;
+        const actLabel = opSeg.label || actKey;
+        op.serviceTasks = [{ activity: actKey, label: actLabel, timeMinutes: 0 }];
+      } else if (targetM && targetM.pendingTasks.length > 0) {
         op.serviceTasks = [...targetM.pendingTasks];
       }
     } else if (op.phase !== 'servicing') {
