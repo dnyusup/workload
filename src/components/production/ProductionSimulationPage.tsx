@@ -579,10 +579,7 @@ export function ProductionSimulationPage({
   const [showFrequencyDialog, setShowFrequencyDialog] = useState(false);
   const [syncSummaryChanges, setSyncSummaryChanges] = useState<FrequencyChangeItem[] | null>(null);
 
-  const prevSetupIdForFreq = useRef<string | null>(null);
-  const prevFreqMode = useRef<string | undefined>(undefined);
-  const prevFreqStartDate = useRef<string | undefined>(undefined);
-  const prevFreqEndDate = useRef<string | undefined>(undefined);
+  const setupLoadedId = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -660,18 +657,7 @@ export function ProductionSimulationPage({
       };
     }
 
-    const isInitialSetupLoad = prevSetupIdForFreq.current !== selectedSetupIdForFreq;
-    const isSourceOrDateChanged =
-      !isInitialSetupLoad &&
-      (prevFreqMode.current !== selectedFrequencyMode ||
-        (selectedFrequencyMode === 'historical' &&
-          (prevFreqStartDate.current !== selectedFrequencyStartDate ||
-            prevFreqEndDate.current !== selectedFrequencyEndDate)));
-
-    prevSetupIdForFreq.current = selectedSetupIdForFreq;
-    prevFreqMode.current = selectedFrequencyMode;
-    prevFreqStartDate.current = selectedFrequencyStartDate;
-    prevFreqEndDate.current = selectedFrequencyEndDate;
+    const isInitialSetupLoad = setupLoadedId.current !== selectedSetupIdForFreq;
 
     fetchSetupFrequencies(selectedSetupIdForFreq)
       .then(async (freqs) => {
@@ -688,12 +674,14 @@ export function ProductionSimulationPage({
           });
           if (!cancelled) {
             setSetupFrequencies(synced);
-            if (isSourceOrDateChanged && changes.length > 0) {
+            if (!isInitialSetupLoad && changes.length > 0) {
               setSyncSummaryChanges(changes);
             }
+            setupLoadedId.current = selectedSetupIdForFreq;
           }
         } else {
           setSetupFrequencies(freqs);
+          setupLoadedId.current = selectedSetupIdForFreq;
         }
       })
       .catch((err) => console.warn('WL_productionsetupfrequency load failed:', err));
