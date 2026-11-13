@@ -135,16 +135,16 @@ export function ShiftTimeCard({
         onKeyDown={handleKeyDown}
         title={onSeek ? 'Click or drag to seek anywhere along the shift timeline' : undefined}
       >
-        <div className="progress-track">
+        <div className="progress-track" style={{ position: 'absolute', top: 2, bottom: 2, left: 0, right: 0, width: '100%', boxSizing: 'border-box' }}>
           {maxSeekMinutes != null && maxSeekMinutes < totalMinutes && (
-            <div className="progress-buffered" style={{ width: `${bufferedPercent}%` }} />
+            <div className="progress-buffered" style={{ position: 'absolute', top: 0, bottom: 0, left: 0, height: '100%', width: `${bufferedPercent}%` }} />
           )}
-          <div className="progress-fill" style={{ width: `${fillPercent}%` }} />
+          <div className="progress-fill" style={{ position: 'absolute', top: 0, bottom: 0, left: 0, height: '100%', width: `${fillPercent}%` }} />
         </div>
         {onSeek && (
           <div
             className="progress-thumb"
-            style={{ left: `${fillPercent}%` }}
+            style={{ position: 'absolute', top: '50%', left: `${fillPercent}%`, transform: 'translate(-50%, -50%)' }}
             aria-hidden="true"
           />
         )}

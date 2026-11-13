@@ -116,6 +116,11 @@
           "entitySetName": "mpp_wl_defaultvalues",
           "logicalName": "mpp_wl_defaultvalue",
           "isHidden": false
+        },
+        "wl_productionsetupfrequencies": {
+          "entitySetName": "mpp_wl_productionsetupfrequencies",
+          "logicalName": "mpp_wl_productionsetupfrequency",
+          "isHidden": false
         }
       },
       "environmentVariableName": ""

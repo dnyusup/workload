@@ -320,7 +320,9 @@ export function ProductionRunView({
   };
 
   const handleSaveToCloud = async () => {
-    const recordToSave = activeReplayRecord ?? currentLiveRecord;
+    const recordToSave = (activeReplayRecord && activeReplayRecord.source !== 'cloud')
+      ? activeReplayRecord
+      : (localReplayRecord ?? activeReplayRecord ?? currentLiveRecord);
     setCloudSaving(true);
     try {
       await uploadReplayToCloud(setup.id, recordToSave);

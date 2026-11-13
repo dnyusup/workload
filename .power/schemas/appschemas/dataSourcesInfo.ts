@@ -33,6 +33,13 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "mpp_wl_productionsetupfrequencies": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "mpp_wl_productionsetupfrequencyid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "mpp_wl_productionsetupmachineses": {
     "tableId": "",
     "version": "",
