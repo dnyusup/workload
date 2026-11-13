@@ -533,6 +533,8 @@ export interface ProductionSetup {
   createdByName?: string;
   sharedEmail?: string;
   sharedRole?: string;
+  /** Attached replay filename in Dataverse (mpp_simulationresult_name) if a cloud replay exists. */
+  simulationResultName?: string;
 }
 
 /** One independent operator's live state during a Production Simulation run — same FSM shape as
@@ -577,6 +579,33 @@ export interface ProductionMachineRuntimeState extends MachineRuntimeState {
   spoolWeight: number;
 }
 
+export interface OperatorKeyframeItem {
+  id: string;
+  x: number;
+  y: number;
+  phase: OperatorPhase;
+  targetMachineId: string | null;
+  targetMachineLabel: string | null;
+  currentZoneLabel: string | null;
+  breakLabel: string | null;
+  breakRemainingMin: number;
+}
+
+export interface KeyframeMetrics {
+  producedMachineMin: number;
+  tonageKg: number;
+  tonageKgByConstruction: Record<string, number>;
+  completedByActivity: Record<ActivityKey, number>;
+  downtimeByReason: Record<DowntimeReason, number>;
+  diesChanged: number;
+}
+
+export interface OperatorKeyframe {
+  t: number;
+  ops: OperatorKeyframeItem[];
+  metrics?: KeyframeMetrics;
+}
+
 export interface ProductionSimulationState {
   machines: ProductionMachineRuntimeState[];
   operators: ProductionOperatorRuntimeState[];
@@ -586,4 +615,6 @@ export interface ProductionSimulationState {
   /** Surfaced once at construction time — e.g. a Construction missing a WL_Activities row, or a
    * machine with a due activity but no operator assigned to that activity type. */
   warnings: string[];
+  /** Periodic snapshot of operator positions across time, used for smooth replay playback and scrubbing. */
+  keyframes?: OperatorKeyframe[];
 }

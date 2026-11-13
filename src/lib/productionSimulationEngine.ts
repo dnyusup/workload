@@ -5,6 +5,7 @@ import type {
   MachineRuntimeState,
   MachineTimelineKind,
   MachineTimelineSegment,
+  OperatorKeyframe,
   OperatorTimelineKind,
   PendingTask,
   ProductionMachineAssignment,
@@ -393,6 +394,38 @@ export class ProductionSimulationEngine {
     if (setup.operators.length === 0) {
       this.warnings.push('No operators defined for this Production Setup — nothing will be serviced.');
     }
+    this.recordKeyframe(true);
+  }
+
+  private keyframes: OperatorKeyframe[] = [];
+  private lastKeyframeMin = -1;
+
+  private recordKeyframe(force = false) {
+    const clock = Math.round(this.metrics.clockMin * 100) / 100;
+    if (!force && this.lastKeyframeMin >= 0 && clock - this.lastKeyframeMin < 0.5) return;
+    this.lastKeyframeMin = clock;
+    this.keyframes.push({
+      t: clock,
+      ops: this.operators.map((op) => ({
+        id: op.id,
+        x: Math.round(op.x * 10) / 10,
+        y: Math.round(op.y * 10) / 10,
+        phase: op.phase,
+        targetMachineId: op.targetMachineId,
+        targetMachineLabel: op.targetMachineLabel,
+        currentZoneLabel: op.currentZoneLabel,
+        breakLabel: op.breakLabel,
+        breakRemainingMin: Math.round(op.breakRemainingMin * 10) / 10,
+      })),
+      metrics: {
+        producedMachineMin: Math.round(this.metrics.producedMachineMin * 10) / 10,
+        tonageKg: Math.round(this.metrics.tonageKg * 10) / 10,
+        tonageKgByConstruction: { ...this.metrics.tonageKgByConstruction },
+        completedByActivity: { ...this.metrics.completedByActivity },
+        downtimeByReason: { ...this.metrics.downtimeByReason },
+        diesChanged: this.metrics.diesChanged,
+      },
+    });
   }
 
   private recordTriggerEvent(machineId: string, activity: ActivityKey) {
@@ -1343,8 +1376,21 @@ export class ProductionSimulationEngine {
       });
       this.metrics.clockMin += step;
       this.machines.forEach((machine) => this.recordMachineTime(machine, startMin, step));
+      this.recordKeyframe();
       remaining -= step;
     }
+    if (this.metrics.clockMin >= this.metrics.shiftTimeMin) {
+      this.recordKeyframe(true);
+    }
+  }
+
+  fastForwardToEnd(maxMinutes?: number): ProductionSimulationState {
+    const target = maxMinutes ?? this.metrics.shiftTimeMin;
+    const remaining = Math.max(0, target - this.metrics.clockMin);
+    if (remaining > 0) {
+      this.tick(remaining);
+    }
+    return this.getState();
   }
 
   getState(): ProductionSimulationState {
@@ -1366,6 +1412,7 @@ export class ProductionSimulationEngine {
       log: [...this.log],
       finished: this.metrics.clockMin >= this.metrics.shiftTimeMin,
       warnings: [...this.warnings],
+      keyframes: [...this.keyframes],
     };
   }
 }

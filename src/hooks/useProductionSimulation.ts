@@ -83,14 +83,24 @@ export function useProductionSimulation(setup: ProductionSetup, resolved: Map<st
     };
   }, [playing, speed, updateIntervalMs]);
 
+  const fastForwardToEnd = useCallback(() => {
+    setPlaying(false);
+    const next = engineRef.current.fastForwardToEnd();
+    setState(next);
+    lastTsRef.current = null;
+    lastRenderTsRef.current = null;
+    return next;
+  }, []);
+
   const controls = useMemo(
     () => ({
       play: () => setPlaying(true),
       pause: () => setPlaying(false),
       reset,
       setSpeed,
+      fastForwardToEnd,
     }),
-    [reset],
+    [reset, fastForwardToEnd],
   );
 
   return { state, playing, speed, controls };

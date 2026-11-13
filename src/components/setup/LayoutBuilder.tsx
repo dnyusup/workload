@@ -15,6 +15,12 @@ import { generatePairedGrid, PAIR_GAP } from '../../lib/gridLayout';
 import { machineLabelFontSize, shiftMachineLabel } from '../../lib/machineLabel';
 import { computeDragGuides, type Box, type DragGuides } from '../../lib/dragGuides';
 import { DEFAULT_REMARK_FONT_SIZE, remarkBounds } from '../../lib/layoutRemarks';
+import {
+  getLayoutClipboard,
+  setLayoutClipboard,
+  subscribeLayoutClipboard,
+  type LayoutClipboardData,
+} from '../../lib/layoutClipboard';
 
 const PAIR_SIDE_CYCLE: Record<MachinePairSide, MachinePairSide> = {
   single: 'left',
@@ -440,11 +446,9 @@ export function LayoutBuilder({
   const [cols, setCols] = useState(10);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [history, setHistory] = useState<{ machines: LayoutMachine[]; walls: LayoutWall[] | undefined; remarks: LayoutRemark[] | undefined }[]>([]);
-  const [clipboard, setClipboard] = useState<LayoutMachine[] | null>(null);
-  const [wallClipboard, setWallClipboard] = useState<LayoutWall | null>(null);
-  const [clipboardKind, setClipboardKind] = useState<'machines' | 'wall'>('machines');
-  const [wallPasteCount, setWallPasteCount] = useState(0);
+  const [clipboardData, setClipboardData] = useState<LayoutClipboardData | null>(() => getLayoutClipboard());
   const [pasteCount, setPasteCount] = useState(0);
+  const lastCopiedAtRef = useRef<number>(clipboardData?.copiedAt ?? 0);
   const [measureMode, setMeasureMode] = useState(false);
   const [measurement, setMeasurement] = useState<Measurement | null>(null);
   const [measurePreview, setMeasurePreview] = useState<Point | null>(null);
@@ -491,6 +495,13 @@ export function LayoutBuilder({
     onSelectionChange?.(Array.from(selectedIds));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedIds]);
+
+  useEffect(() => {
+    const unsub = subscribeLayoutClipboard((data) => {
+      setClipboardData(data);
+    });
+    return unsub;
+  }, []);
 
   const toggleMeasureMode = () => {
     setMeasureMode((prev) => !prev);
@@ -648,41 +659,125 @@ export function LayoutBuilder({
   const copySelection = () => {
     const wall = selectedWallId ? (walls ?? []).find((w) => w.id === selectedWallId) : undefined;
     if (wall) {
-      setWallClipboard(wall);
-      setClipboardKind('wall');
-      setWallPasteCount(0);
+      const data: LayoutClipboardData = {
+        kind: 'wall',
+        wall,
+        copiedAt: Date.now(),
+      };
+      setClipboardData(data);
+      setLayoutClipboard(data);
+      setPasteCount(0);
+      lastCopiedAtRef.current = data.copiedAt;
+      return;
+    }
+    const remark = selectedRemarkId ? (remarks ?? []).find((r) => r.id === selectedRemarkId) : undefined;
+    if (remark) {
+      const data: LayoutClipboardData = {
+        kind: 'remark',
+        remark,
+        copiedAt: Date.now(),
+      };
+      setClipboardData(data);
+      setLayoutClipboard(data);
+      setPasteCount(0);
+      lastCopiedAtRef.current = data.copiedAt;
       return;
     }
     if (selectedIds.size === 0) return;
-    setClipboard(layout.filter((m) => selectedIds.has(m.id)));
-    setClipboardKind('machines');
+    const machines = layout.filter((m) => selectedIds.has(m.id));
+    if (machines.length === 0) return;
+    const data: LayoutClipboardData = {
+      kind: 'machines',
+      machines,
+      copiedAt: Date.now(),
+    };
+    setClipboardData(data);
+    setLayoutClipboard(data);
     setPasteCount(0);
+    lastCopiedAtRef.current = data.copiedAt;
   };
 
-  const pasteWall = () => {
-    if (!wallClipboard || !onWallsChange) return;
+  const pasteWall = (targetWall?: LayoutWall) => {
+    const activeData = getLayoutClipboard() ?? clipboardData;
+    const wall = targetWall ?? (activeData?.kind === 'wall' ? activeData.wall : undefined);
+    if (!wall || !onWallsChange) return;
     pushHistory(layout);
-    const nextCount = wallPasteCount + 1;
+    let count = pasteCount;
+    if (activeData?.copiedAt && activeData.copiedAt !== lastCopiedAtRef.current) {
+      lastCopiedAtRef.current = activeData.copiedAt;
+      count = 0;
+    }
+    const nextCount = count + 1;
     const offset = PASTE_OFFSET * nextCount;
     const pasted: LayoutWall = {
       id: newWallId(),
-      x1: wallClipboard.x1 + offset,
-      y1: wallClipboard.y1 + offset,
-      x2: wallClipboard.x2 + offset,
-      y2: wallClipboard.y2 + offset,
+      x1: wall.x1 + offset,
+      y1: wall.y1 + offset,
+      x2: wall.x2 + offset,
+      y2: wall.y2 + offset,
     };
     onWallsChange([...(walls ?? []), pasted]);
     setSelectedWallId(pasted.id);
     setSelectedIds(new Set());
-    setWallPasteCount(nextCount);
+    setSelectedRemarkId(null);
+    setPasteCount(nextCount);
   };
 
-  const pasteClipboard = () => {
-    if (!clipboard || clipboard.length === 0) return;
+  const pasteRemark = (targetRemark?: LayoutRemark) => {
+    const activeData = getLayoutClipboard() ?? clipboardData;
+    const remark = targetRemark ?? (activeData?.kind === 'remark' ? activeData.remark : undefined);
+    if (!remark || !onRemarksChange) return;
     pushHistory(layout);
-    const nextCount = pasteCount + 1;
+    let count = pasteCount;
+    if (activeData?.copiedAt && activeData.copiedAt !== lastCopiedAtRef.current) {
+      lastCopiedAtRef.current = activeData.copiedAt;
+      count = 0;
+    }
+    const nextCount = count + 1;
+    const offset = PASTE_OFFSET * nextCount;
+    const pasted: LayoutRemark = {
+      id: newRemarkId(),
+      x: remark.x + offset,
+      y: remark.y + offset,
+      text: remark.text,
+      fontSize: remark.fontSize,
+    };
+    onRemarksChange([...(remarks ?? []), pasted]);
+    setSelectedRemarkId(pasted.id);
+    setSelectedIds(new Set());
+    setSelectedWallId(null);
+    setPasteCount(nextCount);
+  };
+
+  const pasteClipboard = (targetMachines?: LayoutMachine[]) => {
+    const activeData = getLayoutClipboard() ?? clipboardData;
+    const machines = targetMachines ?? (activeData?.kind === 'machines' ? activeData.machines : undefined);
+    if (!machines || machines.length === 0) return;
+    pushHistory(layout);
+    let count = pasteCount;
+    if (activeData?.copiedAt && activeData.copiedAt !== lastCopiedAtRef.current) {
+      lastCopiedAtRef.current = activeData.copiedAt;
+      count = 0;
+    }
+    const nextCount = count + 1;
     const offset = PASTE_OFFSET * nextCount;
     const timestamp = Date.now();
+
+    // Check if machine labels clash with existing machines in this layout
+    const targetLabels = new Set(layout.map((m) => m.label.trim().toLowerCase()));
+    const seenInBatch = new Set<string>();
+    let hasConflict = count > 0;
+    if (!hasConflict) {
+      for (const m of machines) {
+        const norm = m.label.trim().toLowerCase();
+        if (!norm || targetLabels.has(norm) || seenInBatch.has(norm)) {
+          hasConflict = true;
+          break;
+        }
+        seenInBatch.add(norm);
+      }
+    }
+
     const startNumber = nextMachineNumber(layout);
     // Each copied group becomes a NEW group of its own — keeping the original groupId would merge
     // the copy into the group it was copied from (selecting one would select both).
@@ -692,18 +787,42 @@ export function LayoutBuilder({
       if (!newGroupIds.has(groupId)) newGroupIds.set(groupId, `machine-group-${timestamp}-${newGroupIds.size}`);
       return newGroupIds.get(groupId);
     };
-    const pasted = clipboard.map((m, i) => ({
+
+    const pasted = machines.map((m, i) => ({
       ...m,
       id: `m-${timestamp}-${i}`,
       groupId: pastedGroupId(m.groupId),
-      label: String(startNumber + i),
+      label: hasConflict ? String(startNumber + i) : m.label,
       x: m.x + offset,
       y: m.y + offset,
     }));
     onChange([...layout, ...pasted]);
     setSelectedIds(new Set(pasted.map((m) => m.id)));
+    setSelectedWallId(null);
+    setSelectedRemarkId(null);
     setPasteCount(nextCount);
   };
+
+  const handlePaste = () => {
+    const activeData = getLayoutClipboard() ?? clipboardData;
+    if (!activeData) return;
+    if (activeData.kind === 'wall') {
+      pasteWall(activeData.wall);
+    } else if (activeData.kind === 'remark') {
+      pasteRemark(activeData.remark);
+    } else if (activeData.kind === 'machines') {
+      pasteClipboard(activeData.machines);
+    }
+  };
+
+  const canPaste = (() => {
+    const data = clipboardData ?? getLayoutClipboard();
+    if (!data) return false;
+    if (data.kind === 'machines') return !!(data.machines && data.machines.length > 0);
+    if (data.kind === 'wall') return !!(data.wall && onWallsChange);
+    if (data.kind === 'remark') return !!(data.remark && onRemarksChange);
+    return false;
+  })();
 
   const toViewBoxPoint = (clientX: number, clientY: number): Point => {
     const svg = svgRef.current;
@@ -861,14 +980,13 @@ export function LayoutBuilder({
         copySelection();
       } else if (key === 'v') {
         e.preventDefault();
-        if (clipboardKind === 'wall') pasteWall();
-        else pasteClipboard();
+        handlePaste();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [layout, selectedIds, history, clipboard, pasteCount, measureMode, placingStart, wallMode, wallStart, selectedWallId, walls, wallClipboard, clipboardKind, wallPasteCount, remarkMode, selectedRemarkId, remarks]);
+  }, [layout, selectedIds, history, clipboardData, pasteCount, measureMode, placingStart, wallMode, wallStart, selectedWallId, walls, remarkMode, selectedRemarkId, remarks]);
 
   const handleMachinePointerDown = (id: string) => (e: React.PointerEvent) => {
     if (selectedWallId) setSelectedWallId(null);
@@ -1676,8 +1794,8 @@ export function LayoutBuilder({
                 variant="ghost"
                 className="toolbar-icon-button"
                 onClick={copySelection}
-                disabled={selectedIds.size === 0}
-                title="Copy selected machine(s) (Ctrl+C)"
+                disabled={selectedIds.size === 0 && !selectedWallId && !selectedRemarkId}
+                title="Copy selected machine(s), wall, or remark (Ctrl+C)"
                 aria-label="Copy selected machines"
               >
                 ⧉
@@ -1685,9 +1803,9 @@ export function LayoutBuilder({
               <Button
                 variant="ghost"
                 className="toolbar-icon-button"
-                onClick={pasteClipboard}
-                disabled={!clipboard}
-                title="Paste copied machine(s) (Ctrl+V)"
+                onClick={handlePaste}
+                disabled={!canPaste}
+                title="Paste copied item(s) (Ctrl+V)"
                 aria-label="Paste copied machines"
               >
                 📋

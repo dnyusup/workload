@@ -327,6 +327,24 @@
           "x-ms-dataverse-type": "IntegerType",
           "x-ms-schema-name": "mpp_shifttime"
         },
+        "mpp_simulationresult": {
+          "type": "string",
+          "title": "SimulationResult",
+          "x-ms-dataverse-attribute": "mpp_simulationresult",
+          "x-ms-dataverse-type": "FileType",
+          "x-ms-schema-name": "mpp_SimulationResult",
+          "x-ms-read-only": true
+        },
+        "mpp_simulationresult_name": {
+          "type": "string",
+          "title": "mpp_simulationresult_name",
+          "x-ms-dataverse-attribute": "mpp_simulationresult_name",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "mpp_SimulationResult_Name",
+          "x-ms-dataverse-attribute-of": "mpp_simulationresult",
+          "x-ms-read-only": true,
+          "maxLength": 200
+        },
         "mpp_taskpriority": {
           "type": "string",
           "title": "taskpriority",

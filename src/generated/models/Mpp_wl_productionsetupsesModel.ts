@@ -50,6 +50,8 @@ export interface Mpp_wl_productionsetupsesBase {
 export interface Mpp_wl_productionsetupses extends Mpp_wl_productionsetupsesBase {
   createdon?: string;
   modifiedon?: string;
+  mpp_simulationresult?: string;
+  mpp_simulationresult_name?: string;
   ownerid: string;
   statecodename?: string;
   statuscodename?: string;
@@ -69,3 +71,6 @@ export interface Mpp_wl_productionsetupses extends Mpp_wl_productionsetupsesBase
   owninguser?: object;
   _owninguser_value?: string;
 }
+export type Mpp_wl_productionsetupsesFileColumnName = 'mpp_simulationresult';
+
+export type Mpp_wl_productionsetupsesUploadColumnName = Mpp_wl_productionsetupsesFileColumnName;

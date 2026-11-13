@@ -206,6 +206,7 @@ export async function loadProductionSetup(id: string, constructionLabelById: Map
     createdByName: (header as { createdbyname?: string }).createdbyname ?? '',
     sharedEmail: header.mpp_shared_email ?? '',
     sharedRole: header.mpp_shared_role ?? '',
+    simulationResultName: header.mpp_simulationresult_name ?? undefined,
   };
 }
 

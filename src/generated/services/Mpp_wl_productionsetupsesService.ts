@@ -6,7 +6,7 @@
 import type { GetEntityMetadataOptions, EntityMetadata } from '@microsoft/power-apps/data/metadata/dataverse';
 import type { IGetOptions, IGetAllOptions } from '../models/CommonModels';
 import type { IOperationResult } from '@microsoft/power-apps/data';
-import type { Mpp_wl_productionsetupsesBase, Mpp_wl_productionsetupses } from '../models/Mpp_wl_productionsetupsesModel';
+import type { Mpp_wl_productionsetupsesBase, Mpp_wl_productionsetupses, Mpp_wl_productionsetupsesFileColumnName, Mpp_wl_productionsetupsesUploadColumnName } from '../models/Mpp_wl_productionsetupsesModel';
 import { dataSourcesInfo } from '../../../.power/schemas/appschemas/dataSourcesInfo';
 import { getClient } from '@microsoft/power-apps/data';
 
@@ -71,5 +71,39 @@ export class Mpp_wl_productionsetupsesService {
         },
       },
     });
+  }
+
+  public static async upload(id: string, columnName: Mpp_wl_productionsetupsesUploadColumnName, file: File, fileDisplayName?: string, partitionId?: string): Promise<IOperationResult<void>> {
+    const arrayBuffer = await file.arrayBuffer();
+    const data = new Uint8Array(arrayBuffer);
+    const result = await Mpp_wl_productionsetupsesService.client.uploadFileToRecord(
+      Mpp_wl_productionsetupsesService.dataSourceName,
+      id,
+      columnName,
+      fileDisplayName || file.name,
+      data,
+      partitionId,
+    );
+    return result;
+  }
+
+  public static async downloadFile(id: string, columnName: Mpp_wl_productionsetupsesFileColumnName, partitionId?: string): Promise<IOperationResult<Uint8Array>> {
+    const result = await Mpp_wl_productionsetupsesService.client.downloadFileFromRecord(
+      Mpp_wl_productionsetupsesService.dataSourceName,
+      id,
+      columnName,
+      partitionId,
+    );
+    return result;
+  }
+
+  public static async deleteFileOrImage(id: string, columnName: Mpp_wl_productionsetupsesUploadColumnName, partitionId?: string): Promise<IOperationResult<void>> {
+    const result = await Mpp_wl_productionsetupsesService.client.deleteFileOrImageFromRecord(
+      Mpp_wl_productionsetupsesService.dataSourceName,
+      id,
+      columnName,
+      partitionId,
+    );
+    return result;
   }
 }

@@ -36,6 +36,14 @@ import { ShiftStartField } from '../ui/ShiftStartField';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { ShiftTimeCard } from '../simulation/ShiftTimeCard';
+import {
+  type SimulationReplayRecord,
+  saveLocalReplay,
+  loadLocalReplay,
+  uploadReplayToCloud,
+  downloadReplayFromCloud,
+  interpolateReplaySnapshot,
+} from '../../lib/simulationReplay';
 
 const LABEL_MARGIN = 24;
 const MIN_ZOOM = 0.1;
@@ -59,6 +67,12 @@ function fmtTime(min: number) {
 
 function fmt(v: number) {
   return Math.round(v * 10) / 10;
+}
+
+function formatSavedAt(timestamp: number): string {
+  if (!timestamp) return '—';
+  const d = new Date(timestamp);
+  return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 }
 
 function calculateRunningOutput(
@@ -126,8 +140,222 @@ export function ProductionRunView({
   allProductIds: string[];
   onBack: () => void;
 }) {
-  const { state, playing, speed, controls } = useProductionSimulation(setup, resolved, resolveErrors);
+  const { state: liveState, playing: livePlaying, speed, controls } = useProductionSimulation(setup, resolved, resolveErrors);
+  const [activeReplayRecord, setActiveReplayRecord] = useState<SimulationReplayRecord | null>(null);
+  const [replayMinute, setReplayMinute] = useState<number | null>(null);
+  const [replayPlaying, setReplayPlaying] = useState(false);
+  const [localReplayRecord, setLocalReplayRecord] = useState<SimulationReplayRecord | null>(null);
+  const [cloudSaving, setCloudSaving] = useState(false);
+  const [cloudLoading, setCloudLoading] = useState(false);
+  const [localLoading, setLocalLoading] = useState(false);
+  const [showLoadModal, setShowLoadModal] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = useCallback((msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage((curr) => (curr === msg ? null : curr)), 4000);
+  }, []);
+
+  // Check for saved local replay on mount
+  useEffect(() => {
+    let active = true;
+    void loadLocalReplay(setup.id).then((local) => {
+      if (active && local) {
+        setLocalReplayRecord(local);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [setup.id]);
+
+  // Auto-save completed live run to local IndexedDB
+  const autoSavedRunRef = useRef(false);
+  useEffect(() => {
+    if (liveState.finished && !autoSavedRunRef.current && !activeReplayRecord) {
+      autoSavedRunRef.current = true;
+      const record: SimulationReplayRecord = {
+        setupId: setup.id,
+        setupName: setup.name,
+        savedAt: Date.now(),
+        shiftTimeMin: setup.shiftTime,
+        source: 'local',
+        state: liveState,
+        keyframes: liveState.keyframes ?? [],
+      };
+      void saveLocalReplay(record).then(() => {
+        setActiveReplayRecord(record);
+        setLocalReplayRecord(record);
+        showToast('Shift completed · Replay saved locally');
+      });
+    }
+  }, [liveState.finished, liveState, setup.id, setup.name, setup.shiftTime, activeReplayRecord, showToast]);
+
+  // Replay playback animation loop
+  const replayRafRef = useRef<number | null>(null);
+  const lastReplayTsRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!replayPlaying) {
+      lastReplayTsRef.current = null;
+      if (replayRafRef.current != null) cancelAnimationFrame(replayRafRef.current);
+      return;
+    }
+    const step = (ts: number) => {
+      if (lastReplayTsRef.current == null) lastReplayTsRef.current = ts;
+      const wallDeltaSec = (ts - lastReplayTsRef.current) / 1000;
+      lastReplayTsRef.current = ts;
+      const simDeltaMin = wallDeltaSec * speed * 2;
+      setReplayMinute((prev) => {
+        const current = prev ?? 0;
+        const next = current + simDeltaMin;
+        if (next >= setup.shiftTime) {
+          setReplayPlaying(false);
+          return setup.shiftTime;
+        }
+        return next;
+      });
+      replayRafRef.current = requestAnimationFrame(step);
+    };
+    replayRafRef.current = requestAnimationFrame(step);
+    return () => {
+      if (replayRafRef.current != null) cancelAnimationFrame(replayRafRef.current);
+    };
+  }, [replayPlaying, speed, setup.shiftTime]);
+
+  const currentLiveRecord: SimulationReplayRecord = useMemo(
+    () => ({
+      setupId: setup.id,
+      setupName: setup.name,
+      savedAt: setup.updatedAt || 0,
+      shiftTimeMin: setup.shiftTime,
+      source: 'local',
+      state: liveState,
+      keyframes: liveState.keyframes ?? [],
+    }),
+    [setup.id, setup.name, setup.shiftTime, setup.updatedAt, liveState],
+  );
+
+  const effectiveReplayRecord = activeReplayRecord ?? (replayMinute != null ? currentLiveRecord : null);
+
+  const state = useMemo(() => {
+    if (effectiveReplayRecord && replayMinute != null) {
+      return interpolateReplaySnapshot(effectiveReplayRecord, replayMinute);
+    }
+    return liveState;
+  }, [effectiveReplayRecord, replayMinute, liveState]);
+
   const { machines, operators, metrics } = state;
+  const isReplayMode = Boolean(activeReplayRecord || replayMinute != null);
+  const isCurrentlyPlaying = isReplayMode ? replayPlaying : livePlaying;
+
+  const handlePlayToggle = () => {
+    if (isReplayMode) {
+      if (replayPlaying) {
+        setReplayPlaying(false);
+      } else {
+        if (livePlaying) controls.pause();
+        if (replayMinute != null && replayMinute >= setup.shiftTime) {
+          setReplayMinute(0);
+        }
+        setReplayPlaying(true);
+      }
+    } else {
+      if (livePlaying) {
+        controls.pause();
+      } else {
+        controls.play();
+      }
+    }
+  };
+
+  const handleSeek = (min: number) => {
+    if (livePlaying) controls.pause();
+    setReplayMinute(min);
+  };
+
+  const handleFastRun = () => {
+    if (replayPlaying) setReplayPlaying(false);
+    const finishedState = controls.fastForwardToEnd();
+    const record: SimulationReplayRecord = {
+      setupId: setup.id,
+      setupName: setup.name,
+      savedAt: Date.now(),
+      shiftTimeMin: setup.shiftTime,
+      source: 'local',
+      state: finishedState,
+      keyframes: finishedState.keyframes ?? [],
+    };
+    autoSavedRunRef.current = true;
+    setActiveReplayRecord(record);
+    setLocalReplayRecord(record);
+    setReplayMinute(setup.shiftTime);
+    void saveLocalReplay(record).then(() => {
+      showToast('Shift completed · Replay saved locally');
+    });
+  };
+
+  const handleLoadFromLocal = async () => {
+    setLocalLoading(true);
+    try {
+      const record = localReplayRecord ?? (await loadLocalReplay(setup.id));
+      if (!record) {
+        showToast('No saved local replay found for this setup. Complete a run or click Fast Run first.');
+        return;
+      }
+      setActiveReplayRecord(record);
+      setLocalReplayRecord(record);
+      setReplayMinute(0);
+      setReplayPlaying(false);
+      controls.pause();
+      showToast('Local replay loaded successfully!');
+    } catch (err) {
+      showToast(err instanceof Error ? `Error: ${err.message}` : 'Failed to load local replay.');
+    } finally {
+      setLocalLoading(false);
+    }
+  };
+
+  const handleSaveToCloud = async () => {
+    const recordToSave = activeReplayRecord ?? currentLiveRecord;
+    setCloudSaving(true);
+    try {
+      await uploadReplayToCloud(setup.id, recordToSave);
+      showToast('Replay saved to Cloud successfully!');
+    } catch (err) {
+      showToast(err instanceof Error ? `Error: ${err.message}` : 'Failed to save replay to Cloud.');
+    } finally {
+      setCloudSaving(false);
+    }
+  };
+
+  const handleLoadFromCloud = async () => {
+    setCloudLoading(true);
+    try {
+      const record = await downloadReplayFromCloud(setup.id);
+      if (!record) {
+        showToast('No saved replay found in Cloud for this setup.');
+        return;
+      }
+      setActiveReplayRecord(record);
+      setReplayMinute(0);
+      setReplayPlaying(false);
+      controls.pause();
+      showToast('Cloud replay loaded successfully!');
+    } catch (err) {
+      showToast(err instanceof Error ? `Error: ${err.message}` : 'Failed to download replay from Cloud.');
+    } finally {
+      setCloudLoading(false);
+    }
+  };
+
+  const handleReset = () => {
+    setReplayPlaying(false);
+    setReplayMinute(null);
+    setActiveReplayRecord(null);
+    autoSavedRunRef.current = false;
+    controls.reset();
+  };
   // Reject % = the OEE Quality loss. Display-only (the engine is unchanged): it scales tonnage down
   // to GOOD tonnage and multiplies into every OEE figure. Plain state — back to 0 per page visit.
   const [rejectPercent, setRejectPercent] = useState(0);
@@ -717,32 +945,111 @@ export function ProductionRunView({
               )} minutes remaining`
             : undefined
         }
+        onSeek={handleSeek}
+        maxSeekMinutes={activeReplayRecord ? setup.shiftTime : Math.max(metrics.clockMin, liveState.metrics.clockMin)}
+        isReplay={isReplayMode}
       />
       {state.finished && <span className="finished-badge">Shift complete</span>}
       <ShiftStartField />
-      {!playing ? (
-        <Button variant="primary" onClick={controls.play} disabled={state.finished}>
-          ▶ Play
-        </Button>
-      ) : (
-        <Button variant="secondary" onClick={controls.pause}>
-          ⏸ Pause
-        </Button>
-      )}
+      <Button
+        variant={isCurrentlyPlaying ? 'secondary' : 'primary'}
+        onClick={handlePlayToggle}
+        disabled={!isReplayMode && liveState.finished}
+        title={isCurrentlyPlaying ? 'Pause simulation (or replay)' : 'Play simulation (or replay)'}
+      >
+        {isCurrentlyPlaying ? '⏸ Pause' : '▶ Play'}
+      </Button>
       <div className="speed-group">
         {[0.5, 1, 2, 4, 8].map((s) => (
           <button
             key={s}
             className={`speed-btn ${speed === s ? 'active' : ''}`}
             onClick={() => controls.setSpeed(s)}
+            title={`Playback speed ${s}x`}
           >
             {s}x
           </button>
         ))}
       </div>
-      <Button variant="secondary" onClick={controls.reset}>
+      {!liveState.finished && !activeReplayRecord && (
+        <Button
+          variant="secondary"
+          onClick={handleFastRun}
+          title="Simulate the entire shift immediately without waiting"
+        >
+          ⚡ Fast Run
+        </Button>
+      )}
+      <Button
+        variant="secondary"
+        onClick={handleSaveToCloud}
+        disabled={cloudSaving || (!liveState.finished && !activeReplayRecord)}
+        title="Compress and save this simulation replay to Dataverse cloud"
+      >
+        {cloudSaving ? '☁️ Saving…' : '☁️ Save to Cloud'}
+      </Button>
+      <Button
+        variant="ghost"
+        onClick={() => {
+          void loadLocalReplay(setup.id).then((local) => {
+            if (local) {
+              setLocalReplayRecord(local);
+            }
+          });
+          setShowLoadModal(true);
+        }}
+        title="Load saved simulation replay from Local Storage or Cloud"
+      >
+        📂 Load Replay
+      </Button>
+      {activeReplayRecord && (
+        <Button
+          variant="ghost"
+          onClick={() => {
+            setActiveReplayRecord(null);
+            setReplayMinute(null);
+            setReplayPlaying(false);
+            showToast('Exited replay mode');
+          }}
+          title="Exit replay mode and return to live simulation"
+        >
+          ✕ Exit Replay
+        </Button>
+      )}
+      <Button variant="secondary" onClick={handleReset} title="Reset simulation to initial state">
         ⟲ Reset
       </Button>
+      {activeReplayRecord && (
+        <span
+          style={{
+            fontSize: '11px',
+            padding: '2px 8px',
+            borderRadius: '999px',
+            background: 'rgba(56, 189, 248, 0.15)',
+            border: '1px solid rgba(56, 189, 248, 0.4)',
+            color: '#38bdf8',
+            fontWeight: 600,
+          }}
+        >
+          🎬 Replay Mode ({activeReplayRecord.source === 'cloud' ? 'Cloud' : 'Local'})
+        </span>
+      )}
+      {toastMessage && (
+        <span
+          style={{
+            fontSize: '12px',
+            color: '#38bdf8',
+            fontWeight: 500,
+            background: 'rgba(15, 23, 42, 0.9)',
+            border: '1px solid #38bdf8',
+            padding: '3px 8px',
+            borderRadius: '4px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+          }}
+        >
+          {toastMessage}
+        </span>
+      )}
     </div>
   );
 
@@ -1313,6 +1620,7 @@ export function ProductionRunView({
                 className="btn btn-ghost report-open-button"
                 onClick={() => {
                   // The report reads one frozen snapshot — pause so it doesn't change underneath.
+                  if (replayPlaying) setReplayPlaying(false);
                   controls.pause();
                   setShowReport(true);
                 }}
@@ -1445,6 +1753,105 @@ export function ProductionRunView({
           </div>
         </div>
       </div>
+
+      {showLoadModal && (
+        <div
+          className="modal-overlay"
+          onClick={() => setShowLoadModal(false)}
+          style={{ zIndex: 1200 }}
+        >
+          <div
+            className="replay-load-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="replay-load-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="replay-load-header">
+              <div>
+                <h3 id="replay-load-title" style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600 }}>
+                  Load Simulation Replay
+                </h3>
+                <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#94a3b8' }}>
+                  Choose where to load the saved shift replay for <strong>{setup.name}</strong>.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => setShowLoadModal(false)}
+                title="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="replay-load-options">
+              {/* Option 1: Local Storage */}
+              <div className="replay-option-card">
+                <div className="replay-option-icon">💾</div>
+                <div className="replay-option-content">
+                  <div className="replay-option-title">Local Browser Storage</div>
+                  <div className="replay-option-desc">
+                    Stored in this browser (IndexedDB). Instant loading and works offline.
+                  </div>
+                  <div className="replay-option-meta">
+                    {localReplayRecord ? (
+                      <span className="badge-available">
+                        ✓ Available · Saved {formatSavedAt(localReplayRecord.savedAt)} ({localReplayRecord.keyframes.length} keyframes)
+                      </span>
+                    ) : (
+                      <span className="badge-empty">No local replay saved yet</span>
+                    )}
+                  </div>
+                </div>
+                <Button
+                  variant="primary"
+                  onClick={async () => {
+                    await handleLoadFromLocal();
+                    setShowLoadModal(false);
+                  }}
+                  disabled={localLoading}
+                >
+                  {localLoading ? 'Loading…' : 'Load Local'}
+                </Button>
+              </div>
+
+              {/* Option 2: Cloud */}
+              <div className="replay-option-card">
+                <div className="replay-option-icon">☁️</div>
+                <div className="replay-option-content">
+                  <div className="replay-option-title">Dataverse Cloud</div>
+                  <div className="replay-option-desc">
+                    Stored in Dataverse cloud table for this setup. Accessible across devices and team members.
+                  </div>
+                  <div className="replay-option-meta">
+                    <span className="badge-cloud">
+                      {setup.simulationResultName ? `File: ${setup.simulationResultName}` : 'Stored in cloud table'}
+                    </span>
+                  </div>
+                </div>
+                <Button
+                  variant="secondary"
+                  onClick={async () => {
+                    await handleLoadFromCloud();
+                    setShowLoadModal(false);
+                  }}
+                  disabled={cloudLoading}
+                >
+                  {cloudLoading ? 'Downloading…' : 'Load from Cloud'}
+                </Button>
+              </div>
+            </div>
+
+            <div className="replay-load-footer">
+              <Button variant="ghost" onClick={() => setShowLoadModal(false)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
