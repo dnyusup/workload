@@ -416,6 +416,9 @@ export class ProductionSimulationEngine {
         currentZoneLabel: op.currentZoneLabel,
         breakLabel: op.breakLabel,
         breakRemainingMin: Math.round(op.breakRemainingMin * 10) / 10,
+        plannedRoute: op.phase === 'walking' && op.plannedRoute && op.plannedRoute.length > 1
+          ? op.plannedRoute.map((p) => ({ x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10 }))
+          : undefined,
       })),
       metrics: {
         producedMachineMin: Math.round(this.metrics.producedMachineMin * 10) / 10,

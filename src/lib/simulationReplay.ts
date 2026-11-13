@@ -2,6 +2,7 @@ import type {
   ActivityKey,
   DowntimeReason,
   MachineStatus,
+  PendingTask,
   ProductionMachineRuntimeState,
   ProductionOperatorRuntimeState,
   ProductionSimMetrics,
@@ -130,6 +131,7 @@ function interpolateOperatorsAtMinute(
   keyframes: OperatorKeyframe[],
   fallbackOperators: ProductionOperatorRuntimeState[],
   minute: number,
+  machineCoordsById?: Map<string, { x: number; y: number }>,
 ): ProductionOperatorRuntimeState[] {
   if (!keyframes || keyframes.length === 0) {
     return fallbackOperators;
@@ -137,11 +139,11 @@ function interpolateOperatorsAtMinute(
 
   // Exact or boundary match
   if (minute <= keyframes[0].t) {
-    return mergeKeyframeOps(fallbackOperators, keyframes[0].ops);
+    return mergeKeyframeOps(fallbackOperators, keyframes[0].ops, minute, machineCoordsById);
   }
   const lastKf = keyframes[keyframes.length - 1];
   if (minute >= lastKf.t) {
-    return mergeKeyframeOps(fallbackOperators, lastKf.ops);
+    return mergeKeyframeOps(fallbackOperators, lastKf.ops, minute, machineCoordsById);
   }
 
   // Binary search for bracket: kf1.t <= minute <= kf2.t
@@ -166,26 +168,30 @@ function interpolateOperatorsAtMinute(
   const opsMap2 = new Map(kf2.ops.map((o) => [o.id, o]));
   const interpolatedOps: OperatorKeyframeItem[] = kf1.ops.map((op1) => {
     const op2 = opsMap2.get(op1.id) ?? op1;
+    const phase = alpha >= 0.5 ? op2.phase : op1.phase;
+    const plannedRoute = op1.plannedRoute ?? op2.plannedRoute;
     return {
       id: op1.id,
       x: Math.round((op1.x + (op2.x - op1.x) * alpha) * 10) / 10,
       y: Math.round((op1.y + (op2.y - op1.y) * alpha) * 10) / 10,
-      phase: alpha >= 0.5 ? op2.phase : op1.phase,
+      phase,
       targetMachineId: alpha >= 0.5 ? op2.targetMachineId : op1.targetMachineId,
       targetMachineLabel: alpha >= 0.5 ? op2.targetMachineLabel : op1.targetMachineLabel,
       currentZoneLabel: alpha >= 0.5 ? op2.currentZoneLabel : op1.currentZoneLabel,
       breakLabel: alpha >= 0.5 ? op2.breakLabel : op1.breakLabel,
       breakRemainingMin: Math.max(0, op1.breakRemainingMin - alpha * span),
+      plannedRoute,
     };
   });
 
-  return mergeKeyframeOps(fallbackOperators, interpolatedOps, minute);
+  return mergeKeyframeOps(fallbackOperators, interpolatedOps, minute, machineCoordsById);
 }
 
 function mergeKeyframeOps(
   baseOperators: ProductionOperatorRuntimeState[],
   keyframeOps: OperatorKeyframeItem[],
   minute?: number,
+  machineCoordsById?: Map<string, { x: number; y: number }>,
 ): ProductionOperatorRuntimeState[] {
   const kfMap = new Map(keyframeOps.map((o) => [o.id, o]));
   return baseOperators.map((base) => {
@@ -197,6 +203,16 @@ function mergeKeyframeOps(
       : base.timeline;
 
     if (!kf) return { ...base, timeline: clampedTimeline };
+
+    // Determine route: use keyframe route or fallback line to target machine if walking
+    let route = kf.plannedRoute;
+    if ((!route || route.length < 2) && kf.phase === 'walking' && kf.targetMachineId && machineCoordsById) {
+      const targetM = machineCoordsById.get(kf.targetMachineId);
+      if (targetM) {
+        route = [{ x: kf.x, y: kf.y }, { x: targetM.x, y: targetM.y }];
+      }
+    }
+
     return {
       ...base,
       x: kf.x,
@@ -207,6 +223,7 @@ function mergeKeyframeOps(
       currentZoneLabel: kf.currentZoneLabel,
       breakLabel: kf.breakLabel,
       breakRemainingMin: kf.breakRemainingMin,
+      plannedRoute: route ?? [],
       timeline: clampedTimeline,
     };
   });
@@ -236,11 +253,14 @@ export function interpolateReplaySnapshot(
     nearestKf = allKeyframes[0];
   }
 
+  const machineCoordsById = new Map(fullState.machines.map((m) => [m.id, { x: m.x, y: m.y }]));
+
   // 1. Interpolate operators
   const activeOperators = interpolateOperatorsAtMinute(
     allKeyframes,
     fullState.operators,
     minute,
+    machineCoordsById,
   );
 
   const servicingMachineIds = new Set(
@@ -264,24 +284,109 @@ export function interpolateReplaySnapshot(
     let runtimePaused = false;
     let runtimeRemainingMin: number | null = null;
     let nextCompletionAt = Number.POSITIVE_INFINITY;
+    let pendingTasks: PendingTask[] = [];
+    const runtime = m.runtimePerSpool > 0 ? m.runtimePerSpool : 0;
 
     if (activeSeg) {
       const isRunning = activeSeg.kind === 'running' || activeSeg.kind.startsWith('running:');
       if (isRunning) {
         status = 'running';
-        const rem = Math.max(0, activeSeg.endMin - minute);
-        nextCompletionAt = minute + rem;
-        runtimeRemainingMin = null;
         runtimePaused = false;
+        runtimeRemainingMin = null;
+        pendingTasks = []; // Running machines have NO pending stop tasks (PO will not be red)
+
+        // Spool progress: find next doffing segment to calculate exact remaining spool time
+        const nextDoff = m.timeline.find(
+          (seg) => seg.startMin >= minute && (seg.kind === 'doffing' || seg.kind === 'waiting:doffing'),
+        );
+        if (nextDoff) {
+          let runRem = 0;
+          for (const s of m.timeline) {
+            if (s.startMin >= nextDoff.startMin) break;
+            if (s.endMin <= minute) continue;
+            if (s.kind === 'running' || s.kind.startsWith('running:')) {
+              const sStart = Math.max(minute, s.startMin);
+              const sEnd = Math.min(nextDoff.startMin, s.endMin);
+              if (sEnd > sStart) runRem += sEnd - sStart;
+            }
+          }
+          nextCompletionAt = minute + runRem;
+        } else {
+          // If no later doffing, count running time since last completed doffing
+          const lastDoff = [...m.timeline]
+            .reverse()
+            .find((seg) => seg.endMin <= minute && (seg.kind === 'doffing' || seg.kind === 'waiting:doffing'));
+          const lastDoffEnd = lastDoff ? lastDoff.endMin : 0;
+          let runSince = 0;
+          for (const s of m.timeline) {
+            if (s.startMin >= minute) break;
+            if (s.endMin <= lastDoffEnd) continue;
+            if (s.kind === 'running' || s.kind.startsWith('running:')) {
+              const sStart = Math.max(lastDoffEnd, s.startMin);
+              const sEnd = Math.min(minute, s.endMin);
+              if (sEnd > sStart) runSince += sEnd - sStart;
+            }
+          }
+          const remOnSpool = runtime > 0 ? Math.max(0, runtime - (runSince % runtime)) : 0;
+          nextCompletionAt = minute + remOnSpool;
+        }
+      } else if (activeSeg.kind === 'idle') {
+        status = 'unassigned';
+        runtimePaused = false;
+        runtimeRemainingMin = null;
+        pendingTasks = [];
       } else {
+        // Machine is stopped (either waiting for operator or being serviced)
         const isWaiting = activeSeg.kind === 'waiting' || activeSeg.kind.startsWith('waiting:');
         const isBeingServiced = servicingMachineIds.has(m.id) || (!isWaiting && activeSeg.kind !== 'idle');
         status = isBeingServiced ? 'being-serviced' : 'needs-service';
         runtimePaused = true;
-        runtimeRemainingMin = Math.max(0, activeSeg.endMin - minute);
+
+        let activityKey: string;
+        let activityLabel: string;
+        if (isWaiting) {
+          activityKey = activeSeg.kind.startsWith('waiting:')
+            ? activeSeg.kind.replace(/^waiting:(rpc:)?/, '')
+            : 'waiting';
+          activityLabel = activeSeg.label.replace(/^Waiting for\s*/i, '') || activityKey;
+        } else {
+          activityKey = activeSeg.kind.replace(/^rpc:/, '');
+          activityLabel = activeSeg.label || activityKey;
+        }
+
+        pendingTasks = [{
+          activity: activityKey as ActivityKey,
+          label: activityLabel,
+          timeMinutes: 0,
+        }];
+
+        if (activityKey === 'doffing') {
+          // Full spool waiting for doffing or being doffed -> 100% full spool donut!
+          runtimeRemainingMin = null;
+          nextCompletionAt = minute;
+        } else {
+          // Mid-spool interrupt (fracture or mid-runtime loading): compute running time on this spool
+          const lastDoff = [...m.timeline]
+            .reverse()
+            .find((seg) => seg.endMin <= activeSeg.startMin && (seg.kind === 'doffing' || seg.kind === 'waiting:doffing'));
+          const lastDoffEnd = lastDoff ? lastDoff.endMin : 0;
+          let runSince = 0;
+          for (const s of m.timeline) {
+            if (s.startMin >= activeSeg.startMin) break;
+            if (s.endMin <= lastDoffEnd) continue;
+            if (s.kind === 'running' || s.kind.startsWith('running:')) {
+              const sStart = Math.max(lastDoffEnd, s.startMin);
+              const sEnd = Math.min(activeSeg.startMin, s.endMin);
+              if (sEnd > sStart) runSince += sEnd - sStart;
+            }
+          }
+          runtimeRemainingMin = runtime > 0 ? Math.max(0, runtime - (runSince % runtime)) : null;
+          nextCompletionAt = minute + (runtimeRemainingMin ?? 0);
+        }
       }
     } else {
       status = m.status;
+      pendingTasks = [];
     }
 
     // Cumulative running & downtime up to `minute`
@@ -325,12 +430,26 @@ export function interpolateReplaySnapshot(
       runtimePaused,
       runtimeRemainingMin,
       nextCompletionAt,
+      pendingTasks,
       spoolsCompleted,
       shiftSpoolsCompleted: Math.floor(spoolsCompleted),
       downtimeMin,
       downtimeByReason: machineDowntimeByReason,
       timeline: clampedTimeline,
     };
+  });
+
+  // Ensure servicing operators have the task matching what they are actively servicing
+  const machineMap = new Map(activeMachines.map((mach) => [mach.id, mach]));
+  activeOperators.forEach((op) => {
+    if (op.phase === 'servicing' && op.targetMachineId) {
+      const targetM = machineMap.get(op.targetMachineId);
+      if (targetM && targetM.pendingTasks.length > 0) {
+        op.serviceTasks = [...targetM.pendingTasks];
+      }
+    } else if (op.phase !== 'servicing') {
+      op.serviceTasks = [];
+    }
   });
 
   // 3. Per operator metrics up to minute

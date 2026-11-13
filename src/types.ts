@@ -589,6 +589,7 @@ export interface OperatorKeyframeItem {
   currentZoneLabel: string | null;
   breakLabel: string | null;
   breakRemainingMin: number;
+  plannedRoute?: Array<{ x: number; y: number }>;
 }
 
 export interface KeyframeMetrics {

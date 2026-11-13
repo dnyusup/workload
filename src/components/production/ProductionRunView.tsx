@@ -2052,11 +2052,13 @@ const OperatorRoutesLayer = memo(function OperatorRoutesLayer({
   return (
     <>
       {operators.map((op, index) => {
-        const route = routes[op.id];
-        return route ? (
+        const activeRoute = op.phase === 'walking' && op.plannedRoute && op.plannedRoute.length >= 2
+          ? op.plannedRoute
+          : routes[op.id]?.points;
+        return activeRoute ? (
           <polyline
             key={`route-${op.id}`}
-            points={route.points.map((p) => `${p.x},${p.y}`).join(' ')}
+            points={activeRoute.map((p) => `${p.x},${p.y}`).join(' ')}
             className="operator-path"
             fill="none"
             style={{ stroke: OPERATOR_COLORS[index % OPERATOR_COLORS.length] }}
