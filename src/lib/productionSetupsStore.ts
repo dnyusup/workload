@@ -3,6 +3,7 @@ import { DEFAULT_PIXELS_PER_METER } from './layoutConstants';
 import { Mpp_wl_productionsetupsesService } from '../generated/services/Mpp_wl_productionsetupsesService';
 import { Mpp_wl_productionsetupoperatorsesService } from '../generated/services/Mpp_wl_productionsetupoperatorsesService';
 import { Mpp_wl_productionsetupmachinesesService } from '../generated/services/Mpp_wl_productionsetupmachinesesService';
+import { Mpp_wl_productionsetupfrequenciesService } from '../generated/services/Mpp_wl_productionsetupfrequenciesService';
 import type { Mpp_wl_productionsetupmachineses } from '../generated/models/Mpp_wl_productionsetupmachinesesModel';
 import { fetchAllPages, escapeODataString, runWithConcurrency } from './dataversePaging';
 import { parseLayoutBlob, serializeLayoutBlob } from './savedLayoutsStore';
@@ -520,7 +521,7 @@ export async function duplicateProductionSetup(
 }
 
 export async function deleteProductionSetup(id: string, onProgress?: (done: number, total: number) => void): Promise<void> {
-  const [operatorRows, machineRows] = await Promise.all([
+  const [operatorRows, machineRows, frequencyRows] = await Promise.all([
     fetchAllPages(Mpp_wl_productionsetupoperatorsesService.getAll, {
       filter: `mpp_productionsetupid eq '${escapeODataString(id)}'`,
       select: ['mpp_wl_productionsetupoperatorsid'],
@@ -529,11 +530,15 @@ export async function deleteProductionSetup(id: string, onProgress?: (done: numb
       filter: `mpp_productionsetupid eq '${escapeODataString(id)}'`,
       select: ['mpp_wl_productionsetupmachinesid'],
     }),
+    fetchAllPages(Mpp_wl_productionsetupfrequenciesService.getAll, {
+      filter: `mpp_productionsetupid eq '${escapeODataString(id)}'`,
+      select: ['mpp_wl_productionsetupfrequencyid'],
+    }),
   ]);
   // Children first — deleting the header while rows still point at it would either fail (a
   // restrict-delete relationship) or leave orphaned rows behind. Machine rows are almost always
-  // the bulk of the work (one per machine), so they drive the progress total; operator rows are
-  // few and just folded in afterwards without their own progress step.
+  // the bulk of the work (one per machine), so they drive the progress total; operator and frequency
+  // rows are few and folded in concurrently afterwards.
   const total = machineRows.length;
   await runWithConcurrency(
     machineRows,
@@ -543,13 +548,22 @@ export async function deleteProductionSetup(id: string, onProgress?: (done: numb
     BULK_CONCURRENCY,
     onProgress ? (done) => onProgress(done, total) : undefined,
   );
-  await runWithConcurrency(
-    operatorRows,
-    async (row) => {
-      await Mpp_wl_productionsetupoperatorsesService.delete(row.mpp_wl_productionsetupoperatorsid);
-    },
-    BULK_CONCURRENCY,
-  );
+  await Promise.all([
+    runWithConcurrency(
+      operatorRows,
+      async (row) => {
+        await Mpp_wl_productionsetupoperatorsesService.delete(row.mpp_wl_productionsetupoperatorsid);
+      },
+      BULK_CONCURRENCY,
+    ),
+    runWithConcurrency(
+      frequencyRows,
+      async (row) => {
+        await Mpp_wl_productionsetupfrequenciesService.delete(row.mpp_wl_productionsetupfrequencyid);
+      },
+      BULK_CONCURRENCY,
+    ),
+  ]);
   await Mpp_wl_productionsetupsesService.delete(id);
   machineRowIdCache.delete(id);
   legacyPlanningTypeRows.delete(id);
