@@ -212,13 +212,30 @@ export const AI_DATA_PARAMETERS = {
   openrouterKey: 'AiOpenRouterApiKey',
 } as const;
 
-/** Saves AI configuration and API keys to the Dataverse WL_DefaultValues table */
-export async function saveAiSettingsToDataverse(settings: AiSettings): Promise<void> {
+let savePromiseChain: Promise<void> = Promise.resolve();
+
+/**
+ * Saves AI configuration and API keys to the Dataverse WL_DefaultValues table.
+ * Serialized sequentially to prevent concurrent race condition creates,
+ * and automatically detects and purges duplicate rows.
+ */
+export function saveAiSettingsToDataverse(settings: AiSettings): Promise<void> {
+  savePromiseChain = savePromiseChain
+    .catch(() => {})
+    .then(() => executeSaveAiSettingsToDataverse(settings));
+  return savePromiseChain;
+}
+
+async function executeSaveAiSettingsToDataverse(settings: AiSettings): Promise<void> {
   const rows = await fetchAllPages(Mpp_wl_defaultvaluesService.getAll, {});
-  const rowMap = new Map<string, Mpp_wl_defaultvalues>();
+  const rowsByParam = new Map<string, Mpp_wl_defaultvalues[]>();
   rows.forEach((r) => {
     const p = (r.mpp_parameters ?? '').trim().toLowerCase();
-    if (p) rowMap.set(p, r);
+    if (p) {
+      const list = rowsByParam.get(p) ?? [];
+      list.push(r);
+      rowsByParam.set(p, list);
+    }
   });
 
   const entries: [string, string][] = [
@@ -232,40 +249,80 @@ export async function saveAiSettingsToDataverse(settings: AiSettings): Promise<v
 
   for (const [paramName, value] of entries) {
     const keyLower = paramName.toLowerCase();
-    const existing = rowMap.get(keyLower);
+    const matchingRows = rowsByParam.get(keyLower) ?? [];
     const trimmedVal = value.trim();
 
-    if (existing) {
-      if ((existing.mpp_value ?? '').trim() !== trimmedVal) {
-        await Mpp_wl_defaultvaluesService.update(existing.mpp_wl_defaultvalueid, { mpp_value: trimmedVal });
+    if (matchingRows.length > 0) {
+      // 1. Update primary row if value changed
+      const primary = matchingRows[0];
+      if ((primary.mpp_value ?? '').trim() !== trimmedVal) {
+        await Mpp_wl_defaultvaluesService.update(primary.mpp_wl_defaultvalueid, { mpp_value: trimmedVal });
+      }
+
+      // 2. Automatically delete all duplicate rows for this parameter
+      if (matchingRows.length > 1) {
+        for (let i = 1; i < matchingRows.length; i++) {
+          const duplicate = matchingRows[i];
+          try {
+            await Mpp_wl_defaultvaluesService.delete(duplicate.mpp_wl_defaultvalueid);
+            console.log(`[AI Config] Successfully purged duplicate Dataverse row for ${paramName}: ${duplicate.mpp_wl_defaultvalueid}`);
+          } catch (err) {
+            console.warn(`[AI Config] Failed to purge duplicate row for ${paramName}:`, err);
+          }
+        }
       }
     } else if (trimmedVal) {
-      await Mpp_wl_defaultvaluesService.create({
+      // 3. Create only if row does not exist at all and value is not empty
+      const created = await Mpp_wl_defaultvaluesService.create({
         mpp_parameters: paramName,
         mpp_value: trimmedVal,
         statecode: 0,
       });
+      if (created.data) {
+        rowsByParam.set(keyLower, [created.data]);
+      }
     }
   }
 }
 
-/** Fetches AI configuration and API keys from the Dataverse WL_DefaultValues table */
+/** Fetches AI configuration and API keys from the Dataverse WL_DefaultValues table and cleans any duplicates */
 export async function fetchAiSettingsFromDataverse(): Promise<AiSettings> {
   const current = loadAiSettings();
   try {
     const rows = await fetchAllPages(Mpp_wl_defaultvaluesService.getAll, {});
-    const rowMap = new Map<string, string>();
+    const rowsByParam = new Map<string, Mpp_wl_defaultvalues[]>();
     rows.forEach((r) => {
       const p = (r.mpp_parameters ?? '').trim().toLowerCase();
-      if (p) rowMap.set(p, (r.mpp_value ?? '').trim());
+      if (p) {
+        const list = rowsByParam.get(p) ?? [];
+        list.push(r);
+        rowsByParam.set(p, list);
+      }
     });
 
-    const activeProvider = (rowMap.get(AI_DATA_PARAMETERS.activeProvider.toLowerCase()) as AiProvider) || current.activeProvider;
-    const activeModel = rowMap.get(AI_DATA_PARAMETERS.activeModel.toLowerCase()) || current.activeModel;
-    const geminiKey = rowMap.get(AI_DATA_PARAMETERS.geminiKey.toLowerCase()) ?? current.providers.gemini.apiKey;
-    const deepseekKey = rowMap.get(AI_DATA_PARAMETERS.deepseekKey.toLowerCase()) ?? current.providers.deepseek.apiKey;
-    const groqKey = rowMap.get(AI_DATA_PARAMETERS.groqKey.toLowerCase()) ?? current.providers.groq.apiKey;
-    const openrouterKey = rowMap.get(AI_DATA_PARAMETERS.openrouterKey.toLowerCase()) ?? current.providers.openrouter.apiKey;
+    // Check and clean up any duplicate AI parameter rows in the background
+    const allAiKeys = Object.values(AI_DATA_PARAMETERS).map((k) => k.toLowerCase());
+    rowsByParam.forEach((matchingRows, keyLower) => {
+      if (allAiKeys.includes(keyLower) && matchingRows.length > 1) {
+        for (let i = 1; i < matchingRows.length; i++) {
+          Mpp_wl_defaultvaluesService.delete(matchingRows[i].mpp_wl_defaultvalueid).catch((err) => {
+            console.warn(`[AI Config] Failed to clean up duplicate row ${matchingRows[i].mpp_wl_defaultvalueid}:`, err);
+          });
+        }
+      }
+    });
+
+    const getParamVal = (paramName: string): string | undefined => {
+      const match = rowsByParam.get(paramName.toLowerCase());
+      return match && match[0] ? (match[0].mpp_value ?? '').trim() : undefined;
+    };
+
+    const activeProvider = (getParamVal(AI_DATA_PARAMETERS.activeProvider) as AiProvider) || current.activeProvider;
+    const activeModel = getParamVal(AI_DATA_PARAMETERS.activeModel) || current.activeModel;
+    const geminiKey = getParamVal(AI_DATA_PARAMETERS.geminiKey) ?? current.providers.gemini.apiKey;
+    const deepseekKey = getParamVal(AI_DATA_PARAMETERS.deepseekKey) ?? current.providers.deepseek.apiKey;
+    const groqKey = getParamVal(AI_DATA_PARAMETERS.groqKey) ?? current.providers.groq.apiKey;
+    const openrouterKey = getParamVal(AI_DATA_PARAMETERS.openrouterKey) ?? current.providers.openrouter.apiKey;
 
     const merged: AiSettings = {
       ...current,
