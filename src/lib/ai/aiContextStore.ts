@@ -26,7 +26,10 @@ export interface AiAppContext {
   setup: ProductionSetup | null;
   resolvedConstructions: Map<string, ResolvedConstruction>;
   simulationMetrics?: AiSimulationMetrics | null;
-  onApplyAssignments?: (result: OptimizationResult) => Promise<void> | void;
+  onApplyAssignments?: (
+    result: OptimizationResult,
+    onProgress?: (phase: string, done: number, total: number) => void,
+  ) => Promise<void> | void;
   lastOptimizationResult?: OptimizationResult | null;
 }
 

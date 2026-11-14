@@ -865,7 +865,10 @@ export function ProductionSimulationPage({
   ]);
 
   const handleApplyAiOptimization = useCallback(
-    async (optResult: OptimizationResult) => {
+    async (
+      optResult: OptimizationResult,
+      onProgress?: (phase: string, done: number, total: number) => void,
+    ) => {
       if (!selectedSetup) return;
       const result = await executeAutoAssign({
         setup: selectedSetup,
@@ -873,7 +876,9 @@ export function ProductionSimulationPage({
           mode: 'multi',
           multiCount: optResult.recommendedOperatorCount,
           onlyPlannedMachines: true,
+          resolvedConstructions: plannedResolution.resolved ?? undefined,
         },
+        onProgress,
       });
       setSelectedSetup((prev) =>
         prev
@@ -889,8 +894,20 @@ export function ProductionSimulationPage({
           s.id === selectedSetup.id ? { ...s, operatorCount: result.newOperators.length } : s,
         ),
       );
+      setRunState((prev) =>
+        prev && prev.setup.id === selectedSetup.id
+          ? {
+              ...prev,
+              setup: {
+                ...prev.setup,
+                operators: result.newOperators,
+                assignments: result.updatedAssignments,
+              },
+            }
+          : prev,
+      );
     },
-    [selectedSetup],
+    [selectedSetup, plannedResolution.resolved],
   );
 
   useEffect(() => {

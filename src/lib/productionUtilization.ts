@@ -100,6 +100,39 @@ function machineCapacityScale(construction: ResolvedConstruction, runtimePerSpoo
   return runtimePerSpool > 0 ? runtimePerSpool / (runtimePerSpool + stopMinutesPerSpool) : 1;
 }
 
+/**
+ * Estimates nominal operator service demand (in minutes per shift) required by a single machine
+ * running a specific Construction Detail. Accounts for machine speed, runtime per spool,
+ * doffing cycle, fracture rate, defect rate, dies change rate, and RPC allowance.
+ */
+export function estimateMachineServiceMinutes(
+  construction: ResolvedConstruction,
+  shiftTime: number,
+  rpc: number,
+): number {
+  const runtimePerSpool = finitePositive(construction.runtimePerSpool);
+  if (!runtimePerSpool || shiftTime <= 0) return 0;
+  const expectedSpools = shiftTime / runtimePerSpool;
+  if (expectedSpools <= 0) return 0;
+
+  let totalMinutes = 0;
+  construction.activities.forEach((activity) => {
+    if (GLOBAL_EVENT_ACTIVITIES.has(activity.key)) return;
+    const cycle = forecastCycleLength(activity, construction.activities, expectedSpools);
+    if (!Number.isFinite(cycle) || cycle <= 0) return;
+    const expectedOccurrences = expectedSpools / cycle;
+    const family = activityFamily(activity.key);
+    const quantityBased = family === 'diesChange';
+    const eventCount = !quantityBased
+      ? expectedOccurrences
+      : expectedOccurrences / AVERAGE_DIES_PER_CHANGE_EVENT;
+    const timeWithRpc = applyRpc(Math.max(0, activity.timeMinutes), rpc);
+    totalMinutes += eventCount * timeWithRpc;
+  });
+
+  return totalMinutes;
+}
+
 /** Calculates expected operator handling before a run using the same event ownership rules as the
  * production engine. Machine queue/waiting is deliberately not added to operator minutes: it is
  * machine downtime and reduces later production events rather than occupying an operator. The

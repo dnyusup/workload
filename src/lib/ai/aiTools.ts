@@ -89,7 +89,10 @@ export interface CopilotToolContext {
   setup: ProductionSetup | null;
   resolvedConstructions: Map<string, ResolvedConstruction>;
   simulationMetrics?: AiSimulationMetrics | null;
-  onApplyAssignments?: (result: OptimizationResult) => Promise<void> | void;
+  onApplyAssignments?: (
+    result: OptimizationResult,
+    onProgress?: (phase: string, done: number, total: number) => void,
+  ) => Promise<void> | void;
   lastOptimizationResult?: OptimizationResult | null;
   setLastOptimizationResult?: (result: OptimizationResult | null) => void;
   onProgress?: (status: string) => void;
@@ -293,7 +296,14 @@ export async function executeCopilotTool(
       }
 
       if (ctx.onApplyAssignments) {
-        await ctx.onApplyAssignments(ctx.lastOptimizationResult);
+        if (ctx.onProgress) {
+          ctx.onProgress('Applying machine allocation…');
+        }
+        await ctx.onApplyAssignments(ctx.lastOptimizationResult, (phase, done, total) => {
+          if (ctx.onProgress) {
+            ctx.onProgress(`⚙️ ${phase} (${done}/${total})`);
+          }
+        });
         return {
           result: {
             success: true,

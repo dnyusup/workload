@@ -345,6 +345,7 @@ export async function optimizeMachineAllocation({
         multiCount: count,
         onlyPlannedMachines: true,
         preorderedMachines,
+        resolvedConstructions: resolved,
       },
     });
 

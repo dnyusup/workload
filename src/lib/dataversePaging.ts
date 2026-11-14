@@ -50,6 +50,10 @@ export async function runWithConcurrency<T>(
       await worker(items[index], index);
       done += 1;
       onProgress?.(done, total);
+      if (done % 10 === 0) {
+        // Yield to browser event loop every 10 completions to keep UI responsive and reset watchdog
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
     }
   };
   const poolSize = Math.max(1, Math.min(concurrency, total));

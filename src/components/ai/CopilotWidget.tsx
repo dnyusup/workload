@@ -293,8 +293,11 @@ export function CopilotWidget() {
       }
     }
     setApplyingOptimization(true);
+    setActiveToolStatus('Applying allocation to setup…');
     try {
-      await appContext.onApplyAssignments(optResult);
+      await appContext.onApplyAssignments(optResult, (phase, done, total) => {
+        setActiveToolStatus(`⚙️ ${phase} (${done}/${total})`);
+      });
       setMessages((prev) => [
         ...prev,
         createChatMessage(
@@ -306,6 +309,7 @@ export function CopilotWidget() {
       alert(`Failed to apply allocation: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setApplyingOptimization(false);
+      setActiveToolStatus(null);
     }
   };
 

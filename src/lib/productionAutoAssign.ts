@@ -2,6 +2,8 @@ import type { LayoutMachine, ProductionMachineAssignment, ProductionOperator, Pr
 import { defaultAssignmentOrder, rowsOf } from './defaultAssignment';
 import { DEFAULT_PIXELS_PER_METER } from './layoutConstants';
 import type { TheoreticalActivityBreakdown, TheoreticalOperatorRow } from './theoreticalOperators';
+import type { ResolvedConstruction } from './productionConstructionResolver';
+import { estimateMachineServiceMinutes } from './productionUtilization';
 import { Mpp_wl_productionsetupoperatorsesService } from '../generated/services/Mpp_wl_productionsetupoperatorsesService';
 import { fetchAllPages, escapeODataString, runWithConcurrency } from './dataversePaging';
 import { updateMachineAssignments } from './productionSetupsStore';
@@ -181,6 +183,8 @@ export interface AutoAssignOptions {
   operatorRequirementRows?: TheoreticalOperatorRow[];
   /** Optional pre-sorted layout machines to bypass repeated defaultAssignmentOrder computation */
   preorderedMachines?: LayoutMachine[];
+  /** Resolved Construction Details to compute exact service demand (runtime, doffing, repairs, RPC) */
+  resolvedConstructions?: Map<string, ResolvedConstruction>;
 }
 
 /** Finds the highest numeric suffix in existing operator labels for a given prefix.
@@ -350,7 +354,8 @@ function optimizeMultiOperatorSpatialBoundaries({
   const avgWeight = totalWeight / (targetMachines.length || 1);
   const maxWeightDiff = Math.max(0.001, avgWeight * 0.05);
 
-  const maxIterations = 30;
+  const maxIterations = targetMachines.length > 200 ? 5 : 20;
+  const boundaryWindow = targetMachines.length > 200 ? 4 : 6;
   let iteration = 0;
 
   while (iteration < maxIterations) {
@@ -377,37 +382,51 @@ function optimizeMultiOperatorSpatialBoundaries({
     let bestDelta = 0;
     let bestSwap: { mA: LayoutMachine; mB: LayoutMachine; opA: string; opB: string } | null = null;
 
-    for (let i = 0; i < targetMachines.length; i++) {
-      const mA = targetMachines[i];
+    // Fast boundary check: only evaluate machines near operator boundary transitions along the sorted layout
+    for (let k = 0; k < targetMachines.length - 1; k++) {
+      const mA = targetMachines[k];
       const opA = machineAssignments.get(mA.id)?.assignedOperatorIds?.[0];
-      if (!opA) continue;
-      const wA = machineWeightsMap.get(mA.id) ?? 1;
+      const nextM = targetMachines[k + 1];
+      const opNext = machineAssignments.get(nextM.id)?.assignedOperatorIds?.[0];
 
-      for (let j = i + 1; j < targetMachines.length; j++) {
-        const mB = targetMachines[j];
-        const opB = machineAssignments.get(mB.id)?.assignedOperatorIds?.[0];
-        if (!opB || opA === opB) continue;
-        const wB = machineWeightsMap.get(mB.id) ?? 1;
+      // Found a boundary transition between two operators
+      if (opA && opNext && opA !== opNext) {
+        const startA = Math.max(0, k - boundaryWindow + 1);
+        const endB = Math.min(targetMachines.length - 1, k + boundaryWindow);
 
-        if (Math.abs(wA - wB) > maxWeightDiff) continue;
+        for (let i = startA; i <= k; i++) {
+          const candA = targetMachines[i];
+          const currOpA = machineAssignments.get(candA.id)?.assignedOperatorIds?.[0];
+          if (currOpA !== opA) continue;
+          const wA = machineWeightsMap.get(candA.id) ?? 1;
 
-        const machsA = opMachines.get(opA);
-        const machsB = opMachines.get(opB);
-        if (!machsA || !machsB) continue;
+          for (let j = k + 1; j <= endB; j++) {
+            const candB = targetMachines[j];
+            const currOpB = machineAssignments.get(candB.id)?.assignedOperatorIds?.[0];
+            if (currOpB !== opNext) continue;
+            const wB = machineWeightsMap.get(candB.id) ?? 1;
 
-        const newMachsA = machsA.filter((m) => m.id !== mA.id).concat([mB]);
-        const newMachsB = machsB.filter((m) => m.id !== mB.id).concat([mA]);
+            if (Math.abs(wA - wB) > maxWeightDiff) continue;
 
-        const costAOld = opCosts.get(opA) ?? 0;
-        const costBOld = opCosts.get(opB) ?? 0;
+            const machsA = opMachines.get(opA);
+            const machsB = opMachines.get(opNext);
+            if (!machsA || !machsB) continue;
 
-        const costANew = computeOperatorSpatialCost(newMachsA, machinePosMap);
-        const costBNew = computeOperatorSpatialCost(newMachsB, machinePosMap);
+            const newMachsA = machsA.filter((m) => m.id !== candA.id).concat([candB]);
+            const newMachsB = machsB.filter((m) => m.id !== candB.id).concat([candA]);
 
-        const delta = (costAOld + costBOld) - (costANew + costBNew);
-        if (delta > 50 && delta > bestDelta) {
-          bestDelta = delta;
-          bestSwap = { mA, mB, opA, opB };
+            const costAOld = opCosts.get(opA) ?? 0;
+            const costBOld = opCosts.get(opNext) ?? 0;
+
+            const costANew = computeOperatorSpatialCost(newMachsA, machinePosMap);
+            const costBNew = computeOperatorSpatialCost(newMachsB, machinePosMap);
+
+            const delta = (costAOld + costBOld) - (costANew + costBNew);
+            if (delta > 50 && delta > bestDelta) {
+              bestDelta = delta;
+              bestSwap = { mA: candA, mB: candB, opA, opB: opNext };
+            }
+          }
         }
       }
     }
@@ -520,12 +539,26 @@ export function computeAutoAssignPlan({
 
     // 1. Build workload weight per machine to avoid "jomplang" man occupation across operators
     const cdWorkloadMap = new Map<string, number>();
+
+    // Priority 1: TheoreticalOperatorRow if provided (from single-operator optimize)
     if (options.operatorRequirementRows && options.operatorRequirementRows.length > 0) {
       options.operatorRequirementRows.forEach((row) => {
         if (row.machines > 0 && row.operators > 0) {
           cdWorkloadMap.set(row.productId, row.operators / row.machines);
         } else if (row.machinesPerOperator > 0) {
           cdWorkloadMap.set(row.productId, 1 / row.machinesPerOperator);
+        }
+      });
+    }
+
+    // Priority 2: Automatically calculate from ResolvedConstruction specs (speed, runtime, doffing, repairs, RPC)
+    if (options.resolvedConstructions && options.resolvedConstructions.size > 0) {
+      options.resolvedConstructions.forEach((rc, cdId) => {
+        if (!cdWorkloadMap.has(cdId)) {
+          const serviceMins = estimateMachineServiceMinutes(rc, setup.shiftTime, setup.rpc);
+          if (serviceMins > 0) {
+            cdWorkloadMap.set(cdId, serviceMins);
+          }
         }
       });
     }
