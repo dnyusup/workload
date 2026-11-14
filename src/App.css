@@ -2925,6 +2925,112 @@
   margin-bottom: 14px;
 }
 
+.oee-gauges-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  justify-items: center;
+}
+
+.metric-gauge-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  width: 100%;
+}
+
+.metric-gauge-circle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 74px;
+  height: 74px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  position: relative;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.metric-gauge-circle::before {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  background: #111827;
+}
+
+.metric-gauge-circle.gauge-oee {
+  background: conic-gradient(#38bdf8 0deg, #6366f1 360deg);
+}
+
+.metric-gauge-circle.gauge-mhpt-fp {
+  background: conic-gradient(#10b981 0deg, #06b6d4 360deg);
+}
+
+.metric-gauge-circle.gauge-mhpt-total {
+  background: conic-gradient(#8b5cf6 0deg, #d946ef 360deg);
+}
+
+.metric-gauge-circle.gauge-occ {
+  background: conic-gradient(#f59e0b 0deg, #f43f5e 360deg);
+}
+
+.metric-gauge-val {
+  position: relative;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #f1f5f9;
+  line-height: 1.1;
+}
+
+.metric-gauge-lbl {
+  position: relative;
+  font-size: 0.52rem;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  margin-top: 1px;
+}
+
+.metric-gauge-sub {
+  position: relative;
+  font-size: 0.5rem;
+  color: #64748b;
+  margin-top: 1px;
+  white-space: nowrap;
+}
+
+@media (max-width: 340px) {
+  .metric-gauge-circle {
+    width: 66px;
+    height: 66px;
+  }
+  .metric-gauge-val {
+    font-size: 0.85rem;
+  }
+  .metric-gauge-lbl {
+    font-size: 0.48rem;
+  }
+  .metric-gauge-sub {
+    font-size: 0.46rem;
+  }
+}
+
+.oee-summary-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
 .oee-gauge {
   display: flex;
   flex-direction: column;

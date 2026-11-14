@@ -2,6 +2,7 @@ import { useMemo, useRef, useState, type ReactNode } from 'react';
 import type { AppConfig, DowntimeReason, SimulationState } from '../../types';
 import { deriveMachineSpec } from '../../lib/calculations';
 import { calculateSingleOperatorForecast, forecastOutputSummary } from '../../lib/singleOperatorUtilization';
+import { isFinishProductSpoolType } from '../../lib/productType';
 import { Card } from '../ui/Card';
 import { useFillToWindowBottom } from '../../hooks/useFillToWindowBottom';
 
@@ -158,6 +159,17 @@ export function Dashboard({
   const runningTimeFracturePerTon = runningTimeTonage > 0 ? totalFractureCount / runningTimeTonage : 0;
   const runningTimeDiesPerTon = runningTimeTonage > 0 ? metrics.diesChanged / runningTimeTonage : 0;
   const runningTimeDefectPerTon = runningTimeTonage > 0 ? totalDefectRepairingCount / runningTimeTonage : 0;
+
+  const spoolType = config.selectedConstructionDetail ? config.selectedConstructionDetail.split('-')[4] : undefined;
+  const isFp = spoolType ? isFinishProductSpoolType(spoolType) : true;
+  const runningTimeTonageFp = isFp ? runningTimeTonage : 0;
+  const fcTonageFp = isFp ? fc.tonage : 0;
+  const elapsedManHours = workedElapsed / 60;
+  const runningMhptTotal = runningTimeTonage > 0 ? elapsedManHours / runningTimeTonage : 0;
+  const runningMhptFp = runningTimeTonageFp > 0 ? elapsedManHours / runningTimeTonageFp : 0;
+  const fcMhptTotal = fc.manHourPerTon;
+  const fcMhptFp = fcTonageFp > 0 ? shiftHours / fcTonageFp : 0;
+  const fcBusyMin = forecast.forecastServiceMinutes + forecast.forecastWalkingMinutes;
 
   const rpcMin = Object.entries(metrics.servicingByActivity)
     .filter(([key]) => key.startsWith('rpc:'))
@@ -392,27 +404,73 @@ export function Dashboard({
         className="dashboard-oee-card"
         subtitle={`Availability across assigned machines (Performance & Quality assumed at 100%) · ${FORECAST_NOTE}`}
       >
-        <div className="oee-gauge-row">
-          <div className="oee-gauge">
-            <span className="oee-value">{fmt(oee)}%</span>
-            <span className="oee-caption">OEE (Availability)</span>
-            <span className="oee-forecast" title="Forecast for the full shift (Output Estimate)">~{fmt(fc.downtime.availabilityPercent)}% forecast</span>
+        <div className="oee-gauges-grid">
+          <div className="metric-gauge-item" title="Overall Equipment Effectiveness: Availability">
+            <div className="metric-gauge-circle gauge-oee">
+              <span className="metric-gauge-val">{fmt(oee)}%</span>
+              <span className="metric-gauge-lbl">OEE</span>
+              <span className="metric-gauge-sub" title="Forecast for the full shift">~{fmt(fc.downtime.availabilityPercent)}%</span>
+            </div>
           </div>
-          <div className="metric-col">
-            <div className="metric-row small">
-              <span>Planned production</span>
-              <span>
-                {fmt(plannedProductionMin)} machine-minutes
-                <Est>{fmt(fc.downtime.plannedMachineMinutes)}</Est>
-              </span>
+          <div className="metric-gauge-item" title="Manhour per ton Finish Product (SpoolType starts with BS)">
+            <div className="metric-gauge-circle gauge-mhpt-fp">
+              <span className="metric-gauge-val">{fmt(runningMhptFp)}</span>
+              <span className="metric-gauge-lbl">MHPT FP</span>
+              <span className="metric-gauge-sub" title="Forecast for the full shift">~{fmt(fcMhptFp)}</span>
             </div>
-            <div className="metric-row small">
-              <span>Total downtime</span>
-              <span>
-                {fmt(totalDowntimeMin)} machine-minutes
-                <Est>{fmt(fc.downtime.totalDowntimeMinutes)}</Est>
-              </span>
+          </div>
+          <div className="metric-gauge-item" title="Manhour per ton Total (FP + SFP)">
+            <div className="metric-gauge-circle gauge-mhpt-total">
+              <span className="metric-gauge-val">{fmt(runningMhptTotal)}</span>
+              <span className="metric-gauge-lbl">MHPT Total</span>
+              <span className="metric-gauge-sub" title="Forecast for the full shift">~{fmt(fcMhptTotal)}</span>
             </div>
+          </div>
+          <div className="metric-gauge-item" title="Man Occupancy: Handling Time ÷ Available Manhour">
+            <div className="metric-gauge-circle gauge-occ">
+              <span className="metric-gauge-val">{fmt(utilization)}%</span>
+              <span className="metric-gauge-lbl">Man OCC</span>
+              <span className="metric-gauge-sub" title="Forecast for the full shift">~{fmt(forecast.forecastUtilizationPercent)}%</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="oee-summary-details">
+          <div className="metric-row small">
+            <span>Availability</span>
+            <span>
+              {fmt(availability)}%<Est>{fmt(fc.downtime.availabilityPercent)}%</Est>
+            </span>
+          </div>
+          <div className="metric-row small">
+            <span>Planned production</span>
+            <span>
+              {fmt(plannedProductionMin)} machine-minutes
+              <Est>{fmt(fc.downtime.plannedMachineMinutes)}</Est>
+            </span>
+          </div>
+          <div className="metric-row small">
+            <span>Total downtime</span>
+            <span>
+              {fmt(totalDowntimeMin)} machine-minutes
+              <Est>{fmt(fc.downtime.totalDowntimeMinutes)}</Est>
+            </span>
+          </div>
+          <div className="metric-row small" title="Operator elapsed manhours vs full-shift forecast">
+            <span>Manhour</span>
+            <span>
+              {fmt(elapsedManHours)}h
+              <Est>{fmt(forecast.availableMinutes / 60)}h</Est>
+            </span>
+          </div>
+          <div className="metric-row small" title="Operator handling time (walking + servicing) vs full-shift forecast">
+            <span>Handle time</span>
+            <span>
+              {fmtTime(busyMin)} ({fmt(utilization)}%)
+              <Est>
+                {fmtTime(fcBusyMin)} ({fmt(forecast.forecastUtilizationPercent)}%)
+              </Est>
+            </span>
           </div>
         </div>
         <div className="downtime-bars">
