@@ -52,6 +52,7 @@ import { buildDistinctColorMap, buildSetupConstructionColorMap } from '../../lib
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Field, NumberInput, SelectInput, DateInput } from '../ui/Field';
+import { DatePicker } from '../ui/DatePicker';
 import { SearchableSelect } from '../ui/SearchableSelect';
 import { Toggle } from '../ui/Toggle';
 import { DOFF_PRIORITY_TOOLTIP, doffPriorityText } from '../ui/doffPriorityText';
@@ -1394,14 +1395,6 @@ function ProductionSetupEditor({
     setDraftFreqEndDate(setup.frequencyEndDate ?? '');
   }
 
-  const debounceTimerRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (debounceTimerRef.current) window.clearTimeout(debounceTimerRef.current);
-    };
-  }, []);
-
   const hasFreqDateChanges = Boolean(
     (draftFreqStartDate !== (setup.frequencyStartDate ?? '') ||
       draftFreqEndDate !== (setup.frequencyEndDate ?? '')) &&
@@ -1410,7 +1403,6 @@ function ProductionSetupEditor({
   );
 
   const applyFrequencyDates = (targetStart: string, targetEnd: string) => {
-    if (debounceTimerRef.current) window.clearTimeout(debounceTimerRef.current);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(targetStart) || !/^\d{4}-\d{2}-\d{2}$/.test(targetEnd)) return;
     if (targetStart === (setup.frequencyStartDate ?? '') && targetEnd === (setup.frequencyEndDate ?? '')) return;
     if (!onFrequencyConfigChange) return;
@@ -1425,12 +1417,9 @@ function ProductionSetupEditor({
     applyFrequencyDates(draftFreqStartDate, draftFreqEndDate);
   };
 
-  const handleStartDateChange = (val: string) => {
-    if (debounceTimerRef.current) window.clearTimeout(debounceTimerRef.current);
+  const handleStartDatePick = (val: string) => {
     setDraftFreqStartDate(val);
     onLocalChange({ frequencyStartDate: val });
-
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(val)) return;
 
     let targetEnd = draftFreqEndDate;
     if (targetEnd && val > targetEnd) {
@@ -1439,28 +1428,12 @@ function ProductionSetupEditor({
       onLocalChange({ frequencyEndDate: val });
     }
 
-    const prevDay = (setup.frequencyStartDate ?? '').slice(8, 10);
-    const newDay = val.slice(8, 10);
-    const prevMonth = (setup.frequencyStartDate ?? '').slice(5, 7);
-    const newMonth = val.slice(5, 7);
-
-    const isMonthNav = Boolean(prevMonth && newMonth && newMonth !== prevMonth && newDay === prevDay);
-
-    if (isMonthNav) {
-      debounceTimerRef.current = window.setTimeout(() => {
-        applyFrequencyDates(val, targetEnd);
-      }, 1200);
-    } else {
-      applyFrequencyDates(val, targetEnd);
-    }
+    applyFrequencyDates(val, targetEnd);
   };
 
-  const handleEndDateChange = (val: string) => {
-    if (debounceTimerRef.current) window.clearTimeout(debounceTimerRef.current);
+  const handleEndDatePick = (val: string) => {
     setDraftFreqEndDate(val);
     onLocalChange({ frequencyEndDate: val });
-
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(val)) return;
 
     let targetStart = draftFreqStartDate;
     if (targetStart && targetStart > val) {
@@ -1469,29 +1442,7 @@ function ProductionSetupEditor({
       onLocalChange({ frequencyStartDate: val });
     }
 
-    const prevDay = (setup.frequencyEndDate ?? '').slice(8, 10);
-    const newDay = val.slice(8, 10);
-    const prevMonth = (setup.frequencyEndDate ?? '').slice(5, 7);
-    const newMonth = val.slice(5, 7);
-
-    const isMonthNav = Boolean(prevMonth && newMonth && newMonth !== prevMonth && newDay === prevDay);
-
-    if (isMonthNav) {
-      debounceTimerRef.current = window.setTimeout(() => {
-        applyFrequencyDates(targetStart, val);
-      }, 1200);
-    } else {
-      applyFrequencyDates(targetStart, val);
-    }
-  };
-
-  const handleFrequencyDateBlur = (e: React.FocusEvent) => {
-    const nextTarget = e.relatedTarget as Node | null;
-    const container = document.getElementById('frequency-date-container');
-    if (container && nextTarget && container.contains(nextTarget)) {
-      return;
-    }
-    handleApplyFrequencyDates();
+    applyFrequencyDates(targetStart, val);
   };
   const [exportingExcel, setExportingExcel] = useState(false);
   const [plannedUtilizationFullscreen, setPlannedUtilizationFullscreen] = useState(false);
@@ -2754,14 +2705,14 @@ function ProductionSetupEditor({
           {setup.frequencyMode === 'historical' && (
             <div id="frequency-date-container" style={{ display: 'contents' }}>
               <Field label="Frequency Start Date" tooltip="Start date for actual Power BI events filter (format: YYYY-MM-DD)">
-                <DateInput
+                <DatePicker
                   value={draftFreqStartDate}
                   disabled={isReadOnly || isFrequencySyncing}
-                  onChange={handleStartDateChange}
-                  onBlur={handleFrequencyDateBlur}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleApplyFrequencyDates();
+                  onChange={(v) => {
+                    setDraftFreqStartDate(v);
+                    onLocalChange({ frequencyStartDate: v });
                   }}
+                  onSelectDate={handleStartDatePick}
                 />
               </Field>
               <Field
@@ -2838,14 +2789,14 @@ function ProductionSetupEditor({
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <DateInput
+                    <DatePicker
                       value={draftFreqEndDate}
                       disabled={isReadOnly || isFrequencySyncing}
-                      onChange={handleEndDateChange}
-                      onBlur={handleFrequencyDateBlur}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleApplyFrequencyDates();
+                      onChange={(v) => {
+                        setDraftFreqEndDate(v);
+                        onLocalChange({ frequencyEndDate: v });
                       }}
+                      onSelectDate={handleEndDatePick}
                     />
                   </div>
                   {onOpenFrequencyDialog && (
