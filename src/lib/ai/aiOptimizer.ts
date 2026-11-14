@@ -2,6 +2,7 @@ import type { ProductionMachineAssignment, ProductionOperator, ProductionSetup }
 import { calculatePlannedUtilization } from '../productionUtilization';
 import { summarizeProductionForecast } from '../productionForecastSummary';
 import { computeAutoAssignPlan } from '../productionAutoAssign';
+import { defaultAssignmentOrder } from '../defaultAssignment';
 import type { ResolvedConstruction } from '../productionConstructionResolver';
 
 export interface SetupKpiMetrics {
@@ -160,22 +161,103 @@ function calculateParetoScore(metrics: SetupKpiMetrics, targetManOcc = 85): numb
 }
 
 /**
- * Finds the optimum operator count and contiguous machine assignments
- * balancing OEE vs MHPT.
+ * Fast KPI metrics computation for candidate scoring during iterative optimization.
+ * Bypasses full-shift forecast summary to maintain fast real-time performance on large setups.
  */
-export function optimizeMachineAllocation({
+function computeCandidateFastMetrics(
+  setup: ProductionSetup,
+  resolved: Map<string, ResolvedConstruction>,
+  baselineTon: number,
+  baselineOee: number,
+): SetupKpiMetrics {
+  const planned = calculatePlannedUtilization(setup, resolved);
+  const netShiftMinutes = Math.max(1, setup.shiftTime - (setup.lunchTime ?? 0));
+  const operatorCount = setup.operators.length;
+  const netManhours = (operatorCount * netShiftMinutes) / 60;
+
+  let totalOee = 0;
+  let totalAvail = 0;
+  const plannedMachines = planned.machines.filter((m) => m.availability > 0 || m.oee > 0);
+  const machineCount = plannedMachines.length || setup.assignments.filter((a) => a.constructionDetailId).length || 1;
+
+  planned.machines.forEach((m) => {
+    totalOee += m.oee;
+    totalAvail += m.availability;
+  });
+
+  const avgOee = plannedMachines.length > 0 ? (totalOee / plannedMachines.length) * 100 : 0;
+  const avgAvail = plannedMachines.length > 0 ? (totalAvail / plannedMachines.length) * 100 : 0;
+
+  let sumManOcc = 0;
+  let minOcc = 100;
+  let maxOcc = 0;
+
+  const opBreakdown: Array<{
+    operatorId: string;
+    operatorLabel: string;
+    machineCount: number;
+    manOccPercent: number;
+  }> = [];
+
+  planned.operators.forEach((op) => {
+    const occ = Number(op.forecastUtilizationPercent.toFixed(1));
+    sumManOcc += occ;
+    minOcc = Math.min(minOcc, occ);
+    maxOcc = Math.max(maxOcc, occ);
+
+    const mCount = setup.assignments.filter((a) => a.assignedOperatorIds?.includes(op.operatorId)).length;
+    opBreakdown.push({
+      operatorId: op.operatorId,
+      operatorLabel: op.operatorLabel,
+      machineCount: mCount,
+      manOccPercent: occ,
+    });
+  });
+
+  const avgManOcc = planned.operators.length > 0 ? Number((sumManOcc / planned.operators.length).toFixed(1)) : 0;
+  const waitingPercent = avgAvail > 0 ? Math.max(0, Number((((avgAvail - avgOee) / avgAvail) * 100).toFixed(1))) : 0;
+
+  // Approximate proportional tonnage based on relative OEE change compared to baseline
+  const estimatedTon = baselineOee > 0 ? baselineTon * (avgOee / baselineOee) : baselineTon;
+  const mhptTotal = estimatedTon > 0 ? Number((netManhours / estimatedTon).toFixed(2)) : 0;
+
+  return {
+    oee: Number(avgOee.toFixed(1)),
+    availability: Number(avgAvail.toFixed(1)),
+    mhptTotal,
+    mhptFp: mhptTotal,
+    totalTon: Number(estimatedTon.toFixed(2)),
+    fpTon: Number(estimatedTon.toFixed(2)),
+    operatorCount,
+    machineCount,
+    netManhours: Number(netManhours.toFixed(1)),
+    avgManOcc,
+    minManOcc: planned.operators.length > 0 ? Number(minOcc.toFixed(1)) : 0,
+    maxManOcc: planned.operators.length > 0 ? Number(maxOcc.toFixed(1)) : 0,
+    waitingPercent,
+    operatorBreakdown: opBreakdown,
+  };
+}
+
+/**
+ * Finds the optimum operator count and contiguous machine assignments
+ * balancing OEE vs MHPT without blocking the browser event loop.
+ */
+export async function optimizeMachineAllocation({
   setup,
   resolved,
   targetManOcc = 85,
   minOperators,
   maxOperators,
+  onProgress,
 }: {
   setup: ProductionSetup;
   resolved: Map<string, ResolvedConstruction>;
   targetManOcc?: number;
   minOperators?: number;
   maxOperators?: number;
-}): OptimizationResult {
+  onProgress?: (status: string) => void;
+}): Promise<OptimizationResult> {
   const currentMetrics = computeSetupKpiMetrics(setup, resolved);
   const plannedMachines = setup.assignments.filter((a) => a.constructionDetailId);
 
@@ -191,10 +273,49 @@ export function optimizeMachineAllocation({
     };
   }
 
-  // Determine search space for operator counts
+  // Pre-sort machines once upfront so we do not re-run geometric sorting 7 times on large layouts
+  const plannedMachineIds = new Set(plannedMachines.map((a) => a.machineId));
+  const candidateMachines = setup.layout.filter((m) => plannedMachineIds.has(m.id));
+  const preorderedMachines = defaultAssignmentOrder(candidateMachines, setup.movement?.pixelsPerMeter);
+
+  // Determine smart search space for operator counts
   const curCount = Math.max(1, setup.operators.length);
-  const minCount = Math.max(1, minOperators ?? Math.max(1, curCount - 3));
-  const maxCount = Math.max(minCount, maxOperators ?? Math.min(plannedMachines.length, curCount + 3));
+  let candidateCounts: number[] = [];
+
+  if (minOperators !== undefined && maxOperators !== undefined) {
+    const minC = Math.max(1, minOperators);
+    const maxC = Math.max(minC, Math.min(plannedMachines.length, maxOperators));
+    const range = maxC - minC;
+    if (range > 4) {
+      const step = Math.ceil(range / 3);
+      for (let c = minC; c < maxC; c += step) candidateCounts.push(c);
+      if (!candidateCounts.includes(maxC)) candidateCounts.push(maxC);
+    } else {
+      for (let c = minC; c <= maxC; c++) candidateCounts.push(c);
+    }
+  } else {
+    // Intelligent sampling around current operator count to keep response under 1-2s
+    if (curCount > 30) {
+      // Large factory setup (like 75 operators, 1243 machines): test 3 representative steps
+      candidateCounts = [
+        Math.max(1, curCount - 3),
+        curCount,
+        Math.min(plannedMachines.length, curCount + 3),
+      ].filter((v, idx, arr) => arr.indexOf(v) === idx);
+    } else if (curCount > 10) {
+      // Medium factory setup (10-30 operators): test 3-4 steps
+      candidateCounts = [
+        Math.max(1, curCount - 2),
+        curCount,
+        Math.min(plannedMachines.length, curCount + 2),
+      ].filter((v, idx, arr) => arr.indexOf(v) === idx);
+    } else {
+      // Small setup (1-10 operators): test +-1 or +-2
+      const minC = Math.max(1, curCount - 2);
+      const maxC = Math.min(plannedMachines.length, curCount + 2);
+      for (let c = minC; c <= maxC; c++) candidateCounts.push(c);
+    }
+  }
 
   interface CandidateEvaluation {
     count: number;
@@ -202,23 +323,33 @@ export function optimizeMachineAllocation({
     score: number;
     operators: { id: string; label: string }[];
     assignments: ProductionMachineAssignment[];
+    setupObj: ProductionSetup;
   }
 
   const evaluations: CandidateEvaluation[] = [];
 
-  for (let count = minCount; count <= maxCount; count++) {
-    // Generate spatial assignment plan for this candidate count
+  for (let idx = 0; idx < candidateCounts.length; idx++) {
+    const count = candidateCounts[idx];
+    if (onProgress) {
+      onProgress(`Evaluating scenario ${idx + 1} of ${candidateCounts.length} (${count} operators)…`);
+    }
+
+    // Yield control to the browser event loop to prevent "Page isn't responding" freeze
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Generate spatial assignment plan using pre-sorted machines
     const plan = computeAutoAssignPlan({
       setup,
       options: {
         mode: 'multi',
         multiCount: count,
         onlyPlannedMachines: true,
+        preorderedMachines,
       },
     });
 
-    const candidateOperators: ProductionOperator[] = plan.operatorsToCreate.map((o, idx) => ({
-      id: `ai-opr-${idx + 1}`,
+    const candidateOperators: ProductionOperator[] = plan.operatorsToCreate.map((o, oIdx) => ({
+      id: `ai-opr-${oIdx + 1}`,
       label: o.label,
     }));
 
@@ -244,27 +375,50 @@ export function optimizeMachineAllocation({
       assignments: candidateAssignments,
     };
 
-    const metrics = computeSetupKpiMetrics(candidateSetup, resolved);
-    const score = calculateParetoScore(metrics, targetManOcc);
+    // Fast metric evaluation for candidate scoring
+    const fastMetrics = computeCandidateFastMetrics(
+      candidateSetup,
+      resolved,
+      currentMetrics.totalTon,
+      currentMetrics.oee,
+    );
+    const score = calculateParetoScore(fastMetrics, targetManOcc);
 
     evaluations.push({
       count,
-      metrics,
+      metrics: fastMetrics,
       score,
       operators: candidateOperators,
       assignments: candidateAssignments,
+      setupObj: candidateSetup,
     });
   }
 
   // Sort by Pareto score descending
   evaluations.sort((a, b) => b.score - a.score);
-  const best = evaluations[0] ?? {
-    count: curCount,
-    metrics: currentMetrics,
-    score: 0,
-    operators: setup.operators,
-    assignments: setup.assignments,
-  };
+  const bestCandidate = evaluations[0];
+
+  // Yield before final full forecast computation
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  // Compute full accurate KPI metrics for the winning recommendation
+  const bestMetrics = bestCandidate
+    ? computeSetupKpiMetrics(bestCandidate.setupObj, resolved)
+    : currentMetrics;
+
+  const best = bestCandidate
+    ? {
+        ...bestCandidate,
+        metrics: bestMetrics,
+      }
+    : {
+        count: curCount,
+        metrics: currentMetrics,
+        score: 0,
+        operators: setup.operators,
+        assignments: setup.assignments,
+        setupObj: setup,
+      };
 
   // Build trade-off explanation
   const deltaOee = Number((best.metrics.oee - currentMetrics.oee).toFixed(1));

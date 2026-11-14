@@ -239,6 +239,7 @@ export function CopilotWidget() {
                 setAppContext((prev) => ({ ...prev, lastOptimizationResult: res }));
               },
               onApplyAssignments: appContext.onApplyAssignments,
+              onProgress: (status) => setActiveToolStatus(status),
             });
 
             const toolResultMsg = createChatMessage(

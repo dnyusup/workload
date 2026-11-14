@@ -179,6 +179,8 @@ export interface AutoAssignOptions {
   onlyPlannedMachines?: boolean;
   /** Theoretical operator requirement rows per Construction Detail to balance multi-task workload */
   operatorRequirementRows?: TheoreticalOperatorRow[];
+  /** Optional pre-sorted layout machines to bypass repeated defaultAssignmentOrder computation */
+  preorderedMachines?: LayoutMachine[];
 }
 
 /** Finds the highest numeric suffix in existing operator labels for a given prefix.
@@ -451,7 +453,10 @@ export function computeAutoAssignPlan({
     candidateMachines = candidateMachines.filter((m) => plannedMachineIds.has(m.id));
   }
 
-  const targetMachines = defaultAssignmentOrder(candidateMachines, setup.movement?.pixelsPerMeter);
+  const targetMachines =
+    options.preorderedMachines && options.preorderedMachines.length === candidateMachines.length
+      ? options.preorderedMachines
+      : defaultAssignmentOrder(candidateMachines, setup.movement?.pixelsPerMeter);
 
   const operatorsToCreate: { label: string; groupKey?: string; description?: string }[] = [];
   const machineAssignments = new Map<string, Partial<ProductionMachineAssignment>>();

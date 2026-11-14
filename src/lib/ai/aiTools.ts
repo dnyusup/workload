@@ -92,6 +92,7 @@ export interface CopilotToolContext {
   onApplyAssignments?: (result: OptimizationResult) => Promise<void> | void;
   lastOptimizationResult?: OptimizationResult | null;
   setLastOptimizationResult?: (result: OptimizationResult | null) => void;
+  onProgress?: (status: string) => void;
 }
 
 export async function executeCopilotTool(
@@ -218,12 +219,13 @@ export async function executeCopilotTool(
       const minOperators = typeof args.minOperators === 'number' ? args.minOperators : undefined;
       const maxOperators = typeof args.maxOperators === 'number' ? args.maxOperators : undefined;
 
-      const optResult = optimizeMachineAllocation({
+      const optResult = await optimizeMachineAllocation({
         setup,
         resolved: resolvedConstructions,
         targetManOcc,
         minOperators,
         maxOperators,
+        onProgress: ctx.onProgress,
       });
 
       if (ctx.setLastOptimizationResult) {
