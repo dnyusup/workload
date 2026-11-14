@@ -1,4 +1,7 @@
 import type { AiModelOption, AiProvider, AiSettings } from '../../types/ai';
+import { Mpp_wl_defaultvaluesService } from '../../generated/services/Mpp_wl_defaultvaluesService';
+import type { Mpp_wl_defaultvalues } from '../../generated/models/Mpp_wl_defaultvaluesModel';
+import { fetchAllPages } from '../dataversePaging';
 
 const STORAGE_KEY = 'workload-ai-settings-v1';
 
@@ -196,6 +199,91 @@ export function saveAiSettings(settings: AiSettings): void {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
   } catch {
     // ignore quota errors
+  }
+}
+
+/** Parameter names stored in Dataverse table WL_DefaultValues */
+export const AI_DATA_PARAMETERS = {
+  activeProvider: 'AiActiveProvider',
+  activeModel: 'AiActiveModel',
+  geminiKey: 'AiGeminiApiKey',
+  deepseekKey: 'AiDeepSeekApiKey',
+  groqKey: 'AiGroqApiKey',
+  openrouterKey: 'AiOpenRouterApiKey',
+} as const;
+
+/** Saves AI configuration and API keys to the Dataverse WL_DefaultValues table */
+export async function saveAiSettingsToDataverse(settings: AiSettings): Promise<void> {
+  const rows = await fetchAllPages(Mpp_wl_defaultvaluesService.getAll, {});
+  const rowMap = new Map<string, Mpp_wl_defaultvalues>();
+  rows.forEach((r) => {
+    const p = (r.mpp_parameters ?? '').trim().toLowerCase();
+    if (p) rowMap.set(p, r);
+  });
+
+  const entries: [string, string][] = [
+    [AI_DATA_PARAMETERS.activeProvider, settings.activeProvider],
+    [AI_DATA_PARAMETERS.activeModel, settings.activeModel],
+    [AI_DATA_PARAMETERS.geminiKey, settings.providers.gemini?.apiKey ?? ''],
+    [AI_DATA_PARAMETERS.deepseekKey, settings.providers.deepseek?.apiKey ?? ''],
+    [AI_DATA_PARAMETERS.groqKey, settings.providers.groq?.apiKey ?? ''],
+    [AI_DATA_PARAMETERS.openrouterKey, settings.providers.openrouter?.apiKey ?? ''],
+  ];
+
+  for (const [paramName, value] of entries) {
+    const keyLower = paramName.toLowerCase();
+    const existing = rowMap.get(keyLower);
+    const trimmedVal = value.trim();
+
+    if (existing) {
+      if ((existing.mpp_value ?? '').trim() !== trimmedVal) {
+        await Mpp_wl_defaultvaluesService.update(existing.mpp_wl_defaultvalueid, { mpp_value: trimmedVal });
+      }
+    } else if (trimmedVal) {
+      await Mpp_wl_defaultvaluesService.create({
+        mpp_parameters: paramName,
+        mpp_value: trimmedVal,
+        statecode: 0,
+      });
+    }
+  }
+}
+
+/** Fetches AI configuration and API keys from the Dataverse WL_DefaultValues table */
+export async function fetchAiSettingsFromDataverse(): Promise<AiSettings> {
+  const current = loadAiSettings();
+  try {
+    const rows = await fetchAllPages(Mpp_wl_defaultvaluesService.getAll, {});
+    const rowMap = new Map<string, string>();
+    rows.forEach((r) => {
+      const p = (r.mpp_parameters ?? '').trim().toLowerCase();
+      if (p) rowMap.set(p, (r.mpp_value ?? '').trim());
+    });
+
+    const activeProvider = (rowMap.get(AI_DATA_PARAMETERS.activeProvider.toLowerCase()) as AiProvider) || current.activeProvider;
+    const activeModel = rowMap.get(AI_DATA_PARAMETERS.activeModel.toLowerCase()) || current.activeModel;
+    const geminiKey = rowMap.get(AI_DATA_PARAMETERS.geminiKey.toLowerCase()) ?? current.providers.gemini.apiKey;
+    const deepseekKey = rowMap.get(AI_DATA_PARAMETERS.deepseekKey.toLowerCase()) ?? current.providers.deepseek.apiKey;
+    const groqKey = rowMap.get(AI_DATA_PARAMETERS.groqKey.toLowerCase()) ?? current.providers.groq.apiKey;
+    const openrouterKey = rowMap.get(AI_DATA_PARAMETERS.openrouterKey.toLowerCase()) ?? current.providers.openrouter.apiKey;
+
+    const merged: AiSettings = {
+      ...current,
+      activeProvider: (['gemini', 'deepseek', 'groq', 'openrouter'].includes(activeProvider) ? activeProvider : current.activeProvider),
+      activeModel,
+      providers: {
+        gemini: { apiKey: geminiKey, enabled: Boolean(geminiKey) },
+        deepseek: { apiKey: deepseekKey, enabled: Boolean(deepseekKey) },
+        groq: { apiKey: groqKey, enabled: Boolean(groqKey) },
+        openrouter: { apiKey: openrouterKey, enabled: Boolean(openrouterKey) },
+      },
+    };
+
+    saveAiSettings(merged);
+    return merged;
+  } catch (err) {
+    console.warn('[AI Config] Failed to fetch settings from Dataverse, using cached settings:', err);
+    return current;
   }
 }
 

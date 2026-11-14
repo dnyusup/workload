@@ -4,6 +4,8 @@ import {
   AI_MODELS,
   loadAiSettings,
   saveAiSettings,
+  saveAiSettingsToDataverse,
+  fetchAiSettingsFromDataverse,
 } from '../../lib/ai/aiConfigStore';
 import { executeAiCompletion } from '../../lib/ai/aiClient';
 import { COPILOT_TOOLS, executeCopilotTool } from '../../lib/ai/aiTools';
@@ -60,6 +62,21 @@ export function CopilotWidget() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Sync AI settings from Dataverse table WL_DefaultValues on mount
+  useEffect(() => {
+    let cancelled = false;
+    fetchAiSettingsFromDataverse()
+      .then((loaded) => {
+        if (!cancelled) setSettings(loaded);
+      })
+      .catch((err) => {
+        console.warn('Could not sync AI settings from Dataverse:', err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Subscribe to live setup context changes
   useEffect(() => {
     return subscribeAiAppContext((ctx) => {
@@ -84,6 +101,9 @@ export function CopilotWidget() {
     };
     setSettings(next);
     saveAiSettings(next);
+    saveAiSettingsToDataverse(next).catch((err) => {
+      console.warn('Could not persist model switch to Dataverse:', err);
+    });
     setRateLimitError(null);
   };
 

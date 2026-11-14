@@ -1,12 +1,15 @@
-import { useState } from 'react';
-import type { AiConnectionStatus, AiProvider } from '../../types/ai';
+import { useState, useEffect } from 'react';
+import type { AiConnectionStatus, AiProvider, AiSettings } from '../../types/ai';
 import {
   AI_MODELS,
   PROVIDER_GUIDES,
   loadAiSettings,
   saveAiSettings,
+  saveAiSettingsToDataverse,
+  fetchAiSettingsFromDataverse,
   testProviderConnection,
 } from '../../lib/ai/aiConfigStore';
+import { useDebouncedCallback } from '../../hooks/useDebouncedCallback';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 
@@ -27,10 +30,31 @@ export function AiSettingsCard() {
   });
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
 
-  const triggerSaveNotice = () => {
-    setSaveNotice('Settings saved');
-    setTimeout(() => setSaveNotice(null), 2500);
-  };
+  useEffect(() => {
+    let cancelled = false;
+    fetchAiSettingsFromDataverse()
+      .then((loaded) => {
+        if (!cancelled) setSettings(loaded);
+      })
+      .catch((err) => {
+        console.warn('Could not load AI settings from Dataverse:', err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const persistToDataverse = useDebouncedCallback((newSettings: AiSettings) => {
+    setSaveNotice('Saving to Dataverse…');
+    saveAiSettingsToDataverse(newSettings)
+      .then(() => {
+        setSaveNotice('Saved to Dataverse (WL_DefaultValues) ✓');
+        setTimeout(() => setSaveNotice(null), 3500);
+      })
+      .catch((err) => {
+        setSaveNotice(`Save failed: ${err instanceof Error ? err.message : String(err)}`);
+      });
+  }, 1000);
 
   const handleKeyChange = (provider: AiProvider, apiKey: string) => {
     setSettings((prev) => {
@@ -46,9 +70,9 @@ export function AiSettingsCard() {
         },
       };
       saveAiSettings(next);
+      persistToDataverse(next);
       return next;
     });
-    triggerSaveNotice();
     setTestStatuses((prev) => ({
       ...prev,
       [provider]: { status: 'idle', message: '' },
@@ -90,9 +114,9 @@ export function AiSettingsCard() {
         activeProvider: model.provider,
       };
       saveAiSettings(next);
+      persistToDataverse(next);
       return next;
     });
-    triggerSaveNotice();
   };
 
   const activeModelMeta = AI_MODELS.find((m) => m.id === settings.activeModel);
