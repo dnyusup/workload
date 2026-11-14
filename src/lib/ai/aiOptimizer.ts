@@ -183,7 +183,7 @@ export function optimizeMachineAllocation({
     return {
       currentMetrics,
       bestMetrics: currentMetrics,
-      tradeoffSummary: 'Setup tidak memiliki mesin yang terencana (Construction Detail kosong).',
+      tradeoffSummary: 'Setup has no planned machines (Construction Details are unassigned).',
       recommendedOperatorCount: setup.operators.length,
       recommendedOperators: setup.operators,
       recommendedAssignments: setup.assignments,
@@ -266,28 +266,28 @@ export function optimizeMachineAllocation({
     assignments: setup.assignments,
   };
 
-  // Build trade-off explanation in Indonesian
+  // Build trade-off explanation
   const deltaOee = Number((best.metrics.oee - currentMetrics.oee).toFixed(1));
   const deltaMhpt = Number((best.metrics.mhptTotal - currentMetrics.mhptTotal).toFixed(2));
   const deltaTon = Number((best.metrics.totalTon - currentMetrics.totalTon).toFixed(2));
 
   let tradeoffSummary = '';
   if (best.count === currentMetrics.operatorCount) {
-    tradeoffSummary = `Rekomendasi mempertahankan ${best.count} operator dengan merealokasi pembagian mesin secara berdampingan (kontigu). OEE menjadi ${best.metrics.oee}% (Δ ${deltaOee >= 0 ? '+' : ''}${deltaOee}%), MHPT ${best.metrics.mhptTotal} h/ton, dan beban kerja operator seimbang di rata-rata ${best.metrics.avgManOcc}% (rentang ${best.metrics.minManOcc}% - ${best.metrics.maxManOcc}%).`;
+    tradeoffSummary = `Recommended to maintain ${best.count} operators by reallocating contiguous adjacent machine rows. OEE reaches ${best.metrics.oee}% (Δ ${deltaOee >= 0 ? '+' : ''}${deltaOee}%), MHPT is ${best.metrics.mhptTotal} h/ton, and operator workload is balanced at an average of ${best.metrics.avgManOcc}% (range ${best.metrics.minManOcc}% - ${best.metrics.maxManOcc}%).`;
   } else if (best.count < currentMetrics.operatorCount) {
-    tradeoffSummary = `Rekomendasi efisiensi tenaga kerja: Kurangi operator dari ${currentMetrics.operatorCount} menjadi ${best.count} orang. MHPT membaik signifikan ke ${best.metrics.mhptTotal} h/ton (hemat ${Math.abs(deltaMhpt)} h/ton), sementara OEE tetap stabil di ${best.metrics.oee}% karena beban operator masih di batas aman (${best.metrics.avgManOcc}%).`;
+    tradeoffSummary = `Labor efficiency recommendation: Streamline operators from ${currentMetrics.operatorCount} to ${best.count}. MHPT improves significantly to ${best.metrics.mhptTotal} h/ton (saving ${Math.abs(deltaMhpt)} h/ton), while OEE remains stable at ${best.metrics.oee}% with operator occupation within safe thresholds (${best.metrics.avgManOcc}%).`;
   } else {
-    tradeoffSummary = `Rekomendasi penambahan kapasitas: Tambah operator dari ${currentMetrics.operatorCount} menjadi ${best.count} orang untuk menghilangkan bottleneck antrian mesin. OEE melonjak ke ${best.metrics.oee}% (Δ +${deltaOee}%) dan output naik +${deltaTon} ton, menjaga MHPT tetap optimal di ${best.metrics.mhptTotal} h/ton.`;
+    tradeoffSummary = `Capacity expansion recommendation: Increase operators from ${currentMetrics.operatorCount} to ${best.count} to eliminate machine waiting queues. OEE rises to ${best.metrics.oee}% (Δ +${deltaOee}%) and output increases by +${deltaTon} tons, keeping MHPT optimized at ${best.metrics.mhptTotal} h/ton.`;
   }
 
   const alternativeScenarios = evaluations.map((e) => {
     let desc = '';
     if (e.metrics.avgManOcc > 92) {
-      desc = 'Overload risk: operator terlalu padat, mesin sering menunggu antrian.';
+      desc = 'Overload risk: operators over-utilized, high machine queue downtime.';
     } else if (e.metrics.avgManOcc < 75) {
-      desc = 'Under-utilized: operator banyak idle, MHPT menjadi tinggi.';
+      desc = 'Under-utilized: excess operator idle time, higher labor cost per ton (high MHPT).';
     } else {
-      desc = 'Sweet spot: keseimbangan prima antara OEE dan biaya tenaga kerja.';
+      desc = 'Sweet spot: optimum balance between equipment OEE and labor efficiency.';
     }
     return {
       operatorCount: e.count,

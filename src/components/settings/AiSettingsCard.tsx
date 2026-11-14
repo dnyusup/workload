@@ -28,7 +28,7 @@ export function AiSettingsCard() {
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
 
   const triggerSaveNotice = () => {
-    setSaveNotice('Pengaturan tersimpan');
+    setSaveNotice('Settings saved');
     setTimeout(() => setSaveNotice(null), 2500);
   };
 
@@ -59,7 +59,7 @@ export function AiSettingsCard() {
     const key = settings.providers[provider]?.apiKey ?? '';
     setTestStatuses((prev) => ({
       ...prev,
-      [provider]: { status: 'testing', message: 'Menguji koneksi ke server provider…' },
+      [provider]: { status: 'testing', message: 'Testing provider connection…' },
     }));
 
     const result = await testProviderConnection(provider, key);
@@ -101,14 +101,14 @@ export function AiSettingsCard() {
     <div className="ai-settings-wrap">
       <Card
         title="AI Copilot & Multi-Provider Settings"
-        subtitle="Konfigurasikan model kecerdasan buatan untuk mengoperasikan simulator dan mengoptimalkan pembagian mesin (OEE vs MHPT)."
+        subtitle="Configure AI models to operate the simulator and optimize machine-to-operator assignments (OEE vs MHPT)."
         actions={saveNotice ? <span className="ai-save-badge">{saveNotice}</span> : undefined}
       >
         <div className="ai-active-model-box">
           <div className="ai-active-model-header">
             <div>
-              <strong className="ai-section-title">Model Aktif Utama</strong>
-              <p className="ai-section-desc">Pilih model default yang akan digunakan pertama kali oleh Copilot.</p>
+              <strong className="ai-section-title">Primary Active Model</strong>
+              <p className="ai-section-desc">Select the default model initially used by Copilot.</p>
             </div>
             <select
               className="input ai-model-select"
@@ -178,7 +178,7 @@ export function AiSettingsCard() {
                     <input
                       type={isVisible ? 'text' : 'password'}
                       className="input input-sm ai-key-input"
-                      placeholder={`Masukkan ${provKey.toUpperCase()} API Key…`}
+                      placeholder={`Enter ${provKey.toUpperCase()} API Key…`}
                       value={cfg.apiKey}
                       onChange={(e) => handleKeyChange(provKey, e.target.value)}
                     />
@@ -186,7 +186,7 @@ export function AiSettingsCard() {
                       type="button"
                       className="ai-icon-btn"
                       onClick={() => toggleShowKey(provKey)}
-                      title={isVisible ? 'Sembunyikan' : 'Tampilkan'}
+                      title={isVisible ? 'Hide' : 'Show'}
                     >
                       {isVisible ? '🙈' : '👁️'}
                     </button>
@@ -214,7 +214,7 @@ export function AiSettingsCard() {
                     className="ai-guide-btn"
                     onClick={() => toggleGuide(provKey)}
                   >
-                    <span>{isGuideOpen ? '▼ Sembunyikan Panduan' : '▶ 📖 Cara Mendapatkan API Key Gratis'}</span>
+                    <span>{isGuideOpen ? '▼ Hide Setup Guide' : '▶ 📖 How to Get a Free API Key'}</span>
                   </button>
                   <a
                     href={guide.portalUrl}
@@ -233,7 +233,7 @@ export function AiSettingsCard() {
                         <li key={idx}>{step}</li>
                       ))}
                     </ol>
-                    <p className="ai-guide-tips">💡 <strong>Catatan:</strong> {guide.tips}</p>
+                    <p className="ai-guide-tips">💡 <strong>Note:</strong> {guide.tips}</p>
                   </div>
                 )}
               </div>

@@ -12,7 +12,7 @@ export const COPILOT_TOOLS: AiToolDefinition[] = [
   {
     name: 'get_current_setup_summary',
     description:
-      'Mendapatkan ringkasan konfigurasi setup yang sedang dibuka di layar (nama setup, jumlah mesin, operator, OEE saat ini, MHPT, dan Man Occupation).',
+      'Retrieves the configuration summary of the currently active production setup (setup name, machine count, operator count, current OEE, MHPT, and Man Occupation).',
     parameters: {
       type: 'object',
       properties: {},
@@ -22,13 +22,13 @@ export const COPILOT_TOOLS: AiToolDefinition[] = [
   {
     name: 'diagnose_setup_performance',
     description:
-      'Mendiagnosa bottleneck operasional dari setup saat ini: porsi downtime terbesar (menunggu operator vs doffing vs repairing), keseimbangan beban antar operator, dan inefisiensi MHPT.',
+      'Diagnoses operational bottlenecks for the current setup: largest downtime components (waiting for operator vs doffing vs repairs), operator workload distribution, and MHPT labor efficiency.',
     parameters: {
       type: 'object',
       properties: {
         focusArea: {
           type: 'string',
-          description: 'Area fokus diagnosa: "all", "oee", "mhpt", atau "man_occupation"',
+          description: 'Focus area for diagnosis: "all", "oee", "mhpt", or "man_occupation"',
         },
       },
     },
@@ -36,21 +36,21 @@ export const COPILOT_TOOLS: AiToolDefinition[] = [
   {
     name: 'optimize_machine_assignments',
     description:
-      'Mencari pembagian mesin ke operator yang paling optimum dengan menyeimbangkan OEE tinggi vs MHPT efisien. Menghasilkan perbandingan Before vs After serta alokasi mesin yang berdampingan (kontigu).',
+      'Calculates the optimal machine-to-operator assignments balancing high equipment OEE vs efficient labor MHPT. Generates Before vs After comparisons and ensures contiguous physical row allocations.',
     parameters: {
       type: 'object',
       properties: {
         targetManOcc: {
           type: 'number',
-          description: 'Target rata-rata Man Occupation (rekomendasi 80 - 90, default 85%).',
+          description: 'Target average Man Occupation percentage (recommended 80 - 90, default 85%).',
         },
         minOperators: {
           type: 'number',
-          description: 'Batas minimal jumlah operator yang ingin diuji.',
+          description: 'Minimum number of operators to evaluate.',
         },
         maxOperators: {
           type: 'number',
-          description: 'Batas maksimal jumlah operator yang ingin diuji.',
+          description: 'Maximum number of operators to evaluate.',
         },
       },
     },
@@ -58,13 +58,13 @@ export const COPILOT_TOOLS: AiToolDefinition[] = [
   {
     name: 'apply_proposed_assignment',
     description:
-      'Menerapkan alokasi mesin ke operator hasil optimasi langsung ke setup aktif di aplikasi.',
+      'Applies the proposed machine-to-operator allocation directly to the active setup in the application.',
     parameters: {
       type: 'object',
       properties: {
         confirm: {
           type: 'boolean',
-          description: 'Konfirmasi apakah yakin ingin menerapkan alokasi ini (harus true).',
+          description: 'Confirmation to apply allocation (must be true).',
         },
       },
       required: ['confirm'],
@@ -90,7 +90,7 @@ export async function executeCopilotTool(
   if (!setup) {
     return {
       result: {
-        error: 'Tidak ada setup produksi aktif yang sedang dibuka. Buka menu Production Setup terlebih dahulu.',
+        error: 'No active production setup is currently open. Please open a Production Setup first.',
       },
       isError: true,
     };
@@ -126,26 +126,26 @@ export async function executeCopilotTool(
       // Analyze OEE & Waiting
       if (metrics.waitingPercent > 12) {
         diagnostics.push(
-          `⚠️ Bottleneck Antrian Mesin: Mesin kehilangan ${metrics.waitingPercent}% waktu berjalan karena harus antri menunggu operator. Ini menurunkan OEE aktual ke ${metrics.oee}%.`,
+          `⚠️ Machine Queue Bottleneck: Machines lose ${metrics.waitingPercent}% running time waiting for operator attention, reducing actual OEE to ${metrics.oee}%.`,
         );
       } else {
         diagnostics.push(
-          `✓ Utilisasi Mesin Baik: Waktu tunggu operator hanya ${metrics.waitingPercent}%, OEE terjaga di ${metrics.oee}%.`,
+          `✓ Good Machine Utilization: Operator wait time is only ${metrics.waitingPercent}%, OEE maintained at ${metrics.oee}%.`,
         );
       }
 
       // Analyze MHPT & Labor efficiency
       if (metrics.avgManOcc < 70) {
         diagnostics.push(
-          `⚠️ Inefisiensi Biaya Tenaga Kerja: Rata-rata kesibukan operator hanya ${metrics.avgManOcc}%. MHPT tinggi (${metrics.mhptTotal} h/ton) karena terlalu banyak operator untuk jumlah mesin saat ini. Jumlah operator dapat dirampingkan.`,
+          `⚠️ Labor Cost Inefficiency: Average operator occupation is only ${metrics.avgManOcc}%. MHPT is high (${metrics.mhptTotal} h/ton) due to excess operators. Operator count can be streamlined.`,
         );
       } else if (metrics.avgManOcc > 92) {
         diagnostics.push(
-          `⚠️ Operator Overload: Kesibukan operator sangat tinggi di ${metrics.avgManOcc}%. Risiko kelelahan dan keterlambatan doffing/perbaikan sangat besar.`,
+          `⚠️ Operator Overload: Operator workload is very high at ${metrics.avgManOcc}%. High risk of fatigue and delayed doffing/repairs.`,
         );
       } else {
         diagnostics.push(
-          `✓ Beban Operator Seimbang: Rata-rata kesibukan ${metrics.avgManOcc}%, masuk dalam rentang ideal (80% - 90%).`,
+          `✓ Balanced Operator Workload: Average occupation is ${metrics.avgManOcc}%, within the ideal range (80% - 90%).`,
         );
       }
 
@@ -153,7 +153,7 @@ export async function executeCopilotTool(
       const spread = Number((metrics.maxManOcc - metrics.minManOcc).toFixed(1));
       if (spread > 20) {
         diagnostics.push(
-          `⚠️ Ketimpangan Beban Operator: Selisih beban antara operator tersibuk (${metrics.maxManOcc}%) dan terendah (${metrics.minManOcc}%) mencapai ${spread}%. Perlu pemerataan alokasi mesin.`,
+          `⚠️ Operator Workload Imbalance: Gap between busiest operator (${metrics.maxManOcc}%) and lowest (${metrics.minManOcc}%) is ${spread}%. Rebalancing is recommended.`,
         );
       }
 
@@ -163,7 +163,7 @@ export async function executeCopilotTool(
           currentKpis: metrics,
           findings: diagnostics,
           recommendation:
-            'Gunakan tool "optimize_machine_assignments" untuk menghitung alokasi pembagian mesin yang paling seimbang antara OEE dan MHPT.',
+            'Use the "optimize_machine_assignments" tool to calculate machine-to-operator assignments with the best OEE vs MHPT balance.',
         },
       };
     }
@@ -206,7 +206,7 @@ export async function executeCopilotTool(
           },
           alternativeScenarios: optResult.alternativeScenarios,
           promptUser:
-            'Tanyakan kepada user apakah ingin langsung menerapkan (apply) alokasi mesin ini ke setup sekarang.',
+            'Ask the user whether they would like to apply this machine allocation to the setup now.',
         },
       };
     }
@@ -215,7 +215,7 @@ export async function executeCopilotTool(
       const confirm = Boolean(args.confirm);
       if (!confirm) {
         return {
-          result: { error: 'Konfirmasi belum diberikan. Set confirm: true untuk menerapkan alokasi.' },
+          result: { error: 'Confirmation not given. Set confirm: true to apply allocation.' },
           isError: true,
         };
       }
@@ -224,7 +224,7 @@ export async function executeCopilotTool(
         return {
           result: {
             error:
-              'Belum ada hasil optimasi yang dihitung. Jalankan "optimize_machine_assignments" terlebih dahulu sebelum menerapkan.',
+              'No optimization calculation found. Please run "optimize_machine_assignments" first before applying.',
           },
           isError: true,
         };
@@ -235,14 +235,14 @@ export async function executeCopilotTool(
         return {
           result: {
             success: true,
-            message: `Alokasi mesin berhasil diterapkan ke setup "${setup.name}" dengan ${ctx.lastOptimizationResult.recommendedOperatorCount} operator!`,
+            message: `Machine allocation successfully applied to setup "${setup.name}" with ${ctx.lastOptimizationResult.recommendedOperatorCount} operators!`,
           },
         };
       }
 
       return {
         result: {
-          error: 'Handler penerapan alokasi tidak tersedia di tampilan saat ini.',
+          error: 'Application handler not available in the current view.',
         },
         isError: true,
       };
@@ -250,7 +250,7 @@ export async function executeCopilotTool(
 
     default:
       return {
-        result: { error: `Tool "${name}" tidak dikenali.` },
+        result: { error: `Tool "${name}" is not recognized.` },
         isError: true,
       };
   }

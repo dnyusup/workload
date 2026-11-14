@@ -108,12 +108,12 @@ export const PROVIDER_GUIDES: Record<AiProvider, ProviderGuide> = {
     portalUrl: 'https://aistudio.google.com/apikey',
     portalLabel: 'Open Google AI Studio',
     steps: [
-      'Buka Google AI Studio melalui tombol di bawah (login dengan akun Google Anda).',
-      'Klik tombol biru "+ Create API key".',
-      'Pilih "Create key in new project" (atau gunakan project GCP yang ada).',
-      'Salin API Key yang diawali "AIzaSy..." lalu tempelkan di field input di atas.',
+      'Open Google AI Studio via the link below (sign in with your Google account).',
+      'Click the blue "+ Create API key" button.',
+      'Select "Create key in new project" (or choose an existing GCP project).',
+      'Copy the API key starting with "AIzaSy..." and paste it into the field above.',
     ],
-    tips: 'Tanpa perlu kartu kredit. Memberikan kuota 15 request per menit dan 1.500 request per hari secara gratis.',
+    tips: 'No credit card required. Free tier includes 15 requests per minute and 1,500 requests per day.',
   },
   deepseek: {
     title: 'DeepSeek Official API',
@@ -121,12 +121,12 @@ export const PROVIDER_GUIDES: Record<AiProvider, ProviderGuide> = {
     portalUrl: 'https://platform.deepseek.com/api_keys',
     portalLabel: 'Open DeepSeek Platform',
     steps: [
-      'Buka DeepSeek Open Platform dan login atau daftar akun baru.',
-      'Masuk ke menu "API Keys" di navigasi sebelah kiri.',
-      'Klik tombol "Create new secret key", beri nama label (misal: Workload).',
-      'Salin kunci rahasia yang diawali "sk-..." lalu tempelkan di sini.',
+      'Open DeepSeek Open Platform and sign in or create an account.',
+      'Navigate to "API Keys" in the left sidebar.',
+      'Click "Create new secret key", enter a label (e.g. Workload).',
+      'Copy the secret key starting with "sk-..." and paste it here.',
     ],
-    tips: 'Pengguna baru biasanya mendapatkan saldo bonus gratis. Setelahnya biayanya sangat murah (sekitar $0.14 per 1 juta token).',
+    tips: 'New users usually receive a free bonus balance. Pay-as-you-go rates are very low (around $0.14 per 1M tokens).',
   },
   groq: {
     title: 'Groq Cloud',
@@ -134,12 +134,12 @@ export const PROVIDER_GUIDES: Record<AiProvider, ProviderGuide> = {
     portalUrl: 'https://console.groq.com/keys',
     portalLabel: 'Open Groq Console',
     steps: [
-      'Buka Groq Console dan login dengan akun Google atau GitHub Anda.',
-      'Klik tab "API Keys" di menu kiri.',
-      'Klik tombol "Create API Key", beri nama (misal: WorkloadSim).',
-      'Salin kunci yang diawali "gsk_..." lalu tempelkan di sini.',
+      'Open Groq Console and sign in with Google or GitHub.',
+      'Click "API Keys" in the left sidebar.',
+      'Click "Create API Key", enter a name (e.g. WorkloadSim).',
+      'Copy the key starting with "gsk_..." and paste it here.',
     ],
-    tips: 'Gratis 100% tanpa kartu kredit. Memiliki kecepatan inferensi tercepat di dunia untuk Llama 3.3 dan DeepSeek-R1 Distill.',
+    tips: '100% free with no credit card required. World-record inference speeds for Llama 3.3 and DeepSeek R1 Distill.',
   },
   openrouter: {
     title: 'OpenRouter Multi-Model',
@@ -147,11 +147,11 @@ export const PROVIDER_GUIDES: Record<AiProvider, ProviderGuide> = {
     portalUrl: 'https://openrouter.ai/keys',
     portalLabel: 'Open OpenRouter Keys',
     steps: [
-      'Buka OpenRouter dan login via akun Google atau GitHub.',
-      'Klik tombol "Create Key" dan beri nama (misal: Workload Agent).',
-      'Salin kunci yang diawali "sk-or-v1-..." lalu tempelkan di sini.',
+      'Open OpenRouter and sign in with Google or GitHub.',
+      'Click "Create Key" and enter a name (e.g. Workload Agent).',
+      'Copy the key starting with "sk-or-v1-..." and paste it here.',
     ],
-    tips: 'Satu API Key bisa langsung dipakai untuk puluhan model open-source berlabel ":free" (termasuk DeepSeek-R1 dan Llama 3.3).',
+    tips: 'One API key provides access to dozens of free models labeled ":free" (including DeepSeek R1 and Llama 3.3).',
   },
 };
 
@@ -203,7 +203,7 @@ export function saveAiSettings(settings: AiSettings): void {
 export async function testProviderConnection(provider: AiProvider, apiKey: string, customEndpoint?: string): Promise<{ success: boolean; message: string }> {
   const trimmedKey = apiKey.trim();
   if (!trimmedKey) {
-    return { success: false, message: 'API Key masih kosong.' };
+    return { success: false, message: 'API Key is empty.' };
   }
 
   try {
@@ -213,9 +213,9 @@ export async function testProviderConnection(provider: AiProvider, apiKey: strin
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         const msg = (errorData as { error?: { message?: string } })?.error?.message ?? `Status ${res.status}`;
-        return { success: false, message: `Gagal: ${msg}` };
+        return { success: false, message: `Failed: ${msg}` };
       }
-      return { success: true, message: 'Koneksi ke Google Gemini berhasil!' };
+      return { success: true, message: 'Connection to Google Gemini successful!' };
     }
 
     if (provider === 'deepseek') {
@@ -230,9 +230,9 @@ export async function testProviderConnection(provider: AiProvider, apiKey: strin
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         const msg = (errorData as { error?: { message?: string } })?.error?.message ?? `Status ${res.status}`;
-        return { success: false, message: `Gagal: ${msg}` };
+        return { success: false, message: `Failed: ${msg}` };
       }
-      return { success: true, message: 'Koneksi ke DeepSeek API berhasil!' };
+      return { success: true, message: 'Connection to DeepSeek API successful!' };
     }
 
     if (provider === 'groq') {
@@ -247,9 +247,9 @@ export async function testProviderConnection(provider: AiProvider, apiKey: strin
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         const msg = (errorData as { error?: { message?: string } })?.error?.message ?? `Status ${res.status}`;
-        return { success: false, message: `Gagal: ${msg}` };
+        return { success: false, message: `Failed: ${msg}` };
       }
-      return { success: true, message: 'Koneksi ke Groq Cloud berhasil!' };
+      return { success: true, message: 'Connection to Groq Cloud successful!' };
     }
 
     if (provider === 'openrouter') {
@@ -263,13 +263,13 @@ export async function testProviderConnection(provider: AiProvider, apiKey: strin
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         const msg = (errorData as { error?: { message?: string } })?.error?.message ?? `Status ${res.status}`;
-        return { success: false, message: `Gagal: ${msg}` };
+        return { success: false, message: `Failed: ${msg}` };
       }
-      return { success: true, message: 'Koneksi ke OpenRouter berhasil!' };
+      return { success: true, message: 'Connection to OpenRouter successful!' };
     }
 
-    return { success: false, message: 'Provider tidak dikenal.' };
+    return { success: false, message: 'Unknown provider.' };
   } catch (err) {
-    return { success: false, message: err instanceof Error ? err.message : 'Gagal menghubungi server provider.' };
+    return { success: false, message: err instanceof Error ? err.message : 'Failed to reach provider server.' };
   }
 }

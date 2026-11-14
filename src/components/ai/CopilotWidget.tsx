@@ -10,13 +10,13 @@ import { COPILOT_TOOLS, executeCopilotTool } from '../../lib/ai/aiTools';
 import { getAiAppContext, subscribeAiAppContext } from '../../lib/ai/aiContextStore';
 import type { OptimizationResult } from '../../lib/ai/aiOptimizer';
 
-const SYSTEM_PROMPT = `Anda adalah AI Copilot untuk aplikasi WorkLoad Simulator manufaktur Bekaert.
-Tugas utama Anda:
-1. Membantu pengguna menganalisa metrik performa: OEE (Overall Equipment Effectiveness), downtime (termasuk waktu tunggu operator), Man Occupation (kesibukan operator), dan MHPT (Manhour Per Ton).
-2. Mendiagnosa bottleneck operasional (apakah mesin terlalu lama menunggu operator, atau sebaliknya operator terlalu banyak sehingga MHPT boros).
-3. Mengoptimalkan pembagian alokasi mesin ke operator untuk mencapai output optimum dengan menyeimbangkan OEE tinggi dan MHPT efisien (OEE tinggi tapi MHPT tinggi juga tidak bagus).
-4. Menjelaskan trade-off dengan bahasa Indonesia yang jelas, ringkas, dan berbasis data teknis.
-5. Selalu gunakan tools yang tersedia untuk mengambil data setup terkini, menganalisa, atau mengoptimalkan mesin sebelum menjawab pertanyaan terkait performa setup.`;
+const SYSTEM_PROMPT = `You are the AI Copilot for the Bekaert WorkLoad Simulator manufacturing application.
+Your core mission:
+1. Assist users in analyzing operational performance metrics: OEE (Overall Equipment Effectiveness), downtime breakdown (including waiting for operator), Man Occupation (operator workload), and MHPT (Manhour Per Ton).
+2. Diagnose operational bottlenecks (e.g. excessive machine downtime waiting for operator vs labor cost inefficiencies from low occupation).
+3. Optimize machine-to-operator assignments to achieve balanced Pareto-optimal output (high OEE vs efficient MHPT). Note: high OEE with high MHPT is unfavorable.
+4. Language flexibility: If the user communicates in Indonesian, respond naturally in Indonesian. If the user communicates in English, respond in English. Always keep technical explanations clear, concise, and backed by calculated metrics.
+5. Always invoke the available tools to inspect live setup data, run diagnoses, or compute optimal allocations before forming conclusions.`;
 
 let msgSequence = 0;
 function createChatMessage(
@@ -37,14 +37,14 @@ function createChatMessage(
 const INITIAL_MESSAGES: AiChatMessage[] = [
   createChatMessage(
     'assistant',
-    'Halo! Saya **AI Copilot** untuk WorkLoad Simulator. Saya dapat membantu menganalisa performa setup (OEE, MHPT, Man Occupation), mendiagnosa antrian downtime mesin, dan menemukan alokasi pembagian mesin ke operator yang paling seimbang antara OEE tinggi dan MHPT efisien.\n\nApa yang ingin Anda analisa hari ini?',
+    'Hello! I am your **AI Copilot** for WorkLoad Simulator. I can assist in analyzing setup performance (OEE, MHPT, Man Occupation), diagnosing downtime bottlenecks, and finding the optimal machine-to-operator assignment balancing high equipment OEE with efficient labor MHPT.\n\nHow can I help you today?',
   ),
 ];
 
 const QUICK_PROMPTS = [
-  { label: '📊 Analisa OEE & MHPT', prompt: 'Analisa performa OEE, MHPT, dan Man Occupation pada setup yang sedang aktif ini.' },
-  { label: '⚡ Optimalkan Pembagian Mesin', prompt: 'Carikan pembagian mesin ke operator yang paling optimum, seimbangkan OEE tinggi dan MHPT yang efisien.' },
-  { label: '🔍 Diagnosa Bottleneck Downtime', prompt: 'Diagnosa penyebab utama downtime mesin dan ketimpangan beban kerja operator pada setup ini.' },
+  { label: '📊 Analyze OEE & MHPT', prompt: 'Analyze the OEE, MHPT, and Man Occupation performance of the currently active setup.' },
+  { label: '⚡ Optimize Machine Allocation', prompt: 'Find the optimal machine-to-operator assignment balancing high OEE and efficient MHPT.' },
+  { label: '🔍 Diagnose Downtime Bottlenecks', prompt: 'Diagnose the main causes of machine downtime and operator workload distribution on this setup.' },
 ];
 
 export function CopilotWidget() {
@@ -123,7 +123,7 @@ export function CopilotWidget() {
         if (response.toolCalls && response.toolCalls.length > 0) {
           const assistantToolCallMsg = createChatMessage(
             'assistant',
-            response.content || 'Sedang memproses instruksi dengan simulator…',
+            response.content || 'Processing instructions with simulator…',
             { toolCalls: response.toolCalls },
           );
           currentHistory = [...currentHistory, assistantToolCallMsg];
@@ -131,13 +131,13 @@ export function CopilotWidget() {
 
           // Execute each tool
           for (const call of response.toolCalls) {
-            let label = `Menjalankan ${call.name}…`;
+            let label = `Executing ${call.name}…`;
             if (call.name === 'optimize_machine_assignments') {
-              label = '⚙️ Menghitung optimasi pembagian mesin (OEE vs MHPT)…';
+              label = '⚙️ Optimizing machine assignments (OEE vs MHPT)…';
             } else if (call.name === 'diagnose_setup_performance') {
-              label = '🔍 Mendiagnosa bottleneck downtime & utilisasi operator…';
+              label = '🔍 Diagnosing downtime bottlenecks & operator workload…';
             } else if (call.name === 'get_current_setup_summary') {
-              label = '📊 Mengambil data performa setup terkini…';
+              label = '📊 Fetching latest setup performance data…';
             }
 
             setActiveToolStatus(label);
@@ -168,7 +168,7 @@ export function CopilotWidget() {
             setMessages(currentHistory);
           }
 
-          setActiveToolStatus('Menganalisa hasil perhitungan…');
+          setActiveToolStatus('Analyzing calculation results…');
         } else {
           // Final assistant text response
           const finalAssistantMsg = createChatMessage('assistant', response.content);
@@ -186,7 +186,7 @@ export function CopilotWidget() {
         ...prev,
         createChatMessage(
           'assistant',
-          `⚠️ **Gagal memproses:** ${errMsg}\n\n*Tips: Jika kuota habis, Anda dapat mengganti model ke Groq Cloud atau OpenRouter pada dropdown di atas.*`,
+          `⚠️ **Failed to process:** ${errMsg}\n\n*Tip: If quota is exceeded, you can switch models to Groq Cloud or OpenRouter via the dropdown above.*`,
         ),
       ]);
     } finally {
@@ -197,7 +197,7 @@ export function CopilotWidget() {
 
   const handleApplyOptimization = async (optResult: OptimizationResult) => {
     if (!appContext.onApplyAssignments) {
-      alert('Fitur penerapan alokasi hanya dapat dilakukan saat membuka halaman Production Setup.');
+      alert('Machine allocation can only be applied while on the Production Setup page.');
       return;
     }
     setApplyingOptimization(true);
@@ -207,11 +207,11 @@ export function CopilotWidget() {
         ...prev,
         createChatMessage(
           'assistant',
-          `🎉 **Alokasi Berhasil Diterapkan!**\n\nSetup sekarang menggunakan ${optResult.recommendedOperatorCount} operator dengan pembagian mesin yang telah dioptimalkan (OEE ~${optResult.bestMetrics.oee}%, MHPT ~${optResult.bestMetrics.mhptTotal} h/ton).`,
+          `🎉 **Allocation Successfully Applied!**\n\nSetup now uses ${optResult.recommendedOperatorCount} operators with optimized machine assignments (OEE ~${optResult.bestMetrics.oee}%, MHPT ~${optResult.bestMetrics.mhptTotal} h/ton).`,
         ),
       ]);
     } catch (err) {
-      alert(`Gagal menerapkan alokasi: ${err instanceof Error ? err.message : String(err)}`);
+      alert(`Failed to apply allocation: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setApplyingOptimization(false);
     }
@@ -227,7 +227,7 @@ export function CopilotWidget() {
           type="button"
           className="ai-copilot-fab"
           onClick={() => setIsOpen(true)}
-          title="Buka AI Copilot"
+          title="Open AI Copilot"
         >
           <span className="ai-copilot-fab-icon">✨</span>
           <span>AI Copilot</span>
@@ -255,7 +255,7 @@ export function CopilotWidget() {
                 className="ai-model-quick-select"
                 value={settings.activeModel}
                 onChange={(e) => handleModelChange(e.target.value)}
-                title="Ganti Model AI secara instan"
+                title="Instantly switch AI model"
               >
                 <optgroup label="Gemini (Google AI)">
                   {AI_MODELS.filter((m) => m.provider === 'gemini').map((m) => (
@@ -291,7 +291,7 @@ export function CopilotWidget() {
                 type="button"
                 className="ai-close-btn"
                 onClick={() => setIsOpen(false)}
-                title="Tutup AI Copilot"
+                title="Close AI Copilot"
               >
                 ✕
               </button>
@@ -302,21 +302,21 @@ export function CopilotWidget() {
           {rateLimitError && (
             <div className="ai-test-result error" style={{ margin: '8px 12px 0', fontSize: '0.74rem' }}>
               <div>
-                <strong>⚠️ Kuota Provider Limit (429):</strong> Ingin pindah ke provider lain?
+                <strong>⚠️ Provider Rate Limit (429):</strong> Switch to an alternative provider?
                 <div style={{ marginTop: '4px', display: 'flex', gap: '6px' }}>
                   <button
                     type="button"
                     className="ai-prompt-chip"
                     onClick={() => handleQuickSwitchProvider('groq')}
                   >
-                    ⚡ Switch ke Groq (Cepat)
+                    ⚡ Switch to Groq (Fast)
                   </button>
                   <button
                     type="button"
                     className="ai-prompt-chip"
                     onClick={() => handleQuickSwitchProvider('openrouter')}
                   >
-                    🌐 Switch ke OpenRouter
+                    🌐 Switch to OpenRouter
                   </button>
                 </div>
               </div>
@@ -326,7 +326,7 @@ export function CopilotWidget() {
           {/* API Key Missing Notice */}
           {!hasApiKey && (
             <div className="ai-test-result info" style={{ margin: '8px 12px 0', fontSize: '0.75rem' }}>
-              <span>ℹ️ API Key untuk <strong>{settings.activeProvider.toUpperCase()}</strong> belum diisi. Buka menu <strong>Settings &gt; AI Copilot</strong> untuk memasukkan API Key gratis.</span>
+              <span>ℹ️ API Key for <strong>{settings.activeProvider.toUpperCase()}</strong> is not set. Go to <strong>Settings &gt; AI Copilot</strong> to configure a free key.</span>
             </div>
           )}
 
@@ -351,7 +351,7 @@ export function CopilotWidget() {
                         onClick={() => void handleApplyOptimization(appContext.lastOptimizationResult!)}
                         disabled={applyingOptimization}
                       >
-                        {applyingOptimization ? '⏳ Menerapkan Alokasi…' : `🚀 Terapkan Alokasi (${appContext.lastOptimizationResult.recommendedOperatorCount} Operator)`}
+                        {applyingOptimization ? '⏳ Applying Allocation…' : `🚀 Apply Allocation (${appContext.lastOptimizationResult.recommendedOperatorCount} Operators)`}
                       </button>
                     </div>
                   )}
@@ -399,7 +399,7 @@ export function CopilotWidget() {
             <input
               type="text"
               className="ai-chat-input"
-              placeholder={hasApiKey ? 'Ketik pesan atau instruksi untuk Copilot…' : 'Masukkan API Key di Settings terlebih dahulu…'}
+              placeholder={hasApiKey ? 'Type a message or instruction for Copilot…' : 'Enter API Key in Settings first…'}
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               disabled={isLoading}
@@ -409,7 +409,7 @@ export function CopilotWidget() {
               className="ai-send-btn"
               disabled={isLoading || !inputText.trim()}
             >
-              {isLoading ? '…' : 'Kirim'}
+              {isLoading ? '…' : 'Send'}
             </button>
           </form>
         </div>
