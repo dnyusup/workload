@@ -412,6 +412,14 @@ function optimizeMultiOperatorSpatialBoundaries({
             const machsB = opMachines.get(opNext);
             if (!machsA || !machsB) continue;
 
+            // Safety guard: ensure spatial swap does not degrade workload balance
+            const currentWeightA = machsA.reduce((s, m) => s + (machineWeightsMap.get(m.id) ?? 1), 0);
+            const currentWeightB = machsB.reduce((s, m) => s + (machineWeightsMap.get(m.id) ?? 1), 0);
+            const targetWeight = (totalWeight / (operatorCount || 1));
+            const devOld = Math.abs(currentWeightA - targetWeight) + Math.abs(currentWeightB - targetWeight);
+            const devNew = Math.abs((currentWeightA - wA + wB) - targetWeight) + Math.abs((currentWeightB - wB + wA) - targetWeight);
+            if (devNew > devOld + 0.02) continue;
+
             const newMachsA = machsA.filter((m) => m.id !== candA.id).concat([candB]);
             const newMachsB = machsB.filter((m) => m.id !== candB.id).concat([candA]);
 
@@ -446,6 +454,9 @@ function optimizeMultiOperatorSpatialBoundaries({
  * Fairly partitions an ordered list of items (machines sorted along layout walk order)
  * into K contiguous partitions such that the workload of each partition is as close
  * to totalWeight / K as possible, minimizing workload variance and eliminating "jomplang" loads.
+ *
+ * Uses Bounded-Window Dynamic Programming to find the mathematically optimal cut points
+ * that globally minimize the sum of squared deviations: sum((W_p - target)^2).
  */
 export function partitionOrderedSequenceByWorkload<T>({
   items,
@@ -473,59 +484,101 @@ export function partitionOrderedSequenceByWorkload<T>({
     prefixSum.push(prefixSum[i] + weights[i]);
   }
 
-  // Find optimal cut points c[0] < c[1] < ... < c[k-2]
-  // Each partition p covers indices from (c[p-1] + 1) to c[p]
-  // We choose c[p] greedily to minimize |prefixSum[c[p] + 1] - (p + 1) * targetPerPartition|
-  // while ensuring remaining partitions have at least 1 item each.
-  const cutPoints: number[] = [];
-  let currentStart = 0;
+  let partitions: Array<{ partitionIndex: number; itemIndices: number[]; totalWeight: number }> = [];
 
-  for (let p = 0; p < k - 1; p++) {
-    const targetCumulative = (p + 1) * targetPerPartition;
-    const remainingPartitions = (k - 1) - p;
-    const maxEnd = n - remainingPartitions - 1;
+  // 1. Dynamic Programming partition optimization
+  try {
+    const avgItems = n / k;
+    const minSpan = 1;
+    const maxSpan = Math.max(minSpan + 1, Math.min(n, Math.ceil(avgItems * 4.0) + 10));
 
-    let bestCut = currentStart;
-    let minDiff = Infinity;
+    const dp = Array.from({ length: k + 1 }, () => new Float64Array(n + 1).fill(Infinity));
+    const parent = Array.from({ length: k + 1 }, () => new Int32Array(n + 1).fill(0));
 
-    for (let i = currentStart; i <= maxEnd; i++) {
-      const cum = prefixSum[i + 1];
-      const diff = Math.abs(cum - targetCumulative);
-      if (diff < minDiff) {
-        minDiff = diff;
-        bestCut = i;
-      } else if (cum > targetCumulative) {
-        // Since prefixSum is monotonically increasing, diff will only grow from here
-        break;
+    dp[0][0] = 0;
+
+    for (let p = 1; p <= k; p++) {
+      const minI = p;
+      const maxI = n - (k - p);
+      for (let i = minI; i <= maxI; i++) {
+        const jStart = Math.max(p - 1, i - maxSpan);
+        const jEnd = Math.min(i - minSpan, i - 1);
+        for (let j = jStart; j <= jEnd; j++) {
+          if (dp[p - 1][j] === Infinity) continue;
+          const w = prefixSum[i] - prefixSum[j];
+          const val = dp[p - 1][j] + Math.pow(w - targetPerPartition, 2);
+          if (val < dp[p][i]) {
+            dp[p][i] = val;
+            parent[p][i] = j;
+          }
+        }
       }
     }
 
-    cutPoints.push(bestCut);
-    currentStart = bestCut + 1;
-  }
-
-  // Build partition result
-  const partitions: Array<{ partitionIndex: number; itemIndices: number[]; totalWeight: number }> = [];
-  let prevCut = -1;
-
-  for (let p = 0; p < k; p++) {
-    const endCut = p === k - 1 ? n - 1 : cutPoints[p];
-    const indices: number[] = [];
-    for (let i = prevCut + 1; i <= endCut; i++) {
-      indices.push(i);
+    if (dp[k][n] < Infinity) {
+      let curr = n;
+      for (let p = k; p >= 1; p--) {
+        const prev = parent[p][curr];
+        const indices: number[] = [];
+        for (let idx = prev; idx < curr; idx++) indices.push(idx);
+        partitions.unshift({
+          partitionIndex: p - 1,
+          itemIndices: indices,
+          totalWeight: prefixSum[curr] - prefixSum[prev],
+        });
+        curr = prev;
+      }
     }
-    const partWeight = prefixSum[endCut + 1] - prefixSum[prevCut + 1];
-    partitions.push({
-      partitionIndex: p,
-      itemIndices: indices,
-      totalWeight: partWeight,
-    });
-    prevCut = endCut;
+  } catch {
+    partitions = [];
   }
 
-  // Local boundary refinement pass:
-  // Check if shifting boundary machines between adjacent partitions p and p+1
-  // strictly reduces the squared error from targetPerPartition
+  // 2. Fallback to greedy cut if DP did not reach end
+  if (partitions.length !== k) {
+    partitions = [];
+    const cutPoints: number[] = [];
+    let currentStart = 0;
+
+    for (let p = 0; p < k - 1; p++) {
+      const targetCumulative = (p + 1) * targetPerPartition;
+      const remainingPartitions = (k - 1) - p;
+      const maxEnd = n - remainingPartitions - 1;
+
+      let bestCut = currentStart;
+      let minDiff = Infinity;
+
+      for (let i = currentStart; i <= maxEnd; i++) {
+        const cum = prefixSum[i + 1];
+        const diff = Math.abs(cum - targetCumulative);
+        if (diff < minDiff) {
+          minDiff = diff;
+          bestCut = i;
+        } else if (cum > targetCumulative) {
+          break;
+        }
+      }
+
+      cutPoints.push(bestCut);
+      currentStart = bestCut + 1;
+    }
+
+    let prevCut = -1;
+    for (let p = 0; p < k; p++) {
+      const endCut = p === k - 1 ? n - 1 : cutPoints[p];
+      const indices: number[] = [];
+      for (let i = prevCut + 1; i <= endCut; i++) {
+        indices.push(i);
+      }
+      partitions.push({
+        partitionIndex: p,
+        itemIndices: indices,
+        totalWeight: prefixSum[endCut + 1] - prefixSum[prevCut + 1],
+      });
+      prevCut = endCut;
+    }
+  }
+
+  // 3. Local boundary refinement pass (safety fine-tuning)
   for (let pass = 0; pass < 3; pass++) {
     let improved = false;
     for (let p = 0; p < k - 1; p++) {
@@ -536,12 +589,10 @@ export function partitionOrderedSequenceByWorkload<T>({
       const lastIdxA = partA.itemIndices[partA.itemIndices.length - 1];
       const weightA = weights[lastIdxA];
 
-      // Current squared error
       const errCurrent =
         Math.pow(partA.totalWeight - targetPerPartition, 2) +
         Math.pow(partB.totalWeight - targetPerPartition, 2);
 
-      // Try moving last item of A to B
       const errMoveAtoB =
         Math.pow((partA.totalWeight - weightA) - targetPerPartition, 2) +
         Math.pow((partB.totalWeight + weightA) - targetPerPartition, 2);
@@ -555,7 +606,6 @@ export function partitionOrderedSequenceByWorkload<T>({
         continue;
       }
 
-      // Try moving first item of B to A
       const firstIdxB = partB.itemIndices[0];
       const weightB = weights[firstIdxB];
       const errMoveBtoA =
@@ -574,6 +624,265 @@ export function partitionOrderedSequenceByWorkload<T>({
   }
 
   return partitions;
+}
+
+/**
+ * Consolidates operator row sprawl and eliminates outlier/fragment rows.
+ * For example, when an operator spans rows 1700, 1600, and 1500, but only holds a small
+ * cluster in row 1500 (e.g. 1516-1520), this pass swaps those machines with an adjacent operator's
+ * contiguous machines in the intermediate row (1611-1615 in row 1600).
+ * This eliminates the 3rd row for Operator Biru (now strictly rows 1700 & 1600) and gives Operator Merah
+ * a complete, uninterrupted row 1500.
+ */
+export function consolidateOperatorRowBoundaries({
+  targetMachines,
+  machineAssignments,
+  machineWeightsMap,
+  layout,
+  pixelsPerMeter,
+  taskKey,
+}: {
+  targetMachines: LayoutMachine[];
+  machineAssignments: Map<string, Partial<ProductionMachineAssignment>>;
+  machineWeightsMap: Map<string, number>;
+  layout: LayoutMachine[];
+  pixelsPerMeter: number;
+  taskKey?: ActivityTaskKey;
+}): void {
+  if (targetMachines.length === 0) return;
+
+  const rows = rowsOf(layout, pixelsPerMeter);
+  if (rows.length < 2) return;
+
+  const machinePosMap = new Map<string, { rIdx: number; cIdx: number }>();
+  rows.forEach((row, rIdx) => {
+    row.machines.forEach((item, cIdx) => {
+      machinePosMap.set(item.machine.id, { rIdx, cIdx });
+    });
+  });
+
+  const getOp = (mId: string): string | undefined => {
+    const a = machineAssignments.get(mId);
+    if (!a) return undefined;
+    if (!taskKey) return a.assignedOperatorIds?.[0];
+    if (taskKey === 'doffing') return a.doffingOperatorIds?.[0];
+    if (taskKey === 'loading') return a.loadingOperatorIds?.[0];
+    if (taskKey === 'fractureRepairing') return a.fractureRepairingOperatorIds?.[0];
+    if (taskKey === 'diesChange') return a.diesChangeOperatorIds?.[0];
+    if (taskKey === 'defectRepairing') return a.defectRepairingOperatorIds?.[0];
+    return undefined;
+  };
+
+  const setOp = (mId: string, op: string): void => {
+    const a = machineAssignments.get(mId);
+    if (!a) return;
+    if (!taskKey) { a.assignedOperatorIds = [op]; return; }
+    if (taskKey === 'doffing') { a.doffingOperatorIds = [op]; return; }
+    if (taskKey === 'loading') { a.loadingOperatorIds = [op]; return; }
+    if (taskKey === 'fractureRepairing') { a.fractureRepairingOperatorIds = [op]; return; }
+    if (taskKey === 'diesChange') { a.diesChangeOperatorIds = [op]; return; }
+    if (taskKey === 'defectRepairing') { a.defectRepairingOperatorIds = [op]; return; }
+  };
+
+  const allTargetIds = new Set(targetMachines.map((m) => m.id));
+  const targetLayoutMachines = layout.filter((m) => allTargetIds.has(m.id));
+
+  for (let pass = 0; pass < 5; pass++) {
+    let anySwap = false;
+
+    // Group target machines by operator
+    const opMachines = new Map<string, LayoutMachine[]>();
+    targetLayoutMachines.forEach((m) => {
+      const op = getOp(m.id);
+      if (!op) return;
+      const list = opMachines.get(op);
+      if (list) list.push(m);
+      else opMachines.set(op, [m]);
+    });
+
+    for (const [opA, machsA] of opMachines.entries()) {
+      const rowBuckets = new Map<number, LayoutMachine[]>();
+      machsA.forEach((m) => {
+        const pos = machinePosMap.get(m.id);
+        if (!pos) return;
+        const list = rowBuckets.get(pos.rIdx);
+        if (list) list.push(m);
+        else rowBuckets.set(pos.rIdx, [m]);
+      });
+
+      const presentRows = Array.from(rowBuckets.keys()).sort((a, b) => a - b);
+      if (presentRows.length < 2) continue;
+
+      const minRow = presentRows[0];
+      const maxRow = presentRows[presentRows.length - 1];
+      if (maxRow - minRow < 2) continue; // Spans only 2 rows, already compact
+
+      const extremalCandidates = [
+        { rExtremal: maxRow, rAdjacent: maxRow - 1 },
+        { rExtremal: minRow, rAdjacent: minRow + 1 },
+      ];
+
+      for (const { rExtremal, rAdjacent } of extremalCandidates) {
+        const extMachs = (rowBuckets.get(rExtremal) ?? []).sort((a, b) => {
+          return (machinePosMap.get(a.id)?.cIdx ?? 0) - (machinePosMap.get(b.id)?.cIdx ?? 0);
+        });
+        const adjMachs = (rowBuckets.get(rAdjacent) ?? []).sort((a, b) => {
+          return (machinePosMap.get(a.id)?.cIdx ?? 0) - (machinePosMap.get(b.id)?.cIdx ?? 0);
+        });
+
+        if (extMachs.length === 0 || adjMachs.length === 0) continue;
+        if (extMachs.length > machsA.length * 0.45) continue;
+
+        const minAdjCol = machinePosMap.get(adjMachs[0].id)!.cIdx;
+        const maxAdjCol = machinePosMap.get(adjMachs[adjMachs.length - 1].id)!.cIdx;
+
+        const rowAdjMachinesAll = rows[rAdjacent].machines
+          .map((item) => item.machine)
+          .filter((m) => allTargetIds.has(m.id))
+          .sort((a, b) => (machinePosMap.get(a.id)?.cIdx ?? 0) - (machinePosMap.get(b.id)?.cIdx ?? 0));
+
+        // Candidates in rAdjacent to the left of opA
+        const leftCands = rowAdjMachinesAll.filter((m) => {
+          const c = machinePosMap.get(m.id)!.cIdx;
+          return c < minAdjCol && getOp(m.id) && getOp(m.id) !== opA;
+        });
+
+        // Candidates in rAdjacent to the right of opA
+        const rightCands = rowAdjMachinesAll.filter((m) => {
+          const c = machinePosMap.get(m.id)!.cIdx;
+          return c > maxAdjCol && getOp(m.id) && getOp(m.id) !== opA;
+        });
+
+        const targetCands: LayoutMachine[] = [];
+        let opB: string | null = null;
+
+        if (
+          leftCands.length > 0 &&
+          machinePosMap.get(leftCands[leftCands.length - 1].id)!.cIdx === minAdjCol - 1
+        ) {
+          const candOp = getOp(leftCands[leftCands.length - 1].id)!;
+          let idx = leftCands.length - 1;
+          while (idx >= 0 && getOp(leftCands[idx].id) === candOp && targetCands.length < extMachs.length) {
+            targetCands.unshift(leftCands[idx]);
+            idx--;
+          }
+          opB = candOp;
+        } else if (
+          rightCands.length > 0 &&
+          machinePosMap.get(rightCands[0].id)!.cIdx === maxAdjCol + 1
+        ) {
+          const candOp = getOp(rightCands[0].id)!;
+          let idx = 0;
+          while (idx < rightCands.length && getOp(rightCands[idx].id) === candOp && targetCands.length < extMachs.length) {
+            targetCands.push(rightCands[idx]);
+            idx++;
+          }
+          opB = candOp;
+        }
+
+        if (targetCands.length > 0 && opB) {
+          const swapCount = targetCands.length;
+          const extToSwap = extMachs.slice(-swapCount);
+
+          const wGive = extToSwap.reduce((s, m) => s + (machineWeightsMap.get(m.id) ?? 1), 0);
+          const wTake = targetCands.reduce((s, m) => s + (machineWeightsMap.get(m.id) ?? 1), 0);
+          const weightDiff = Math.abs(wGive - wTake);
+
+          if (weightDiff <= Math.max(0.18, (wGive / swapCount) * 0.85)) {
+            extToSwap.forEach((m) => setOp(m.id, opB!));
+            targetCands.forEach((m) => setOp(m.id, opA));
+            anySwap = true;
+            break;
+          }
+        }
+      }
+      if (anySwap) break;
+    }
+    if (!anySwap) break;
+  }
+}
+
+/**
+ * Ensures no operator is left with a jomplang underload by rebalancing boundary machines
+ * with adjacent operators along the layout order.
+ */
+function rebalanceUnderloadedOperators({
+  targetMachines,
+  machineAssignments,
+  machineWeightsMap,
+  targetWorkloadPerOperator,
+}: {
+  targetMachines: LayoutMachine[];
+  machineAssignments: Map<string, Partial<ProductionMachineAssignment>>;
+  machineWeightsMap: Map<string, number>;
+  targetWorkloadPerOperator: number;
+}): void {
+  if (targetWorkloadPerOperator <= 0 || targetMachines.length <= 1) return;
+
+  for (let pass = 0; pass < 3; pass++) {
+    const opWeights = new Map<string, number>();
+    targetMachines.forEach((m) => {
+      const op = machineAssignments.get(m.id)?.assignedOperatorIds?.[0];
+      if (!op) return;
+      opWeights.set(op, (opWeights.get(op) ?? 0) + (machineWeightsMap.get(m.id) ?? 0.05));
+    });
+
+    let rebalanced = false;
+
+    for (let i = 0; i < targetMachines.length - 1; i++) {
+      const mA = targetMachines[i];
+      const mB = targetMachines[i + 1];
+      const opA = machineAssignments.get(mA.id)?.assignedOperatorIds?.[0];
+      const opB = machineAssignments.get(mB.id)?.assignedOperatorIds?.[0];
+
+      if (!opA || !opB || opA === opB) continue;
+
+      const wA = opWeights.get(opA) ?? 0;
+      const wB = opWeights.get(opB) ?? 0;
+
+      // Transfer mB from opB to opA if opA is underloaded and opB has headroom
+      if (wA < targetWorkloadPerOperator * 0.85 && wB > targetWorkloadPerOperator * 0.95) {
+        const weightMB = machineWeightsMap.get(mB.id) ?? 0.05;
+        const newErr =
+          Math.pow(wA + weightMB - targetWorkloadPerOperator, 2) +
+          Math.pow(wB - weightMB - targetWorkloadPerOperator, 2);
+        const oldErr =
+          Math.pow(wA - targetWorkloadPerOperator, 2) +
+          Math.pow(wB - targetWorkloadPerOperator, 2);
+
+        if (newErr < oldErr) {
+          const patch = machineAssignments.get(mB.id);
+          if (patch) patch.assignedOperatorIds = [opA];
+          opWeights.set(opA, wA + weightMB);
+          opWeights.set(opB, wB - weightMB);
+          rebalanced = true;
+          break;
+        }
+      }
+
+      // Transfer mA from opA to opB if opB is underloaded and opA has headroom
+      if (wB < targetWorkloadPerOperator * 0.85 && wA > targetWorkloadPerOperator * 0.95) {
+        const weightMA = machineWeightsMap.get(mA.id) ?? 0.05;
+        const newErr =
+          Math.pow(wA - weightMA - targetWorkloadPerOperator, 2) +
+          Math.pow(wB + weightMA - targetWorkloadPerOperator, 2);
+        const oldErr =
+          Math.pow(wA - targetWorkloadPerOperator, 2) +
+          Math.pow(wB - targetWorkloadPerOperator, 2);
+
+        if (newErr < oldErr) {
+          const patch = machineAssignments.get(mA.id);
+          if (patch) patch.assignedOperatorIds = [opB];
+          opWeights.set(opA, wA - weightMA);
+          opWeights.set(opB, wB + weightMA);
+          rebalanced = true;
+          break;
+        }
+      }
+    }
+
+    if (!rebalanced) break;
+  }
 }
 
 /** Previews the assignment plan without saving to Dataverse */
@@ -742,6 +1051,24 @@ export function computeAutoAssignPlan({
       layout: setup.layout,
       pixelsPerMeter: setup.movement?.pixelsPerMeter ?? DEFAULT_PIXELS_PER_METER,
       operatorCount: count,
+    });
+
+    // Consolidate row boundaries to eliminate 3-row sprawling and swap outlier row blocks (e.g. 1516-1520 with 1611-1615)
+    consolidateOperatorRowBoundaries({
+      targetMachines,
+      machineAssignments,
+      machineWeightsMap,
+      layout: setup.layout,
+      pixelsPerMeter: setup.movement?.pixelsPerMeter ?? DEFAULT_PIXELS_PER_METER,
+    });
+
+    // Guarantee that no operator is left with a jomplang underload
+    const targetWorkload = machineWeights.reduce((a, b) => a + b, 0) / count;
+    rebalanceUnderloadedOperators({
+      targetMachines,
+      machineAssignments,
+      machineWeightsMap,
+      targetWorkloadPerOperator: targetWorkload,
     });
   } else {
     // Split task mode
@@ -1098,6 +1425,20 @@ export function computeAutoAssignPlan({
         });
       });
     }
+
+    // Consolidate row boundaries across task groups to eliminate 3-row sprawl
+    groups.forEach((grp) => {
+      if (grp.tasks.length > 0) {
+        consolidateOperatorRowBoundaries({
+          targetMachines,
+          machineAssignments,
+          machineWeightsMap: new Map(targetMachines.map((m) => [m.id, 1])),
+          layout: setup.layout,
+          pixelsPerMeter: setup.movement?.pixelsPerMeter ?? DEFAULT_PIXELS_PER_METER,
+          taskKey: grp.tasks[0],
+        });
+      }
+    });
   }
 
   return { operatorsToCreate, machineAssignments };
