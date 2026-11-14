@@ -42,6 +42,9 @@ import {
 } from '../../lib/productionSetupFrequenciesStore';
 import { ProductionSetupFrequencyDialog } from '../setup/ProductionSetupFrequencyDialog';
 import { FrequencySyncSummaryDialog } from '../setup/FrequencySyncSummaryDialog';
+import { executeAutoAssign } from '../../lib/productionAutoAssign';
+import { setAiAppContext } from '../../lib/ai/aiContextStore';
+import type { OptimizationResult } from '../../lib/ai/aiOptimizer';
 import {
   calculatePlannedUtilization,
   calculateSelectionOccupation,
@@ -860,6 +863,51 @@ export function ProductionSimulationPage({
     rejectShortCatalog,
     setupFrequencies,
   ]);
+
+  const handleApplyAiOptimization = useCallback(
+    async (optResult: OptimizationResult) => {
+      if (!selectedSetup) return;
+      const result = await executeAutoAssign({
+        setup: selectedSetup,
+        options: {
+          mode: 'multi',
+          multiCount: optResult.recommendedOperatorCount,
+          onlyPlannedMachines: true,
+        },
+      });
+      setSelectedSetup((prev) =>
+        prev
+          ? {
+              ...prev,
+              operators: result.newOperators,
+              assignments: result.updatedAssignments,
+            }
+          : prev,
+      );
+      setSummaries((prev) =>
+        prev.map((s) =>
+          s.id === selectedSetup.id ? { ...s, operatorCount: result.newOperators.length } : s,
+        ),
+      );
+    },
+    [selectedSetup],
+  );
+
+  useEffect(() => {
+    if (selectedSetup) {
+      setAiAppContext({
+        setup: selectedSetup,
+        resolvedConstructions: plannedResolution.resolved ?? new Map(),
+        onApplyAssignments: handleApplyAiOptimization,
+      });
+    } else {
+      setAiAppContext({
+        setup: null,
+        resolvedConstructions: new Map(),
+        onApplyAssignments: undefined,
+      });
+    }
+  }, [selectedSetup, plannedResolution.resolved, handleApplyAiOptimization]);
 
   const runSimulation = async (setup: ProductionSetup) => {
     if (loadingProducts) return;

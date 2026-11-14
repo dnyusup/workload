@@ -22,6 +22,7 @@ import { ProductionSimulationPage } from './components/production/ProductionSimu
 import { UsersManagerPage } from './components/users/UsersManagerPage';
 import { SettingsPage } from './components/settings/SettingsPage';
 import { GuidancePage } from './components/guidance/GuidancePage';
+import { CopilotWidget } from './components/ai/CopilotWidget';
 import { FrequencyManager } from './components/data/FrequencyManager';
 import { ActualOutputManager } from './components/data/ActualOutputManager';
 import { RejectShortManager } from './components/data/RejectShortManager';
@@ -116,6 +117,7 @@ function AppShell() {
             onSharedSetupLoaded={setSharedSetupTitle}
           />
         </main>
+        <CopilotWidget />
       </div>
     );
   }
@@ -210,6 +212,7 @@ function AppShell() {
           {activePage === 'guidance' && <GuidancePage />}
         </main>
       </div>
+      <CopilotWidget />
     </div>
   );
 }

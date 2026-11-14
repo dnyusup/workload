@@ -9,6 +9,7 @@ import { DateInput, NumberInput, OptionalNumberInput, SelectInput, TextInput } f
 import { Toggle } from '../ui/Toggle';
 import { DOFF_PRIORITY_TOOLTIP } from '../ui/doffPriorityText';
 import { DefaultLayoutsCard } from './DefaultLayoutsCard';
+import { AiSettingsCard } from './AiSettingsCard';
 import { SettingGroup, SettingRow } from './SettingRow';
 
 const TASK_PRIORITY_OPTIONS: { value: TaskPriorityMode; label: string }[] = [
@@ -675,6 +676,7 @@ function DefaultValuesCard() {
 const SETTING_SECTIONS = [
   { key: 'values', label: 'Default Values' },
   { key: 'layouts', label: 'Default Layouts' },
+  { key: 'ai', label: 'AI Copilot' },
 ] as const;
 
 type SettingSection = (typeof SETTING_SECTIONS)[number]['key'];
@@ -703,6 +705,9 @@ export function SettingsPage() {
       </div>
       <div role="tabpanel" hidden={section !== 'layouts'}>
         <DefaultLayoutsCard />
+      </div>
+      <div role="tabpanel" hidden={section !== 'ai'}>
+        <AiSettingsCard />
       </div>
     </div>
   );
