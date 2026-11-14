@@ -35,7 +35,7 @@ export async function executeAiCompletion({
   const providerConfig = settings.providers[provider];
 
   if (!providerConfig?.apiKey?.trim()) {
-    throw new Error(`API Key untuk ${provider.toUpperCase()} belum diisi. Silakan isi di menu Settings > AI Copilot.`);
+    throw new Error(`API Key for ${provider.toUpperCase()} is not configured. Please configure it in Settings > WLM Agent.`);
   }
 
   const apiKey = providerConfig.apiKey.trim();
@@ -282,7 +282,7 @@ async function callOpenAiCompatibleApi({
 
   if (provider === 'openrouter') {
     headers['HTTP-Referer'] = window.location.origin;
-    headers['X-Title'] = 'WorkLoad Simulator Copilot';
+    headers['X-Title'] = 'WorkLoad Simulator WLM Agent';
   }
 
   const res = await fetch(url, {

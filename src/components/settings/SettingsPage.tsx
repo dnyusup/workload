@@ -676,7 +676,7 @@ function DefaultValuesCard() {
 const SETTING_SECTIONS = [
   { key: 'values', label: 'Default Values' },
   { key: 'layouts', label: 'Default Layouts' },
-  { key: 'ai', label: 'AI Copilot' },
+  { key: 'ai', label: 'WLM Agent' },
 ] as const;
 
 type SettingSection = (typeof SETTING_SECTIONS)[number]['key'];

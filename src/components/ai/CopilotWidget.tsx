@@ -12,7 +12,7 @@ import { COPILOT_TOOLS, executeCopilotTool } from '../../lib/ai/aiTools';
 import { getAiAppContext, subscribeAiAppContext } from '../../lib/ai/aiContextStore';
 import type { OptimizationResult } from '../../lib/ai/aiOptimizer';
 
-const SYSTEM_PROMPT = `You are the AI Copilot for the Bekaert WorkLoad Simulator manufacturing application.
+const SYSTEM_PROMPT = `You are the WLM Agent for the Bekaert WorkLoad Simulator manufacturing application.
 Your core mission:
 1. Assist users in analyzing operational performance metrics: OEE (Overall Equipment Effectiveness), downtime breakdown (including waiting for operator), Man Occupation (operator workload), and MHPT (Manhour Per Ton).
 2. Diagnose operational bottlenecks (e.g. excessive machine downtime waiting for operator vs labor cost inefficiencies from low occupation).
@@ -39,7 +39,7 @@ function createChatMessage(
 const INITIAL_MESSAGES: AiChatMessage[] = [
   createChatMessage(
     'assistant',
-    'Hello! I am your **AI Copilot** for WorkLoad Simulator. I can assist in analyzing setup performance (OEE, MHPT, Man Occupation), diagnosing downtime bottlenecks, and finding the optimal machine-to-operator assignment balancing high equipment OEE with efficient labor MHPT.\n\nHow can I help you today?',
+    'Hello! I am your **WLM Agent** for WorkLoad Simulator. I can assist in analyzing setup performance (OEE, MHPT, Man Occupation), diagnosing downtime bottlenecks, and finding the optimal machine-to-operator assignment balancing high equipment OEE with efficient labor MHPT.\n\nHow can I help you today?',
   ),
 ];
 
@@ -247,22 +247,22 @@ export function CopilotWidget() {
           type="button"
           className="ai-copilot-fab"
           onClick={() => setIsOpen(true)}
-          title="Open AI Copilot"
+          title="Open WLM Agent"
         >
           <span className="ai-copilot-fab-icon">✨</span>
-          <span>AI Copilot</span>
+          <span>WLM Agent</span>
         </button>
       )}
 
       {/* Floating Chat Window */}
       {isOpen && (
-        <div className="ai-copilot-window" role="dialog" aria-label="AI Copilot Chat">
+        <div className="ai-copilot-window" role="dialog" aria-label="WLM Agent Chat">
           {/* Header */}
           <div className="ai-copilot-header">
             <div className="ai-header-left">
               <div className="ai-header-avatar">✨</div>
               <div>
-                <h3 className="ai-header-title">AI Copilot</h3>
+                <h3 className="ai-header-title">WLM Agent</h3>
                 <span className="ai-header-subtitle">
                   {appContext.setup ? `Active: ${appContext.setup.name}` : 'Ready to assist'}
                 </span>
@@ -311,7 +311,7 @@ export function CopilotWidget() {
                 type="button"
                 className="ai-close-btn"
                 onClick={() => setIsOpen(false)}
-                title="Close AI Copilot"
+                title="Close WLM Agent"
               >
                 ✕
               </button>
@@ -346,7 +346,7 @@ export function CopilotWidget() {
           {/* API Key Missing Notice */}
           {!hasApiKey && (
             <div className="ai-test-result info" style={{ margin: '8px 12px 0', fontSize: '0.75rem' }}>
-              <span>ℹ️ API Key for <strong>{settings.activeProvider.toUpperCase()}</strong> is not set. Go to <strong>Settings &gt; AI Copilot</strong> to configure a free key.</span>
+              <span>ℹ️ API Key for <strong>{settings.activeProvider.toUpperCase()}</strong> is not set. Go to <strong>Settings &gt; WLM Agent</strong> to configure a free key.</span>
             </div>
           )}
 
@@ -419,7 +419,7 @@ export function CopilotWidget() {
             <input
               type="text"
               className="ai-chat-input"
-              placeholder={hasApiKey ? 'Type a message or instruction for Copilot…' : 'Enter API Key in Settings first…'}
+              placeholder={hasApiKey ? 'Type a message or instruction for WLM Agent…' : 'Enter API Key in Settings first…'}
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               disabled={isLoading}

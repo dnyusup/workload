@@ -124,7 +124,7 @@ export function AiSettingsCard() {
   return (
     <div className="ai-settings-wrap">
       <Card
-        title="AI Copilot & Multi-Provider Settings"
+        title="WLM Agent & Multi-Provider Settings"
         subtitle="Configure AI models to operate the simulator and optimize machine-to-operator assignments (OEE vs MHPT)."
         actions={saveNotice ? <span className="ai-save-badge">{saveNotice}</span> : undefined}
       >
@@ -132,7 +132,7 @@ export function AiSettingsCard() {
           <div className="ai-active-model-header">
             <div>
               <strong className="ai-section-title">Primary Active Model</strong>
-              <p className="ai-section-desc">Select the default model initially used by Copilot.</p>
+              <p className="ai-section-desc">Select the default model initially used by WLM Agent.</p>
             </div>
             <select
               className="input ai-model-select"
