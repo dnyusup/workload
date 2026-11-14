@@ -164,6 +164,8 @@ export function TextInput({
 export function DateInput({
   value,
   onChange,
+  onBlur,
+  onKeyDown,
   disabled = false,
   min,
   max,
@@ -171,6 +173,8 @@ export function DateInput({
 }: {
   value: string;
   onChange?: (v: string) => void;
+  onBlur?: (e: React.FocusEvent<HTMLInputElement>) => void;
+  onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
   disabled?: boolean;
   min?: string;
   max?: string;
@@ -185,6 +189,8 @@ export function DateInput({
       min={min}
       max={max}
       onChange={(e) => onChange?.(e.target.value)}
+      onBlur={onBlur}
+      onKeyDown={onKeyDown}
     />
   );
 }

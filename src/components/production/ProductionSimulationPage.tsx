@@ -1379,6 +1379,44 @@ function ProductionSetupEditor({
   const [autoAssignScope, setAutoAssignScope] = useState<'selection' | 'all'>('selection');
   const [confirmDeleteAllOpen, setConfirmDeleteAllOpen] = useState(false);
   const [deletingAllOperators, setDeletingAllOperators] = useState(false);
+
+  const [draftFreqStartDate, setDraftFreqStartDate] = useState(setup.frequencyStartDate ?? '');
+  const [draftFreqEndDate, setDraftFreqEndDate] = useState(setup.frequencyEndDate ?? '');
+  const [syncedStartDate, setSyncedStartDate] = useState(setup.frequencyStartDate ?? '');
+  const [syncedEndDate, setSyncedEndDate] = useState(setup.frequencyEndDate ?? '');
+
+  if (setup.frequencyStartDate !== syncedStartDate) {
+    setSyncedStartDate(setup.frequencyStartDate ?? '');
+    setDraftFreqStartDate(setup.frequencyStartDate ?? '');
+  }
+  if (setup.frequencyEndDate !== syncedEndDate) {
+    setSyncedEndDate(setup.frequencyEndDate ?? '');
+    setDraftFreqEndDate(setup.frequencyEndDate ?? '');
+  }
+
+  const hasFreqDateChanges = Boolean(
+    (draftFreqStartDate !== (setup.frequencyStartDate ?? '') ||
+      draftFreqEndDate !== (setup.frequencyEndDate ?? '')) &&
+      /^\d{4}-\d{2}-\d{2}$/.test(draftFreqStartDate) &&
+      /^\d{4}-\d{2}-\d{2}$/.test(draftFreqEndDate),
+  );
+
+  const handleApplyFrequencyDates = () => {
+    if (!hasFreqDateChanges || !onFrequencyConfigChange) return;
+    void onFrequencyConfigChange({
+      frequencyStartDate: draftFreqStartDate,
+      frequencyEndDate: draftFreqEndDate,
+    });
+  };
+
+  const handleFrequencyDateBlur = (e: React.FocusEvent) => {
+    const nextTarget = e.relatedTarget as Node | null;
+    const container = document.getElementById('frequency-date-container');
+    if (container && nextTarget && container.contains(nextTarget)) {
+      return;
+    }
+    handleApplyFrequencyDates();
+  };
   const [exportingExcel, setExportingExcel] = useState(false);
   const [plannedUtilizationFullscreen, setPlannedUtilizationFullscreen] = useState(false);
   const plannedUtilizationPanelRef = useRef<HTMLDivElement>(null);
@@ -2638,22 +2676,18 @@ function ProductionSetupEditor({
             />
           </Field>
           {setup.frequencyMode === 'historical' && (
-            <>
+            <div id="frequency-date-container" style={{ display: 'contents' }}>
               <Field label="Frequency Start Date" tooltip="Start date for actual Power BI events filter (format: YYYY-MM-DD)">
                 <DateInput
-                  value={setup.frequencyStartDate ?? ''}
+                  value={draftFreqStartDate}
                   disabled={isReadOnly || isFrequencySyncing}
                   onChange={(v) => {
-                    if (v === setup.frequencyStartDate) return;
-                    if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) {
-                      onHeaderChange({ frequencyStartDate: v });
-                      return;
-                    }
-                    if (onFrequencyConfigChange) {
-                      void onFrequencyConfigChange({ frequencyStartDate: v });
-                    } else {
-                      onHeaderChange({ frequencyStartDate: v });
-                    }
+                    setDraftFreqStartDate(v);
+                    onLocalChange({ frequencyStartDate: v });
+                  }}
+                  onBlur={handleFrequencyDateBlur}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleApplyFrequencyDates();
                   }}
                 />
               </Field>
@@ -2662,6 +2696,17 @@ function ProductionSetupEditor({
                 tooltip="End date for actual Power BI events filter (format: YYYY-MM-DD)"
                 labelAction={
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    {hasFreqDateChanges && (
+                      <button
+                        type="button"
+                        className="frequency-date-apply-btn"
+                        title="Apply date range and sync MES frequency data"
+                        disabled={isReadOnly || isFrequencySyncing}
+                        onClick={handleApplyFrequencyDates}
+                      >
+                        ✓ Apply
+                      </button>
+                    )}
                     <button
                       type="button"
                       className="field-reset-btn"
@@ -2676,6 +2721,8 @@ function ProductionSetupEditor({
                           defaults.frequencyStartDate,
                           defaults.frequencyEndDate,
                         );
+                        setDraftFreqStartDate(range.startDate);
+                        setDraftFreqEndDate(range.endDate);
                         if (onFrequencyConfigChange) {
                           void onFrequencyConfigChange({
                             frequencyStartDate: range.startDate,
@@ -2719,19 +2766,15 @@ function ProductionSetupEditor({
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <DateInput
-                      value={setup.frequencyEndDate ?? ''}
+                      value={draftFreqEndDate}
                       disabled={isReadOnly || isFrequencySyncing}
                       onChange={(v) => {
-                        if (v === setup.frequencyEndDate) return;
-                        if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) {
-                          onHeaderChange({ frequencyEndDate: v });
-                          return;
-                        }
-                        if (onFrequencyConfigChange) {
-                          void onFrequencyConfigChange({ frequencyEndDate: v });
-                        } else {
-                          onHeaderChange({ frequencyEndDate: v });
-                        }
+                        setDraftFreqEndDate(v);
+                        onLocalChange({ frequencyEndDate: v });
+                      }}
+                      onBlur={handleFrequencyDateBlur}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleApplyFrequencyDates();
                       }}
                     />
                   </div>
@@ -2766,7 +2809,7 @@ function ProductionSetupEditor({
                   )}
                 </div>
               </Field>
-            </>
+            </div>
           )}
           <Field label="PO Length CR Source" tooltip="Area CR POlength1 source: Manual from WL_Products (or CR %SpoolLength default) or Historical AVG Meter/Spool from MES_RejectShort (falls back to manual if missing)">
             <SelectInput
