@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { AppConfigProvider } from './context/AppConfigContext';
 import { useAppConfig } from './context/appConfig';
 import { AuthProvider } from './context/AuthContext';
-import { useAuth } from './context/auth';
+import { useAuth, canAccessAiFeatures } from './context/auth';
 import { syncAutoActivityValues } from './lib/calculations';
 import { configForStartCondition } from './lib/startConditionConfig';
 import {
@@ -117,7 +117,7 @@ function AppShell() {
             onSharedSetupLoaded={setSharedSetupTitle}
           />
         </main>
-        <CopilotWidget />
+        {canAccessAiFeatures(user) && <CopilotWidget />}
       </div>
     );
   }
@@ -212,7 +212,7 @@ function AppShell() {
           {activePage === 'guidance' && <GuidancePage />}
         </main>
       </div>
-      <CopilotWidget />
+      {canAccessAiFeatures(user) && <CopilotWidget />}
     </div>
   );
 }

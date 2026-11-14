@@ -896,15 +896,19 @@ export function ProductionSimulationPage({
   useEffect(() => {
     if (selectedSetup) {
       setAiAppContext({
+        currentPage: 'Production Setup',
         setup: selectedSetup,
         resolvedConstructions: plannedResolution.resolved ?? new Map(),
         onApplyAssignments: handleApplyAiOptimization,
+        simulationMetrics: null,
       });
     } else {
       setAiAppContext({
+        currentPage: 'Production Setup List',
         setup: null,
         resolvedConstructions: new Map(),
         onApplyAssignments: undefined,
+        simulationMetrics: null,
       });
     }
   }, [selectedSetup, plannedResolution.resolved, handleApplyAiOptimization]);

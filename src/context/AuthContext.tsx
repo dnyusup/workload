@@ -36,6 +36,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const match = rows.find((row) => (row.mpp_email ?? '').trim().toLowerCase() === email.toLowerCase());
       const role = roleFromRow(match?.mpp_role) ?? 'guest';
       const maxSetup = typeof match?.mpp_max_setup === 'number' ? match.mpp_max_setup : undefined;
+      const rawAiFeatures = (match?.mpp_aifeatures ?? '').trim().toLowerCase();
+      const aiFeatures = rawAiFeatures === 'yes' || rawAiFeatures === 'true' ? 'Yes' : 'No';
 
       let hasSharedSetups = false;
       if (role === 'guest' && email) {
@@ -54,7 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      setUser({ email, displayName, role, maxSetup, hasSharedSetups });
+      setUser({ email, displayName, role, maxSetup, hasSharedSetups, aiFeatures });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to determine the current user — access defaults to Guest.');
       setUser(UNKNOWN_USER);

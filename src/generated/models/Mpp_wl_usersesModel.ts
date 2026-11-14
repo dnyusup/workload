@@ -15,6 +15,7 @@ export type Mpp_wl_usersesstatuscode = keyof typeof Mpp_wl_usersesstatuscode;
 
 export interface Mpp_wl_usersesBase {
   importsequencenumber?: number;
+  mpp_aifeatures?: string;
   mpp_email?: string;
   mpp_max_setup?: number;
   mpp_name?: string;

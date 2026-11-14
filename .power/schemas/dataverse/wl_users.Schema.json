@@ -161,6 +161,14 @@
           "required": true,
           "maxLength": 100
         },
+        "mpp_aifeatures": {
+          "type": "string",
+          "title": "aifeatures",
+          "x-ms-dataverse-attribute": "mpp_aifeatures",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "mpp_aifeatures",
+          "maxLength": 100
+        },
         "mpp_email": {
           "type": "string",
           "title": "email",

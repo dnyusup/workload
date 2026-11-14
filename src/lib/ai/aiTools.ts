@@ -1,6 +1,8 @@
 import type { AiToolDefinition } from '../../types/ai';
 import type { ProductionSetup } from '../../types';
 import type { ResolvedConstruction } from '../productionConstructionResolver';
+import type { AuthUser } from '../../context/auth';
+import type { AiSimulationMetrics } from './aiContextStore';
 import {
   computeSetupKpiMetrics,
   optimizeMachineAllocation,
@@ -13,6 +15,16 @@ export const COPILOT_TOOLS: AiToolDefinition[] = [
     name: 'get_current_setup_summary',
     description:
       'Retrieves the configuration summary of the currently active production setup (setup name, machine count, operator count, current OEE, MHPT, and Man Occupation).',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'get_current_simulation_results',
+    description:
+      'Retrieves live output metrics from the current simulation run or replay (elapsed shift clock, equipment OEE, availability, quality, total tonnage FP/SFP, labor MHPT, operator timeline activity percentages, and top downtime causes).',
     parameters: {
       type: 'object',
       properties: {},
@@ -73,8 +85,10 @@ export const COPILOT_TOOLS: AiToolDefinition[] = [
 ];
 
 export interface CopilotToolContext {
+  user?: AuthUser;
   setup: ProductionSetup | null;
   resolvedConstructions: Map<string, ResolvedConstruction>;
+  simulationMetrics?: AiSimulationMetrics | null;
   onApplyAssignments?: (result: OptimizationResult) => Promise<void> | void;
   lastOptimizationResult?: OptimizationResult | null;
   setLastOptimizationResult?: (result: OptimizationResult | null) => void;
@@ -97,6 +111,37 @@ export async function executeCopilotTool(
   }
 
   switch (name) {
+    case 'get_current_simulation_results': {
+      if (!ctx.simulationMetrics) {
+        return {
+          result: {
+            setupName: setup.name,
+            status: 'Simulation has not been played or is not currently loaded on screen.',
+            hint: 'To view live simulation metrics, play or load a simulation run/replay on the Production Simulation page.',
+          },
+        };
+      }
+      const sm = ctx.simulationMetrics;
+      return {
+        result: {
+          setupName: setup.name,
+          simulationStatus: sm.clockFormatted,
+          isShiftComplete: sm.isComplete,
+          machineCount: sm.machineCount,
+          operatorCount: sm.operatorCount,
+          equipmentOee: `${sm.oee}%`,
+          availability: `${sm.availability}%`,
+          quality: `${sm.quality}%`,
+          totalOutput: `${sm.tonageTotal} ton`,
+          finishProductTon: `${sm.tonageFp} ton`,
+          semiFinishProductTon: `${sm.tonageSfp} ton`,
+          laborMhpt: `${sm.manHourPerTon} h/ton`,
+          totalDowntimeMinutes: sm.totalDowntimeMin,
+          operatorTimelineActivities: sm.activityBreakdown.map((a) => `${a.activity}: ${a.percent}%`),
+          topMachineDowntimeCauses: sm.topDowntimeReasons.slice(0, 5).map((d) => `${d.reason}: ${d.minutes} min`),
+        },
+      };
+    }
     case 'get_current_setup_summary': {
       const metrics: SetupKpiMetrics = computeSetupKpiMetrics(setup, resolvedConstructions);
       return {
@@ -228,6 +273,21 @@ export async function executeCopilotTool(
           },
           isError: true,
         };
+      }
+
+      // Security & Authorization Guard: Contribute users cannot modify setups they do not own or have edit rights for
+      if (ctx.user && ctx.user.role !== 'admin') {
+        const userEmail = (ctx.user.email ?? '').trim().toLowerCase();
+        const isOwner = (setup.createdByEmail ?? '').trim().toLowerCase() === userEmail;
+        const isShared = (setup.sharedEmail ?? '').toLowerCase().includes(userEmail);
+        if (!isOwner && !isShared) {
+          return {
+            result: {
+              error: `Permission denied: Your account (${ctx.user.email}) has Contribute access and is not the owner or authorized editor of setup "${setup.name}". Modifying other users' setups or master data requires Admin privileges.`,
+            },
+            isError: true,
+          };
+        }
       }
 
       if (ctx.onApplyAssignments) {

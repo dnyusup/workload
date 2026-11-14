@@ -12,6 +12,20 @@ export interface AuthUser {
   maxSetup?: number;
   /** Whether a Guest user has any Production Setups shared to them. */
   hasSharedSetups?: boolean;
+  /** Whether the user has access to WLM Agent features (stored in WL_users.mpp_aifeatures). */
+  aiFeatures?: 'Yes' | 'No' | string;
+}
+
+/** Determines if the user is authorized to use WLM Agent (AI features).
+ * Admins always have access; Contribute users only if aiFeatures === 'Yes'. */
+export function canAccessAiFeatures(user?: AuthUser | null): boolean {
+  if (!user) return false;
+  if (user.role === 'admin') return true;
+  if (user.role === 'contribute') {
+    const val = (user.aiFeatures ?? '').toString().trim().toLowerCase();
+    return val === 'yes' || val === 'true';
+  }
+  return false;
 }
 
 export interface AuthContextValue {

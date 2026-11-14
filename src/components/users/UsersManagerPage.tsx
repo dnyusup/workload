@@ -16,16 +16,20 @@ interface AccessRow {
   name: string;
   role: 'Admin' | 'Contribute';
   maxSetup?: number;
+  aiFeatures: 'Yes' | 'No';
 }
 
 function toAccessRow(row: Mpp_wl_userses): AccessRow {
   const normalizedRole = (row.mpp_role ?? '').trim().toLowerCase();
+  const rawAi = (row.mpp_aifeatures ?? '').trim().toLowerCase();
+  const aiFeatures = normalizedRole === 'admin' ? 'Yes' : (rawAi === 'yes' || rawAi === 'true' ? 'Yes' : 'No');
   return {
     id: row.mpp_wl_usersid,
     email: row.mpp_email ?? '',
     name: row.mpp_name ?? '',
     role: normalizedRole === 'admin' ? 'Admin' : 'Contribute',
     maxSetup: typeof row.mpp_max_setup === 'number' ? row.mpp_max_setup : undefined,
+    aiFeatures,
   };
 }
 
@@ -45,6 +49,7 @@ export function UsersManagerPage() {
   const [picked, setPicked] = useState<{ email: string; name: string } | null>(null);
   const [roleToAdd, setRoleToAdd] = useState<'Admin' | 'Contribute'>('Contribute');
   const [maxSetupToAdd, setMaxSetupToAdd] = useState<number | ''>(2);
+  const [aiFeatureToAdd, setAiFeatureToAdd] = useState<'Yes' | 'No'>('No');
   const searchSeq = useRef(0);
 
   // Search & Role filter for Users with Access
@@ -55,6 +60,10 @@ export function UsersManagerPage() {
   const [editingMaxSetup, setEditingMaxSetup] = useState<Record<string, number | ''>>({});
   const [savingMaxSetupId, setSavingMaxSetupId] = useState<string | null>(null);
   const [savedFeedbackId, setSavedFeedbackId] = useState<string | null>(null);
+
+  // Inline AI Feature edit & save states
+  const [savingAiFeatureId, setSavingAiFeatureId] = useState<string | null>(null);
+  const [savedAiFeatureId, setSavedAiFeatureId] = useState<string | null>(null);
 
   const adminCount = useMemo(() => rows.filter((r) => r.role === 'Admin').length, [rows]);
   const contributeCount = useMemo(() => rows.filter((r) => r.role === 'Contribute').length, [rows]);
@@ -146,6 +155,7 @@ export function UsersManagerPage() {
         mpp_name: picked.name,
         mpp_role: roleToAdd,
         mpp_max_setup: roleToAdd === 'Contribute' ? (typeof maxSetupToAdd === 'number' ? maxSetupToAdd : 2) : undefined,
+        mpp_aifeatures: roleToAdd === 'Admin' ? 'Yes' : aiFeatureToAdd,
         statecode: 0,
       });
       if (!result.success || !result.data) throw new Error(result.error?.message ?? 'Failed to add user.');
@@ -153,6 +163,7 @@ export function UsersManagerPage() {
       setPicked(null);
       setSearchTerm('');
       setMaxSetupToAdd(2);
+      setAiFeatureToAdd('No');
       invalidateRegisteredUserRolesCache();
       if (picked.email.toLowerCase() === user.email.toLowerCase()) await refresh();
     } catch (err) {
@@ -165,9 +176,13 @@ export function UsersManagerPage() {
   const changeRole = async (id: string, role: 'Admin' | 'Contribute') => {
     const target = rows.find((r) => r.id === id);
     const nextMaxSetup = role === 'Contribute' ? (target?.maxSetup ?? 2) : undefined;
-    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, role, maxSetup: nextMaxSetup } : r)));
+    const nextAiFeatures = role === 'Admin' ? 'Yes' : (target?.aiFeatures ?? 'No');
+    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, role, maxSetup: nextMaxSetup, aiFeatures: nextAiFeatures } : r)));
     try {
-      const patch: { mpp_role: string; mpp_max_setup?: number } = { mpp_role: role };
+      const patch: { mpp_role: string; mpp_max_setup?: number; mpp_aifeatures?: string } = {
+        mpp_role: role,
+        mpp_aifeatures: nextAiFeatures,
+      };
       if (role === 'Contribute') {
         patch.mpp_max_setup = nextMaxSetup;
       }
@@ -178,6 +193,28 @@ export function UsersManagerPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update role.');
       loadRows();
+    }
+  };
+
+  const changeAiFeature = async (id: string, aiFeatures: 'Yes' | 'No') => {
+    const target = rows.find((r) => r.id === id);
+    if (!target) return;
+    setSavingAiFeatureId(id);
+    setError(null);
+    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, aiFeatures } : r)));
+    try {
+      const result = await Mpp_wl_usersesService.update(id, { mpp_aifeatures: aiFeatures });
+      if (!result.success) throw new Error(result.error?.message ?? 'Failed to update AI Feature access.');
+      setSavedAiFeatureId(id);
+      setTimeout(() => {
+        setSavedAiFeatureId((cur) => (cur === id ? null : cur));
+      }, 2000);
+      if (target.email.toLowerCase() === user.email.toLowerCase()) await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update AI Feature access.');
+      loadRows();
+    } finally {
+      setSavingAiFeatureId(null);
     }
   };
 
@@ -261,24 +298,41 @@ export function UsersManagerPage() {
               <option value="Admin">Admin</option>
             </select>
             {roleToAdd === 'Contribute' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <label style={{ fontSize: '0.8rem', color: '#94a3b8', whiteSpace: 'nowrap' }}>
-                  Max Setup <span style={{ color: '#ef4444' }}>*</span>:
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  className="input"
-                  style={{ width: '80px', height: '36px' }}
-                  placeholder="e.g. 2"
-                  value={maxSetupToAdd}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setMaxSetupToAdd(val === '' ? '' : Math.max(1, parseInt(val, 10) || 1));
-                  }}
-                  required
-                />
-              </div>
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <label style={{ fontSize: '0.8rem', color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                    Max Setup <span style={{ color: '#ef4444' }}>*</span>:
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    className="input"
+                    style={{ width: '80px', height: '36px' }}
+                    placeholder="e.g. 2"
+                    value={maxSetupToAdd}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setMaxSetupToAdd(val === '' ? '' : Math.max(1, parseInt(val, 10) || 1));
+                    }}
+                    required
+                  />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <label style={{ fontSize: '0.8rem', color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                    AI Feature:
+                  </label>
+                  <select
+                    className="input"
+                    style={{ height: '36px' }}
+                    value={aiFeatureToAdd}
+                    onChange={(e) => setAiFeatureToAdd(e.target.value as 'Yes' | 'No')}
+                    title="Enable WLM Agent for this Contribute user"
+                  >
+                    <option value="No">No</option>
+                    <option value="Yes">Yes</option>
+                  </select>
+                </div>
+              </>
             )}
             <Button
               variant="primary"
@@ -392,6 +446,46 @@ export function UsersManagerPage() {
                           <span style={{ color: '#4ade80', fontSize: '0.75rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
                             ✓ Saved
                           </span>
+                        )}
+                      </div>
+                    )}
+                    {row.role === 'Admin' ? (
+                      <span
+                        style={{
+                          fontSize: '0.72rem',
+                          padding: '3px 8px',
+                          borderRadius: '6px',
+                          background: 'rgba(14, 165, 233, 0.15)',
+                          color: '#38bdf8',
+                          border: '1px solid rgba(14, 165, 233, 0.3)',
+                          whiteSpace: 'nowrap',
+                        }}
+                        title="Admin role always has WLM Agent access enabled"
+                      >
+                        AI: Yes (Admin)
+                      </span>
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <label style={{ fontSize: '0.75rem', color: '#94a3b8', whiteSpace: 'nowrap' }}>AI:</label>
+                        <select
+                          className="input"
+                          style={{
+                            height: '34px',
+                            fontSize: '0.75rem',
+                            padding: '2px 6px',
+                            width: '68px',
+                            borderColor: row.aiFeatures === 'Yes' ? 'rgba(56, 189, 248, 0.5)' : undefined,
+                          }}
+                          value={row.aiFeatures}
+                          disabled={savingAiFeatureId === row.id}
+                          onChange={(e) => void changeAiFeature(row.id, e.target.value as 'Yes' | 'No')}
+                          title="Grant or revoke WLM Agent feature access for this user"
+                        >
+                          <option value="No">No</option>
+                          <option value="Yes">Yes</option>
+                        </select>
+                        {savedAiFeatureId === row.id && (
+                          <span style={{ color: '#4ade80', fontSize: '0.75rem', fontWeight: 600 }}>✓</span>
                         )}
                       </div>
                     )}

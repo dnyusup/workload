@@ -44,6 +44,7 @@ import {
   downloadReplayFromCloud,
   interpolateReplaySnapshot,
 } from '../../lib/simulationReplay';
+import { setAiAppContext } from '../../lib/ai/aiContextStore';
 
 const LABEL_MARGIN = 24;
 const MIN_ZOOM = 0.1;
@@ -859,6 +860,70 @@ export function ProductionRunView({
     () => new Map(plannedUtilization.machines.map((pm) => [pm.machineId, pm])),
     [plannedUtilization],
   );
+
+  // Sync live simulation results to WLM Agent context so the AI can read this screen
+  useEffect(() => {
+    if (!setup) return;
+    const isComplete = metrics.clockMin >= metrics.shiftTimeMin;
+    const totalDowntime = Object.values(metrics.downtimeByReason).reduce((a, b) => a + b, 0);
+
+    const totalOpMinutes = displayedOperators.length * timelineDuration;
+    const activityList = operatorTimelineSummary.groups.map((g) => {
+      const mins = operatorTimelineSummary.minutesByKey.get(g.key) ?? 0;
+      const pct = totalOpMinutes > 0 ? (mins / totalOpMinutes) * 100 : 0;
+      return { activity: g.label, percent: Number(pct.toFixed(1)) };
+    });
+
+    const topDowntime = Object.entries(metrics.downtimeByReason)
+      .map(([reason, minutes]) => ({ reason, minutes: Math.round(minutes) }))
+      .sort((a, b) => b.minutes - a.minutes);
+
+    const elapsedHours = Math.floor(metrics.clockMin / 60);
+    const elapsedMins = Math.round(metrics.clockMin % 60);
+    const shiftHoursNum = Math.floor(metrics.shiftTimeMin / 60);
+    const shiftMinsNum = Math.round(metrics.shiftTimeMin % 60);
+
+    setAiAppContext({
+      currentPage: 'Production Simulation',
+      setup,
+      resolvedConstructions: resolved,
+      simulationMetrics: {
+        clockMin: metrics.clockMin,
+        shiftTimeMin: metrics.shiftTimeMin,
+        clockFormatted: `Clock ${Math.floor(metrics.clockMin / 60)}:${String(Math.round(metrics.clockMin % 60)).padStart(2, '0')} (Elapsed ${elapsedHours}h ${elapsedMins}m of ${shiftHoursNum}h ${shiftMinsNum}m)`,
+        isComplete,
+        machineCount: metrics.assignedMachineCount,
+        operatorCount: displayedOperators.length,
+        oee: Number(oee.toFixed(1)),
+        availability: Number(availability.toFixed(1)),
+        quality: Number((quality * 100).toFixed(1)),
+        tonageTotal: Number(tonage.toFixed(2)),
+        tonageFp: Number(tonageFp.toFixed(2)),
+        tonageSfp: Number(tonageSfp.toFixed(2)),
+        manHourPerTon: Number(manHourPerTon.toFixed(2)),
+        totalDowntimeMin: Math.round(totalDowntime),
+        activityBreakdown: activityList,
+        topDowntimeReasons: topDowntime,
+      },
+    });
+  }, [
+    setup,
+    resolved,
+    metrics.clockMin,
+    metrics.shiftTimeMin,
+    metrics.assignedMachineCount,
+    metrics.downtimeByReason,
+    displayedOperators.length,
+    timelineDuration,
+    oee,
+    availability,
+    quality,
+    tonage,
+    tonageFp,
+    tonageSfp,
+    manHourPerTon,
+    operatorTimelineSummary,
+  ]);
 
   // Map each machine id to its constructionDetail key
   const machineCdMap = useMemo(() => {

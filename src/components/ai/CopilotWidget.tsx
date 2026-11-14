@@ -9,16 +9,73 @@ import {
 } from '../../lib/ai/aiConfigStore';
 import { executeAiCompletion } from '../../lib/ai/aiClient';
 import { COPILOT_TOOLS, executeCopilotTool } from '../../lib/ai/aiTools';
-import { getAiAppContext, subscribeAiAppContext } from '../../lib/ai/aiContextStore';
+import { getAiAppContext, subscribeAiAppContext, type AiAppContext } from '../../lib/ai/aiContextStore';
 import type { OptimizationResult } from '../../lib/ai/aiOptimizer';
+import { useAuth, type AuthUser } from '../../context/auth';
+import { MarkdownMessage } from './MarkdownMessage';
 
-const SYSTEM_PROMPT = `You are the WLM Agent for the Bekaert WorkLoad Simulator manufacturing application.
-Your core mission:
-1. Assist users in analyzing operational performance metrics: OEE (Overall Equipment Effectiveness), downtime breakdown (including waiting for operator), Man Occupation (operator workload), and MHPT (Manhour Per Ton).
+function buildSystemPrompt(user: AuthUser, ctx: AiAppContext): string {
+  const isAdmin = user.role === 'admin';
+  const setupInfo = ctx.setup
+    ? `Active Setup: "${ctx.setup.name}" (ID: ${ctx.setup.id}, ${ctx.setup.assignments?.length ?? 0} machine assignments, shift time ${ctx.setup.shiftTime ?? 480} min)`
+    : 'No active Production Setup is currently selected.';
+
+  let simContext = '';
+  if (ctx.simulationMetrics) {
+    const sm = ctx.simulationMetrics;
+    const topActivities = sm.activityBreakdown.slice(0, 8).map((a) => `${a.activity}: ${a.percent}%`).join(', ');
+    const topDowntimes = sm.topDowntimeReasons.slice(0, 4).map((d) => `${d.reason}: ${d.minutes}m`).join(', ');
+    simContext = `
+[LIVE SIMULATION SCREEN DATA]
+The user is currently on the Production Simulation view! A simulation run or replay is loaded:
+- Simulation Time: ${sm.clockFormatted} (Shift Complete: ${sm.isComplete ? 'Yes' : 'In Progress'})
+- Machines Assigned: ${sm.machineCount} | Operators: ${sm.operatorCount}
+- Equipment OEE: ${sm.oee}% | Availability: ${sm.availability}% | Quality: ${sm.quality}%
+- Output: Total ${sm.tonageTotal} ton (FP: ${sm.tonageFp} ton, Semi-FP: ${sm.tonageSfp} ton)
+- Labor Productivity (MHPT): ${sm.manHourPerTon} h/ton
+- Operator Timeline Activities: ${topActivities}
+- Top Downtime Causes: ${topDowntimes}
+- Total Machine Downtime: ${sm.totalDowntimeMin} minutes
+NOTE: You can read and refer to these exact numbers directly when the user asks questions about their simulation or setup!
+`;
+  } else {
+    simContext = `
+[LIVE APPLICATION SCREEN]
+Current View: ${ctx.currentPage || 'Production Setup / Simulator'}
+${setupInfo}
+`;
+  }
+
+  return `You are the WLM Agent for the Bekaert WorkLoad Simulator manufacturing application.
+
+[USER IDENTITY & ACCESS LEVEL]
+- User: ${user.displayName || user.email} (${user.email})
+- Role: ${user.role.toUpperCase()}
+- Permission Tier: ${isAdmin ? 'Full Administrator' : 'Contribute User'}
+
+[STRICT SECURITY & AUTHORIZATION POLICY]
+${
+  isAdmin
+    ? '- The user is an Administrator with full permissions across all configurations.'
+    : `- The current user has CONTRIBUTE role.
+- STRICT RESTRICTION: The user is strictly FORBIDDEN from modifying or overriding system settings, Default Values (WL_DefaultValues), API keys, AI model settings, plant parameters, or master data tables.
+- If the user asks you to change, update, overwrite, or delete master settings or configuration values, YOU MUST POLITELY REFUSE:
+  "Mohon maaf, peran akun Anda adalah Contribute. Pengubahan konfigurasi sistem dan parameter default hanya dapat dilakukan oleh Admin. Silakan hubungi Administrator sistem."
+- The user may only view simulation results, diagnose performance, and optimize machine allocations for setups they have access to.`
+}
+
+${simContext}
+
+[MISSION & CORE RESPONSIBILITIES]
+1. Assist users in analyzing operational performance metrics: OEE, downtime breakdown (especially waiting for operator), Man Occupation (operator workload), and MHPT (Manhour Per Ton).
 2. Diagnose operational bottlenecks (e.g. excessive machine downtime waiting for operator vs labor cost inefficiencies from low occupation).
 3. Optimize machine-to-operator assignments to achieve balanced Pareto-optimal output (high OEE vs efficient MHPT). Note: high OEE with high MHPT is unfavorable.
-4. Language flexibility: If the user communicates in Indonesian, respond naturally in Indonesian. If the user communicates in English, respond in English. Always keep technical explanations clear, concise, and backed by calculated metrics.
-5. Always invoke the available tools to inspect live setup data, run diagnoses, or compute optimal allocations before forming conclusions.`;
+4. Output & Presentation Formatting:
+   - Use clean Markdown tables with columns (e.g. | Metric | Current | Proposed |) when displaying multi-item comparisons or operator workloads.
+   - Use bold for emphasis and bullet points for recommendations.
+   - Do not output raw unformatted pipe delimiters outside tables.
+5. Language flexibility: If the user communicates in Indonesian, respond naturally in Indonesian. If in English, respond in English. Always keep explanations clear, concise, and backed by calculated metrics.`;
+}
 
 let msgSequence = 0;
 function createChatMessage(
@@ -50,6 +107,7 @@ const QUICK_PROMPTS = [
 ];
 
 export function CopilotWidget() {
+  const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [settings, setSettings] = useState(() => loadAiSettings());
   const [messages, setMessages] = useState<AiChatMessage[]>(INITIAL_MESSAGES);
@@ -135,7 +193,7 @@ export function CopilotWidget() {
         const response = await executeAiCompletion({
           settings,
           messages: currentHistory,
-          systemPrompt: SYSTEM_PROMPT,
+          systemPrompt: buildSystemPrompt(user, appContext),
           tools: COPILOT_TOOLS,
         });
 
@@ -158,6 +216,8 @@ export function CopilotWidget() {
               label = '🔍 Diagnosing downtime bottlenecks & operator workload…';
             } else if (call.name === 'get_current_setup_summary') {
               label = '📊 Fetching latest setup performance data…';
+            } else if (call.name === 'get_current_simulation_results') {
+              label = '📈 Reading live simulation run output & timeline…';
             }
 
             setActiveToolStatus(label);
@@ -170,8 +230,10 @@ export function CopilotWidget() {
             }
 
             const toolOutcome = await executeCopilotTool(call.name, parsedArgs, {
+              user,
               setup: appContext.setup,
               resolvedConstructions: appContext.resolvedConstructions,
+              simulationMetrics: appContext.simulationMetrics,
               lastOptimizationResult: appContext.lastOptimizationResult,
               setLastOptimizationResult: (res) => {
                 setAppContext((prev) => ({ ...prev, lastOptimizationResult: res }));
@@ -220,6 +282,15 @@ export function CopilotWidget() {
       alert('Machine allocation can only be applied while on the Production Setup page.');
       return;
     }
+    if (user.role !== 'admin' && appContext.setup) {
+      const userEmail = (user.email ?? '').trim().toLowerCase();
+      const isOwner = (appContext.setup.createdByEmail ?? '').trim().toLowerCase() === userEmail;
+      const isShared = (appContext.setup.sharedEmail ?? '').toLowerCase().includes(userEmail);
+      if (!isOwner && !isShared) {
+        alert('Permission denied: Contribute users can only apply allocations to setups they created or have edit rights for.');
+        return;
+      }
+    }
     setApplyingOptimization(true);
     try {
       await appContext.onApplyAssignments(optResult);
@@ -264,7 +335,11 @@ export function CopilotWidget() {
               <div>
                 <h3 className="ai-header-title">WLM Agent</h3>
                 <span className="ai-header-subtitle">
-                  {appContext.setup ? `Active: ${appContext.setup.name}` : 'Ready to assist'}
+                  {appContext.simulationMetrics
+                    ? `Sim: ${appContext.setup?.name ?? 'Live'} (${appContext.simulationMetrics.oee}% OEE)`
+                    : appContext.setup
+                      ? `Active: ${appContext.setup.name}`
+                      : 'Ready to assist'}
                 </span>
               </div>
             </div>
@@ -358,9 +433,7 @@ export function CopilotWidget() {
 
               return (
                 <div key={msg.id} className={`ai-msg ${msg.role}`}>
-                  <div style={{ whiteSpace: 'pre-wrap' }}>
-                    {msg.content}
-                  </div>
+                  <MarkdownMessage content={msg.content} />
 
                   {/* Render 1-click Apply Button if optimization was produced */}
                   {isAssistant && appContext.lastOptimizationResult && (
