@@ -422,6 +422,12 @@ export function Dashboard({
         </div>
 
         <div className="oee-summary-details">
+          <div className="metric-row small" title="Estimated tonnage produced from machine running time">
+            <span>Total ton</span>
+            <span>
+              {fmt(runningTimeTonage)} ton<Est>{fmt(fc.tonage)} ton</Est>
+            </span>
+          </div>
           <div className="metric-row small">
             <span>Availability</span>
             <span>

@@ -1687,6 +1687,24 @@ export function ProductionRunView({
               </div>
 
               <div className="oee-summary-details">
+                <div className="metric-row small" title="Estimated good tonnage produced from machine running time">
+                  <span>Total ton</span>
+                  <span>
+                    {fmt(runningTimeTonage)} ton<Est>{fmt(fcTonage)} ton</Est>
+                  </span>
+                </div>
+                <div className="metric-row small is-sub" title="Finish Product — SpoolType starts with BS">
+                  <span>Ton FP</span>
+                  <span>
+                    {fmt(runningTimeTonageFp)} ton<Est>{fmt(fcTonageFp)} ton</Est>
+                  </span>
+                </div>
+                <div className="metric-row small is-sub" title="Semi Finish Product — every other SpoolType">
+                  <span>Ton SFP</span>
+                  <span>
+                    {fmt(runningTimeTonageSfp)} ton<Est>{fmt(fcTonageSfp)} ton</Est>
+                  </span>
+                </div>
                 <div className="metric-row small">
                   <span>Availability</span>
                   <span>

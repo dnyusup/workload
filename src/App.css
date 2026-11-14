@@ -2648,6 +2648,16 @@
   color: #94a3b8;
 }
 
+.metric-row.is-sub > span:first-child {
+  padding-left: 14px;
+  color: #94a3b8;
+}
+
+.metric-row.is-sub > span:last-child {
+  color: #94a3b8;
+  font-weight: 500;
+}
+
 .progress-bar {
   position: relative;
   height: 8px;
