@@ -1,5 +1,6 @@
 import type { LayoutMachine, ProductionMachineAssignment, ProductionOperator, ProductionSetup } from '../types';
-import { defaultAssignmentOrder } from './defaultAssignment';
+import { defaultAssignmentOrder, rowsOf } from './defaultAssignment';
+import { DEFAULT_PIXELS_PER_METER } from './layoutConstants';
 import type { TheoreticalActivityBreakdown, TheoreticalOperatorRow } from './theoreticalOperators';
 import { Mpp_wl_productionsetupoperatorsesService } from '../generated/services/Mpp_wl_productionsetupoperatorsesService';
 import { fetchAllPages, escapeODataString, runWithConcurrency } from './dataversePaging';
@@ -204,6 +205,222 @@ export function getHighestOperatorNumber(prefix: string, existingLabels: string[
   return maxNum;
 }
 
+interface SpatialMachinePosition {
+  rIdx: number;
+  cIdx: number;
+  centerX: number;
+  centerY: number;
+}
+
+function computeOperatorSpatialCost(
+  machines: LayoutMachine[],
+  machinePosMap: Map<string, SpatialMachinePosition>,
+): number {
+  if (!machines || machines.length === 0) return 0;
+
+  const rowGroups = new Map<number, SpatialMachinePosition[]>();
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+
+  machines.forEach((m) => {
+    const pos = machinePosMap.get(m.id);
+    if (!pos) return;
+    minX = Math.min(minX, pos.centerX);
+    maxX = Math.max(maxX, pos.centerX);
+    minY = Math.min(minY, pos.centerY);
+    maxY = Math.max(maxY, pos.centerY);
+
+    const group = rowGroups.get(pos.rIdx);
+    if (group) {
+      group.push(pos);
+    } else {
+      rowGroups.set(pos.rIdx, [pos]);
+    }
+  });
+
+  if (rowGroups.size === 0 || minX === Infinity) return 0;
+
+  const presentRows = Array.from(rowGroups.keys()).sort((a, b) => a - b);
+  const minRow = presentRows[0];
+  const maxRow = presentRows[presentRows.length - 1];
+  const rowSpan = maxRow - minRow;
+
+  // 1. Row span penalty
+  let cost = rowSpan * 2000;
+
+  // 2. Skipped row penalty (e.g. occupying row 0 and 2 without 1)
+  const skippedRows = rowSpan + 1 - presentRows.length;
+  if (skippedRows > 0) {
+    cost += skippedRows * 10000;
+  }
+
+  // 3. Dominant row and fragmentation penalty
+  let dominantRow = presentRows[0];
+  let maxCountInRow = 0;
+  presentRows.forEach((r) => {
+    const count = rowGroups.get(r)!.length;
+    if (count > maxCountInRow) {
+      maxCountInRow = count;
+      dominantRow = r;
+    }
+  });
+
+  presentRows.forEach((r) => {
+    const group = rowGroups.get(r)!.sort((a, b) => a.cIdx - b.cIdx);
+    const count = group.length;
+
+    // Small row penalty if far from dominant row
+    if (r !== dominantRow && count < 3) {
+      const dist = Math.abs(r - dominantRow);
+      cost += (3 - count) * 2000 * dist;
+    }
+
+    // Gap penalty within the row
+    for (let i = 0; i < group.length - 1; i++) {
+      const gap = group[i + 1].cIdx - group[i].cIdx;
+      if (gap > 1) {
+        cost += (gap - 1) * 3000;
+      }
+    }
+  });
+
+  // 4. Horizontal alignment penalty between adjacent rows
+  for (let i = 0; i < presentRows.length - 1; i++) {
+    const r1 = presentRows[i];
+    const r2 = presentRows[i + 1];
+    if (r2 - r1 === 1) {
+      const g1 = rowGroups.get(r1)!;
+      const g2 = rowGroups.get(r2)!;
+      const minX1 = Math.min(...g1.map((p) => p.centerX));
+      const maxX1 = Math.max(...g1.map((p) => p.centerX));
+      const minX2 = Math.min(...g2.map((p) => p.centerX));
+      const maxX2 = Math.max(...g2.map((p) => p.centerX));
+
+      if (maxX1 < minX2) {
+        cost += (minX2 - maxX1) * 2.0;
+      } else if (maxX2 < minX1) {
+        cost += (minX1 - maxX2) * 2.0;
+      }
+    }
+  }
+
+  // 5. Bounding box penalty
+  cost += (maxX - minX) * 0.1 + (maxY - minY) * 1.0;
+
+  return cost;
+}
+
+function optimizeMultiOperatorSpatialBoundaries({
+  targetMachines,
+  machineAssignments,
+  machineWeightsMap,
+  layout,
+  pixelsPerMeter,
+  operatorCount,
+}: {
+  targetMachines: LayoutMachine[];
+  machineAssignments: Map<string, Partial<ProductionMachineAssignment>>;
+  machineWeightsMap: Map<string, number>;
+  layout: LayoutMachine[];
+  pixelsPerMeter: number;
+  operatorCount: number;
+}): void {
+  if (operatorCount <= 1 || targetMachines.length === 0) return;
+
+  const rows = rowsOf(layout, pixelsPerMeter);
+  if (rows.length === 0) return;
+
+  const machinePosMap = new Map<string, SpatialMachinePosition>();
+  rows.forEach((row, rIdx) => {
+    row.machines.forEach((item, cIdx) => {
+      machinePosMap.set(item.machine.id, {
+        rIdx,
+        cIdx,
+        centerX: item.centerX,
+        centerY: row.centerY,
+      });
+    });
+  });
+
+  const totalWeight = Array.from(machineWeightsMap.values()).reduce((a, b) => a + b, 0);
+  const avgWeight = totalWeight / (targetMachines.length || 1);
+  const maxWeightDiff = Math.max(0.001, avgWeight * 0.05);
+
+  const maxIterations = 30;
+  let iteration = 0;
+
+  while (iteration < maxIterations) {
+    iteration++;
+
+    // Group machines by assigned operator
+    const opMachines = new Map<string, LayoutMachine[]>();
+    targetMachines.forEach((m) => {
+      const opLabel = machineAssignments.get(m.id)?.assignedOperatorIds?.[0];
+      if (!opLabel) return;
+      const list = opMachines.get(opLabel);
+      if (list) {
+        list.push(m);
+      } else {
+        opMachines.set(opLabel, [m]);
+      }
+    });
+
+    const opCosts = new Map<string, number>();
+    opMachines.forEach((machs, opLabel) => {
+      opCosts.set(opLabel, computeOperatorSpatialCost(machs, machinePosMap));
+    });
+
+    let bestDelta = 0;
+    let bestSwap: { mA: LayoutMachine; mB: LayoutMachine; opA: string; opB: string } | null = null;
+
+    for (let i = 0; i < targetMachines.length; i++) {
+      const mA = targetMachines[i];
+      const opA = machineAssignments.get(mA.id)?.assignedOperatorIds?.[0];
+      if (!opA) continue;
+      const wA = machineWeightsMap.get(mA.id) ?? 1;
+
+      for (let j = i + 1; j < targetMachines.length; j++) {
+        const mB = targetMachines[j];
+        const opB = machineAssignments.get(mB.id)?.assignedOperatorIds?.[0];
+        if (!opB || opA === opB) continue;
+        const wB = machineWeightsMap.get(mB.id) ?? 1;
+
+        if (Math.abs(wA - wB) > maxWeightDiff) continue;
+
+        const machsA = opMachines.get(opA);
+        const machsB = opMachines.get(opB);
+        if (!machsA || !machsB) continue;
+
+        const newMachsA = machsA.filter((m) => m.id !== mA.id).concat([mB]);
+        const newMachsB = machsB.filter((m) => m.id !== mB.id).concat([mA]);
+
+        const costAOld = opCosts.get(opA) ?? 0;
+        const costBOld = opCosts.get(opB) ?? 0;
+
+        const costANew = computeOperatorSpatialCost(newMachsA, machinePosMap);
+        const costBNew = computeOperatorSpatialCost(newMachsB, machinePosMap);
+
+        const delta = (costAOld + costBOld) - (costANew + costBNew);
+        if (delta > 50 && delta > bestDelta) {
+          bestDelta = delta;
+          bestSwap = { mA, mB, opA, opB };
+        }
+      }
+    }
+
+    if (bestSwap) {
+      const patchA = machineAssignments.get(bestSwap.mA.id);
+      if (patchA) patchA.assignedOperatorIds = [bestSwap.opB];
+      const patchB = machineAssignments.get(bestSwap.mB.id);
+      if (patchB) patchB.assignedOperatorIds = [bestSwap.opA];
+    } else {
+      break;
+    }
+  }
+}
+
 /** Previews the assignment plan without saving to Dataverse */
 export function computeAutoAssignPlan({
   setup,
@@ -337,6 +554,19 @@ export function computeAutoAssignPlan({
         diesChangeOperatorIds: undefined,
         defectRepairingOperatorIds: undefined,
       });
+    });
+
+    // Optimize spatial boundaries to eliminate crossover rows and isolated machine outliers
+    const machineWeightsMap = new Map<string, number>(
+      targetMachines.map((m, idx) => [m.id, machineWeights[idx]]),
+    );
+    optimizeMultiOperatorSpatialBoundaries({
+      targetMachines,
+      machineAssignments,
+      machineWeightsMap,
+      layout: setup.layout,
+      pixelsPerMeter: setup.movement?.pixelsPerMeter ?? DEFAULT_PIXELS_PER_METER,
+      operatorCount: count,
     });
   } else {
     // Split task mode

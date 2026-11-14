@@ -2,7 +2,7 @@ import type { LayoutMachine } from '../types';
 import { DEFAULT_PIXELS_PER_METER, machineHeightPx, machineWidthPx } from './layoutConstants';
 
 /** Row of machines lying at about the same height, left to right. */
-interface Row {
+export interface Row {
   centerY: number;
   height: number;
   machines: { machine: LayoutMachine; centerX: number }[];
@@ -10,7 +10,7 @@ interface Row {
   takeUpDown: boolean;
 }
 
-function rowsOf(layout: LayoutMachine[], pixelsPerMeter: number): Row[] {
+export function rowsOf(layout: LayoutMachine[], pixelsPerMeter: number): Row[] {
   const items = layout
     .map((machine) => {
       const width = machineWidthPx(machine, pixelsPerMeter);
