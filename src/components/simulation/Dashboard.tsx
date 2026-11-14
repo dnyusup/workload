@@ -393,9 +393,9 @@ export function Dashboard({
       </Card>
 
       <Card
-        title="OEE & Downtime"
+        title="Operational Performance"
         className="dashboard-oee-card"
-        subtitle={`Availability across assigned machines (Performance & Quality assumed at 100%) · ${FORECAST_NOTE}`}
+        subtitle={`Equipment efficiency (OEE), labor productivity (MHPT), and man occupation · ${FORECAST_NOTE}`}
       >
         <div className="oee-gauges-grid three-items">
           <div className="metric-gauge-item" title="Overall Equipment Effectiveness: Availability">

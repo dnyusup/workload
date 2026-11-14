@@ -1651,9 +1651,9 @@ export function ProductionRunView({
             </Card>
 
             <Card
-              title="OEE & Downtime"
+              title="Operational Performance"
               className="dashboard-oee-card"
-              subtitle={`OEE = Availability × Quality (Quality = 100% − %Reject; Performance assumed at 100%) · ${FORECAST_NOTE}`}
+              subtitle={`Equipment efficiency (OEE), labor productivity (MHPT), and man occupation · ${FORECAST_NOTE}`}
             >
               <div className="oee-gauges-grid">
                 <div className="metric-gauge-item" title="Overall Equipment Effectiveness: Availability × Quality">
@@ -1709,10 +1709,10 @@ export function ProductionRunView({
                     {fmt(totalDowntimeMin)} machine-minutes<Est>{fmt(fcTotalDowntime)}</Est>
                   </span>
                 </div>
-                <div className="metric-row small" title="Elapsed active operator manhours vs full-shift forecast">
+                <div className="metric-row small" title="Total net available operator manhours (excluding breaks) vs full-shift forecast">
                   <span>Manhour</span>
                   <span>
-                    {fmt(elapsedManHours)}h<Est>{fmt(manHours)}h</Est>
+                    {fmt(elapsedManHours)}h<Est>{fmt(utilForecast.available / 60)}h</Est>
                   </span>
                 </div>
                 <div className="metric-row small" title="Operator handling time (walking + servicing + RPC) vs full-shift forecast">
