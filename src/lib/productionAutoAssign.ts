@@ -3,7 +3,7 @@ import { defaultAssignmentOrder, rowsOf } from './defaultAssignment';
 import { DEFAULT_PIXELS_PER_METER } from './layoutConstants';
 import type { TheoreticalActivityBreakdown, TheoreticalOperatorRow } from './theoreticalOperators';
 import type { ResolvedConstruction } from './productionConstructionResolver';
-import { estimateMachineServiceMinutes } from './productionUtilization';
+import { estimateMachineServiceMinutes, estimateMachineTaskServiceMinutes } from './productionUtilization';
 import { Mpp_wl_productionsetupoperatorsesService } from '../generated/services/Mpp_wl_productionsetupoperatorsesService';
 import { fetchAllPages, escapeODataString, runWithConcurrency } from './dataversePaging';
 import { updateMachineAssignments } from './productionSetupsStore';
@@ -442,6 +442,140 @@ function optimizeMultiOperatorSpatialBoundaries({
   }
 }
 
+/**
+ * Fairly partitions an ordered list of items (machines sorted along layout walk order)
+ * into K contiguous partitions such that the workload of each partition is as close
+ * to totalWeight / K as possible, minimizing workload variance and eliminating "jomplang" loads.
+ */
+export function partitionOrderedSequenceByWorkload<T>({
+  items,
+  weights,
+  partitionCount,
+}: {
+  items: T[];
+  weights: number[];
+  partitionCount: number;
+}): Array<{ partitionIndex: number; itemIndices: number[]; totalWeight: number }> {
+  const n = items.length;
+  const k = Math.max(1, Math.min(partitionCount, n));
+  if (n === 0) return [];
+  if (k === 1) {
+    const sum = weights.reduce((a, b) => a + b, 0);
+    return [{ partitionIndex: 0, itemIndices: items.map((_, i) => i), totalWeight: sum }];
+  }
+
+  const totalWeight = weights.reduce((a, b) => a + b, 0);
+  const targetPerPartition = totalWeight / k;
+
+  // Prefix sums for O(1) range sum queries
+  const prefixSum: number[] = [0];
+  for (let i = 0; i < n; i++) {
+    prefixSum.push(prefixSum[i] + weights[i]);
+  }
+
+  // Find optimal cut points c[0] < c[1] < ... < c[k-2]
+  // Each partition p covers indices from (c[p-1] + 1) to c[p]
+  // We choose c[p] greedily to minimize |prefixSum[c[p] + 1] - (p + 1) * targetPerPartition|
+  // while ensuring remaining partitions have at least 1 item each.
+  const cutPoints: number[] = [];
+  let currentStart = 0;
+
+  for (let p = 0; p < k - 1; p++) {
+    const targetCumulative = (p + 1) * targetPerPartition;
+    const remainingPartitions = (k - 1) - p;
+    const maxEnd = n - remainingPartitions - 1;
+
+    let bestCut = currentStart;
+    let minDiff = Infinity;
+
+    for (let i = currentStart; i <= maxEnd; i++) {
+      const cum = prefixSum[i + 1];
+      const diff = Math.abs(cum - targetCumulative);
+      if (diff < minDiff) {
+        minDiff = diff;
+        bestCut = i;
+      } else if (cum > targetCumulative) {
+        // Since prefixSum is monotonically increasing, diff will only grow from here
+        break;
+      }
+    }
+
+    cutPoints.push(bestCut);
+    currentStart = bestCut + 1;
+  }
+
+  // Build partition result
+  const partitions: Array<{ partitionIndex: number; itemIndices: number[]; totalWeight: number }> = [];
+  let prevCut = -1;
+
+  for (let p = 0; p < k; p++) {
+    const endCut = p === k - 1 ? n - 1 : cutPoints[p];
+    const indices: number[] = [];
+    for (let i = prevCut + 1; i <= endCut; i++) {
+      indices.push(i);
+    }
+    const partWeight = prefixSum[endCut + 1] - prefixSum[prevCut + 1];
+    partitions.push({
+      partitionIndex: p,
+      itemIndices: indices,
+      totalWeight: partWeight,
+    });
+    prevCut = endCut;
+  }
+
+  // Local boundary refinement pass:
+  // Check if shifting boundary machines between adjacent partitions p and p+1
+  // strictly reduces the squared error from targetPerPartition
+  for (let pass = 0; pass < 3; pass++) {
+    let improved = false;
+    for (let p = 0; p < k - 1; p++) {
+      const partA = partitions[p];
+      const partB = partitions[p + 1];
+      if (partA.itemIndices.length <= 1 || partB.itemIndices.length <= 1) continue;
+
+      const lastIdxA = partA.itemIndices[partA.itemIndices.length - 1];
+      const weightA = weights[lastIdxA];
+
+      // Current squared error
+      const errCurrent =
+        Math.pow(partA.totalWeight - targetPerPartition, 2) +
+        Math.pow(partB.totalWeight - targetPerPartition, 2);
+
+      // Try moving last item of A to B
+      const errMoveAtoB =
+        Math.pow((partA.totalWeight - weightA) - targetPerPartition, 2) +
+        Math.pow((partB.totalWeight + weightA) - targetPerPartition, 2);
+
+      if (errMoveAtoB < errCurrent - 0.0001 && partA.itemIndices.length > 1) {
+        partA.itemIndices.pop();
+        partB.itemIndices.unshift(lastIdxA);
+        partA.totalWeight -= weightA;
+        partB.totalWeight += weightA;
+        improved = true;
+        continue;
+      }
+
+      // Try moving first item of B to A
+      const firstIdxB = partB.itemIndices[0];
+      const weightB = weights[firstIdxB];
+      const errMoveBtoA =
+        Math.pow((partA.totalWeight + weightB) - targetPerPartition, 2) +
+        Math.pow((partB.totalWeight - weightB) - targetPerPartition, 2);
+
+      if (errMoveBtoA < errCurrent - 0.0001 && partB.itemIndices.length > 1) {
+        partB.itemIndices.shift();
+        partA.itemIndices.push(firstIdxB);
+        partA.totalWeight += weightB;
+        partB.totalWeight -= weightB;
+        improved = true;
+      }
+    }
+    if (!improved) break;
+  }
+
+  return partitions;
+}
+
 /** Previews the assignment plan without saving to Dataverse */
 export function computeAutoAssignPlan({
   setup,
@@ -529,6 +663,38 @@ export function computeAutoAssignPlan({
     return `${cleanPrefix}_${String(current).padStart(4, '0')}`;
   };
 
+  // 4. Build workload weight per machine to avoid "jomplang" man occupation across operators
+  const netShiftMinutes = Math.max(1, setup.shiftTime - (setup.lunchTime ?? 0) - (setup.meetingTime ?? 0));
+  // Base walking / patrol transit and interference overhead per machine (~2.5 minutes per machine per shift)
+  const WALKING_OVERHEAD_WEIGHT = 0.006;
+
+  const cdWorkloadMap = new Map<string, number>();
+
+  // Priority 1: TheoreticalOperatorRow if provided (from single-operator optimize)
+  if (options.operatorRequirementRows && options.operatorRequirementRows.length > 0) {
+    options.operatorRequirementRows.forEach((row) => {
+      if (row.machines > 0 && row.operators > 0) {
+        cdWorkloadMap.set(row.productId, row.operators / row.machines);
+      } else if (row.machinesPerOperator > 0) {
+        cdWorkloadMap.set(row.productId, 1 / row.machinesPerOperator);
+      }
+    });
+  }
+
+  // Priority 2: Automatically calculate from ResolvedConstruction specs (speed, runtime, doffing, repairs, RPC)
+  if (options.resolvedConstructions && options.resolvedConstructions.size > 0) {
+    options.resolvedConstructions.forEach((rc, cdId) => {
+      if (!cdWorkloadMap.has(cdId)) {
+        const serviceMins = estimateMachineServiceMinutes(rc, setup.shiftTime, setup.rpc);
+        if (serviceMins > 0) {
+          cdWorkloadMap.set(cdId, serviceMins / netShiftMinutes);
+        }
+      }
+    });
+  }
+
+  const assignmentByMachine = new Map(setup.assignments.map((a) => [a.machineId, a]));
+
   if (options.mode === 'multi') {
     const rawReq = activityBreakdown?.allTask.operators;
     const count = options.multiCount ?? (rawReq ? Math.max(1, Math.round(rawReq)) : Math.max(1, setup.operators.length || 10));
@@ -537,60 +703,31 @@ export function computeAutoAssignPlan({
     const multiLabels = Array.from({ length: count }, () => getNextLabel(prefix));
     multiLabels.forEach((label) => operatorsToCreate.push({ label, groupKey: 'multi', description: 'Multi Task' }));
 
-    // 1. Build workload weight per machine to avoid "jomplang" man occupation across operators
-    const cdWorkloadMap = new Map<string, number>();
-
-    // Priority 1: TheoreticalOperatorRow if provided (from single-operator optimize)
-    if (options.operatorRequirementRows && options.operatorRequirementRows.length > 0) {
-      options.operatorRequirementRows.forEach((row) => {
-        if (row.machines > 0 && row.operators > 0) {
-          cdWorkloadMap.set(row.productId, row.operators / row.machines);
-        } else if (row.machinesPerOperator > 0) {
-          cdWorkloadMap.set(row.productId, 1 / row.machinesPerOperator);
-        }
-      });
-    }
-
-    // Priority 2: Automatically calculate from ResolvedConstruction specs (speed, runtime, doffing, repairs, RPC)
-    if (options.resolvedConstructions && options.resolvedConstructions.size > 0) {
-      options.resolvedConstructions.forEach((rc, cdId) => {
-        if (!cdWorkloadMap.has(cdId)) {
-          const serviceMins = estimateMachineServiceMinutes(rc, setup.shiftTime, setup.rpc);
-          if (serviceMins > 0) {
-            cdWorkloadMap.set(cdId, serviceMins);
-          }
-        }
-      });
-    }
-
-    const assignmentByMachine = new Map(setup.assignments.map((a) => [a.machineId, a]));
-
     const machineWeights = targetMachines.map((m) => {
       const cdId = assignmentByMachine.get(m.id)?.constructionDetailId;
-      if (cdId && cdWorkloadMap.has(cdId)) {
-        return Math.max(0.001, cdWorkloadMap.get(cdId)!);
-      }
-      return 1;
+      const baseWeight = cdId && cdWorkloadMap.has(cdId) ? cdWorkloadMap.get(cdId)! : (1 / Math.max(10, count * 3));
+      return Math.max(0.001, baseWeight + WALKING_OVERHEAD_WEIGHT);
     });
 
-    const totalWeight = machineWeights.reduce((sum, w) => sum + w, 0);
+    // Fair partition: groups machines into contiguous blocks along layout path with strictly balanced workload
+    const partitions = partitionOrderedSequenceByWorkload({
+      items: targetMachines,
+      weights: machineWeights,
+      partitionCount: count,
+    });
 
-    // Distribute machines along the facing TU sequence proportionally by cumulative workload
-    let cumulative = 0;
-    targetMachines.forEach((m, index) => {
-      const w = machineWeights[index];
-      const midpoint = cumulative + w / 2;
-      cumulative += w;
-
-      const opIndex = Math.min(count - 1, Math.floor((midpoint / (totalWeight || 1)) * count));
-      const opLabel = multiLabels[opIndex];
-      machineAssignments.set(m.id, {
-        assignedOperatorIds: [opLabel], // Temporary label, resolved to ID after creation
-        doffingOperatorIds: undefined,
-        loadingOperatorIds: undefined,
-        fractureRepairingOperatorIds: undefined,
-        diesChangeOperatorIds: undefined,
-        defectRepairingOperatorIds: undefined,
+    partitions.forEach(({ partitionIndex, itemIndices }) => {
+      const opLabel = multiLabels[partitionIndex];
+      itemIndices.forEach((idx) => {
+        const m = targetMachines[idx];
+        machineAssignments.set(m.id, {
+          assignedOperatorIds: [opLabel],
+          doffingOperatorIds: undefined,
+          loadingOperatorIds: undefined,
+          fractureRepairingOperatorIds: undefined,
+          diesChangeOperatorIds: undefined,
+          defectRepairingOperatorIds: undefined,
+        });
       });
     });
 
@@ -614,6 +751,20 @@ export function computeAutoAssignPlan({
 
     const shouldBalance = options.balanceFractionalDemand !== false;
 
+    // Helper to calculate task-specific machine weights for split task groups
+    const getGroupMachineWeights = (grpTasks: ActivityTaskKey[], fallbackRatio: number, machines: LayoutMachine[]) => {
+      return machines.map((m) => {
+        const cdId = assignmentByMachine.get(m.id)?.constructionDetailId;
+        if (cdId && options.resolvedConstructions?.has(cdId)) {
+          const rc = options.resolvedConstructions.get(cdId)!;
+          const taskMins = estimateMachineTaskServiceMinutes(rc, setup.shiftTime, setup.rpc, grpTasks);
+          return Math.max(0.001, (taskMins / netShiftMinutes) + (WALKING_OVERHEAD_WEIGHT * fallbackRatio));
+        }
+        const baseW = cdId && cdWorkloadMap.has(cdId) ? cdWorkloadMap.get(cdId)! : 0.05;
+        return Math.max(0.001, (baseW * fallbackRatio) + (WALKING_OVERHEAD_WEIGHT * fallbackRatio));
+      });
+    };
+
     if (!shouldBalance) {
       // Standard strict split (ceil per group, no cross-activity balancing)
       const groupOperatorLabels = new Map<string, string[]>();
@@ -625,27 +776,37 @@ export function computeAutoAssignPlan({
         groupOperatorLabels.set(grp.id, labels);
         labels.forEach((label) => operatorsToCreate.push({ label, groupKey: grp.id, description: grp.name }));
 
-        // Partition machines for this group
-        const total = targetMachines.length;
-        targetMachines.forEach((m, index) => {
-          const opIndex = Math.min(count - 1, Math.floor((index * count) / total));
-          const opLabel = labels[opIndex];
-          const existing = machineAssignments.get(m.id) || {};
+        // Fairly partition machines for this group based on task-specific workload demand
+        const grpRatio = 1 / Math.max(1, groups.length);
+        const groupWeights = getGroupMachineWeights(grp.tasks, grpRatio, targetMachines);
 
-          const patch: Partial<ProductionMachineAssignment> = {
-            ...existing,
-            assignedOperatorIds: undefined,
-          };
+        const partitions = partitionOrderedSequenceByWorkload({
+          items: targetMachines,
+          weights: groupWeights,
+          partitionCount: count,
+        });
 
-          grp.tasks.forEach((task) => {
-            if (task === 'doffing') patch.doffingOperatorIds = [opLabel];
-            if (task === 'loading') patch.loadingOperatorIds = [opLabel];
-            if (task === 'fractureRepairing') patch.fractureRepairingOperatorIds = [opLabel];
-            if (task === 'diesChange') patch.diesChangeOperatorIds = [opLabel];
-            if (task === 'defectRepairing') patch.defectRepairingOperatorIds = [opLabel];
+        partitions.forEach(({ partitionIndex, itemIndices }) => {
+          const opLabel = labels[partitionIndex];
+          itemIndices.forEach((idx) => {
+            const m = targetMachines[idx];
+            const existing = machineAssignments.get(m.id) || {};
+
+            const patch: Partial<ProductionMachineAssignment> = {
+              ...existing,
+              assignedOperatorIds: undefined,
+            };
+
+            grp.tasks.forEach((task) => {
+              if (task === 'doffing') patch.doffingOperatorIds = [opLabel];
+              if (task === 'loading') patch.loadingOperatorIds = [opLabel];
+              if (task === 'fractureRepairing') patch.fractureRepairingOperatorIds = [opLabel];
+              if (task === 'diesChange') patch.diesChangeOperatorIds = [opLabel];
+              if (task === 'defectRepairing') patch.defectRepairingOperatorIds = [opLabel];
+            });
+
+            machineAssignments.set(m.id, patch);
           });
-
-          machineAssignments.set(m.id, patch);
         });
       });
     } else {
@@ -781,13 +942,25 @@ export function computeAutoAssignPlan({
         const primaryOps = operatorInstances.filter((op) => op.primaryGroupId === g.grp.id);
         const totalCapacityOfPrimaries = primaryOps.reduce((sum, op) => sum + op.capacityRemaining, 0);
 
+        const grpRatio = totalDemand > 0 ? g.req / totalDemand : 1 / groups.length;
+
         if (primaryOps.length > 0 && totalCapacityOfPrimaries >= g.req) {
-          // Primary operators can absorb 100% of this group's machines
+          // Primary operators can absorb 100% of this group's machines with fair workload partitioning
           const totalOps = primaryOps.length;
-          targetMachines.forEach((m, idx) => {
-            const opIdx = Math.min(totalOps - 1, Math.floor((idx * totalOps) / totalMachines));
-            const op = primaryOps[opIdx];
-            g.grp.tasks.forEach((t) => assignTask(m.id, t, op.label));
+          const groupWeights = getGroupMachineWeights(g.grp.tasks, grpRatio, targetMachines);
+
+          const partitions = partitionOrderedSequenceByWorkload({
+            items: targetMachines,
+            weights: groupWeights,
+            partitionCount: totalOps,
+          });
+
+          partitions.forEach(({ partitionIndex, itemIndices }) => {
+            const op = primaryOps[partitionIndex];
+            itemIndices.forEach((idx) => {
+              const m = targetMachines[idx];
+              g.grp.tasks.forEach((t) => assignTask(m.id, t, op.label));
+            });
           });
 
           const loadPerOp = g.req / totalOps;
@@ -796,18 +969,27 @@ export function computeAutoAssignPlan({
             op.capacityRemaining = Math.max(0, targetWorkloadPerOperator - op.assignedLoad);
           });
         } else if (primaryOps.length > 0) {
-          // Primary operators take machines up to their full capacity
+          // Primary operators take machines up to their full capacity with fair workload partitioning
           const fraction = Math.min(1.0, totalCapacityOfPrimaries / g.req);
           const coveredMachineCount = Math.min(totalMachines, Math.max(primaryOps.length, Math.round(totalMachines * fraction)));
 
           const coveredMachines = targetMachines.slice(0, coveredMachineCount);
           const remainingMachines = targetMachines.slice(coveredMachineCount);
+          const coveredWeights = getGroupMachineWeights(g.grp.tasks, grpRatio, coveredMachines);
 
           const totalOps = primaryOps.length;
-          coveredMachines.forEach((m, idx) => {
-            const opIdx = Math.min(totalOps - 1, Math.floor((idx * totalOps) / coveredMachines.length));
-            const op = primaryOps[opIdx];
-            g.grp.tasks.forEach((t) => assignTask(m.id, t, op.label));
+          const partitions = partitionOrderedSequenceByWorkload({
+            items: coveredMachines,
+            weights: coveredWeights,
+            partitionCount: totalOps,
+          });
+
+          partitions.forEach(({ partitionIndex, itemIndices }) => {
+            const op = primaryOps[partitionIndex];
+            itemIndices.forEach((idx) => {
+              const m = coveredMachines[idx];
+              g.grp.tasks.forEach((t) => assignTask(m.id, t, op.label));
+            });
           });
 
           primaryOps.forEach((op) => {

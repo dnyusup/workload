@@ -3273,6 +3273,7 @@ function ProductionSetupEditor({
           overallBreakdown={overallActivityBreakdown}
           selectionBreakdown={selectionActivityBreakdown}
           operatorRequirementRows={operatorRequirement.rows}
+          resolvedConstructions={resolvedConstructions}
           onClose={() => setAutoAssignOpen(false)}
           onSuccess={(result) => {
             onLocalChange({

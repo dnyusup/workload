@@ -133,6 +133,45 @@ export function estimateMachineServiceMinutes(
   return totalMinutes;
 }
 
+/**
+ * Estimates nominal operator service demand (in minutes per shift) on a single machine
+ * for a specific subset of task activities (e.g. ['doffing'] or ['fractureRepairing', 'defectRepairing']).
+ * If tasks is omitted or empty, includes all tasks.
+ */
+export function estimateMachineTaskServiceMinutes(
+  construction: ResolvedConstruction,
+  shiftTime: number,
+  rpc: number,
+  tasks?: Set<string> | string[],
+): number {
+  const runtimePerSpool = finitePositive(construction.runtimePerSpool);
+  if (!runtimePerSpool || shiftTime <= 0) return 0;
+  const expectedSpools = shiftTime / runtimePerSpool;
+  if (expectedSpools <= 0) return 0;
+
+  const taskFilter = tasks ? (Array.isArray(tasks) ? new Set(tasks) : tasks) : null;
+
+  let totalMinutes = 0;
+  construction.activities.forEach((activity) => {
+    if (GLOBAL_EVENT_ACTIVITIES.has(activity.key)) return;
+    const family = activityFamily(activity.key);
+    if (!family) return;
+    if (taskFilter && !taskFilter.has(family)) return;
+
+    const cycle = forecastCycleLength(activity, construction.activities, expectedSpools);
+    if (!Number.isFinite(cycle) || cycle <= 0) return;
+    const expectedOccurrences = expectedSpools / cycle;
+    const quantityBased = family === 'diesChange';
+    const eventCount = !quantityBased
+      ? expectedOccurrences
+      : expectedOccurrences / AVERAGE_DIES_PER_CHANGE_EVENT;
+    const timeWithRpc = applyRpc(Math.max(0, activity.timeMinutes), rpc);
+    totalMinutes += eventCount * timeWithRpc;
+  });
+
+  return totalMinutes;
+}
+
 /** Calculates expected operator handling before a run using the same event ownership rules as the
  * production engine. Machine queue/waiting is deliberately not added to operator minutes: it is
  * machine downtime and reduces later production events rather than occupying an operator. The

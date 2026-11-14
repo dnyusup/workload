@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ProductionSetup, ProductionOperator, ProductionMachineAssignment } from '../../types';
 import type { TheoreticalActivityBreakdown, TheoreticalOperatorRow } from '../../lib/theoreticalOperators';
+import type { ResolvedConstruction } from '../../lib/productionConstructionResolver';
 import {
   type AutoAssignMode,
   type SplitPresetId,
@@ -20,6 +21,7 @@ interface AutoAssignOperatorsDialogProps {
   overallBreakdown?: TheoreticalActivityBreakdown | null;
   selectionBreakdown?: TheoreticalActivityBreakdown | null;
   operatorRequirementRows?: TheoreticalOperatorRow[];
+  resolvedConstructions?: Map<string, ResolvedConstruction> | null;
   onClose: () => void;
   onSuccess: (result: {
     newOperators: ProductionOperator[];
@@ -34,6 +36,7 @@ export function AutoAssignOperatorsDialog({
   overallBreakdown,
   selectionBreakdown,
   operatorRequirementRows,
+  resolvedConstructions,
   onClose,
   onSuccess,
 }: AutoAssignOperatorsDialogProps) {
@@ -173,6 +176,7 @@ export function AutoAssignOperatorsDialog({
           targetMachineIds: currentTargetMachineIds,
           onlyPlannedMachines: onlyPlanned,
           operatorRequirementRows,
+          resolvedConstructions: resolvedConstructions ?? undefined,
         },
         activityBreakdown: activeBreakdown,
       });
@@ -191,6 +195,7 @@ export function AutoAssignOperatorsDialog({
     currentTargetMachineIds,
     onlyPlanned,
     operatorRequirementRows,
+    resolvedConstructions,
     activeBreakdown,
   ]);
 
@@ -227,6 +232,7 @@ export function AutoAssignOperatorsDialog({
           targetMachineIds: currentTargetMachineIds,
           onlyPlannedMachines: onlyPlanned,
           operatorRequirementRows,
+          resolvedConstructions: resolvedConstructions ?? undefined,
         },
         activityBreakdown: activeBreakdown,
         onProgress: (phase, done, total) => {
