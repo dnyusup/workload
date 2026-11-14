@@ -578,8 +578,10 @@ export function ProductionSimulationPage({
   const [setupFrequencies, setSetupFrequencies] = useState<SetupFrequencyItem[]>([]);
   const [showFrequencyDialog, setShowFrequencyDialog] = useState(false);
   const [syncSummaryChanges, setSyncSummaryChanges] = useState<FrequencyChangeItem[] | null>(null);
-
-  const setupLoadedId = useRef<string | null>(null);
+  const [frequencySyncProgress, setFrequencySyncProgress] = useState<{
+    title: string;
+    message?: string;
+  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -645,7 +647,7 @@ export function ProductionSimulationPage({
     selectedPoCrEndDate,
   ]);
 
-  // Load and auto-sync WL_productionsetupfrequency for the active setup
+  // Load initial WL_productionsetupfrequency on setup selection (and silently populate missing assigned rows without popup)
   useEffect(() => {
     let cancelled = false;
     if (!selectedSetupIdForFreq) {
@@ -657,31 +659,24 @@ export function ProductionSimulationPage({
       };
     }
 
-    const isInitialSetupLoad = setupLoadedId.current !== selectedSetupIdForFreq;
-
     fetchSetupFrequencies(selectedSetupIdForFreq)
       .then(async (freqs) => {
         if (cancelled) return;
         if (selectedSetup && selectedSetup.assignments.some((a) => a.constructionDetailId) && products.length > 0) {
-          const { items: synced, changes } = await syncSetupFrequenciesForAssignments({
+          const { items: synced } = await syncSetupFrequenciesForAssignments({
             setupId: selectedSetupIdForFreq,
             assignments: selectedSetup.assignments,
             products,
             frequencyMode: selectedFrequencyMode,
             frequencyCatalog: freqCatalog,
             existingItems: freqs,
-            updateExisting: true,
+            updateExisting: false,
           });
           if (!cancelled) {
             setSetupFrequencies(synced);
-            if (!isInitialSetupLoad && changes.length > 0) {
-              setSyncSummaryChanges(changes);
-            }
-            setupLoadedId.current = selectedSetupIdForFreq;
           }
         } else {
           setSetupFrequencies(freqs);
-          setupLoadedId.current = selectedSetupIdForFreq;
         }
       })
       .catch((err) => console.warn('WL_productionsetupfrequency load failed:', err));
@@ -689,26 +684,106 @@ export function ProductionSimulationPage({
     return () => {
       cancelled = true;
     };
-  }, [
-    selectedSetupIdForFreq,
-    selectedSetup,
-    products,
-    selectedFrequencyMode,
-    selectedFrequencyStartDate,
-    selectedFrequencyEndDate,
-    freqCatalog,
-  ]);
+    // Only run on setup switch, products load, or mode switch — not on every freqCatalog update or setup reference mutation
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSetupIdForFreq, products, selectedFrequencyMode]);
 
   /** Optimistic local-state patch for the currently loaded setup — callers that already wrote
    * their own change to Dataverse (add/remove operator, bulk assign, CSV import, header edits)
    * use this just to keep the in-memory copy in sync, not to trigger any persistence itself. */
-  const patchLocalSetup = (patch: Partial<ProductionSetup>) => {
+  const patchLocalSetup = useCallback((patch: Partial<ProductionSetup>) => {
     const updatedAt = Date.now();
     setSelectedSetup((prev) => (prev ? { ...prev, ...patch, updatedAt } : prev));
     if (selectedId) {
       setSummaries((prev) => prev.map((summary) => (summary.id === selectedId ? { ...summary, updatedAt } : summary)));
     }
-  };
+  }, [selectedId]);
+
+  /** Handles frequency configuration changes (mode switch or date range change).
+   * Displays a full-screen blocking overlay, fetches frequency data first from MES Power BI,
+   * updates Dataverse setup frequencies, and displays a changes summary dialog if any rates changed. */
+  const handleFrequencyConfigChange = useCallback(
+    async (patch: {
+      frequencyMode?: FrequencyMode;
+      frequencyStartDate?: string;
+      frequencyEndDate?: string;
+    }) => {
+      if (!selectedSetup || isSharedLinkMode || !canEditSetup(selectedSetup, user)) return;
+
+      const nextMode = patch.frequencyMode ?? selectedSetup.frequencyMode ?? 'manual';
+      let nextStartDate = patch.frequencyStartDate !== undefined ? patch.frequencyStartDate : selectedSetup.frequencyStartDate;
+      let nextEndDate = patch.frequencyEndDate !== undefined ? patch.frequencyEndDate : selectedSetup.frequencyEndDate;
+
+      if (nextMode === 'historical' && (!nextStartDate || !nextEndDate)) {
+        const defaults = await loadDefaultValuesOrBuiltIn();
+        const defaultRange = computeFrequencyDateRange(
+          defaults.frequencyDateRangeType,
+          defaults.frequencyStartDate,
+          defaults.frequencyEndDate,
+        );
+        nextStartDate = nextStartDate || defaultRange.startDate;
+        nextEndDate = nextEndDate || defaultRange.endDate;
+      }
+
+      setFrequencySyncProgress({
+        title: nextMode === 'historical' ? 'Syncing Historical Frequency…' : 'Switching to Manual Frequency…',
+        message:
+          nextMode === 'historical'
+            ? `Pulling MES Power BI events for ${nextStartDate} to ${nextEndDate}…`
+            : 'Applying standard manual frequency rates…',
+      });
+
+      // Update header in local state & persist to Dataverse
+      const headerPatch: Partial<ProductionSetup> = {
+        frequencyMode: nextMode,
+        frequencyStartDate: nextStartDate,
+        frequencyEndDate: nextEndDate,
+      };
+      patchLocalSetup(headerPatch);
+      updateProductionSetupHeader(selectedSetup.id, headerPatch).catch((err) =>
+        console.warn('Failed to update setup header for frequency change:', err),
+      );
+
+      let targetCatalog = freqCatalog;
+      if (nextMode === 'historical') {
+        try {
+          const { catalog } = await loadFrequencyCatalog({
+            startDate: nextStartDate,
+            endDate: nextEndDate,
+            forceRefresh: true,
+          });
+          targetCatalog = catalog;
+          setFreqCatalog(catalog);
+        } catch (err) {
+          console.warn('Failed to load historical frequency catalog:', err);
+        }
+      }
+
+      try {
+        const currentFrequencies = await fetchSetupFrequencies(selectedSetup.id);
+        if (selectedSetup.assignments.some((a) => a.constructionDetailId) && products.length > 0) {
+          const { items: synced, changes } = await syncSetupFrequenciesForAssignments({
+            setupId: selectedSetup.id,
+            assignments: selectedSetup.assignments,
+            products,
+            frequencyMode: nextMode,
+            frequencyCatalog: targetCatalog,
+            existingItems: currentFrequencies,
+            updateExisting: true,
+          });
+          setSetupFrequencies(synced);
+          if (changes.length > 0) {
+            setSyncSummaryChanges(changes);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to sync setup frequencies on config change:', err);
+      } finally {
+        setFrequencySyncProgress(null);
+      }
+    },
+    [selectedSetup, isSharedLinkMode, user, patchLocalSetup, freqCatalog, products],
+  );
 
   // Theoretical Operator Required: Optimize's # Assigned Machines per Construction Detail in use,
   // worked out in the background and kept while the page is open (switching setups reuses them).
@@ -725,6 +800,7 @@ export function ProductionSimulationPage({
     operatorSettings,
     freqCatalog,
     rejectShortCatalog,
+    setupFrequencies,
   );
 
   const [runState, setRunState] = useState<{ setup: ProductionSetup; resolved: Map<string, ResolvedConstruction>; errors: string[] } | null>(null);
@@ -1116,6 +1192,8 @@ export function ProductionSimulationPage({
             }
             onShare={!isSharedLinkMode && canShare(selectedSetup) ? () => setSharingSetup(selectedSetup) : undefined}
             onOpenFrequencyDialog={() => setShowFrequencyDialog(true)}
+            onFrequencyConfigChange={handleFrequencyConfigChange}
+            isFrequencySyncing={Boolean(frequencySyncProgress)}
             resolving={resolving}
             plannedUtilization={plannedResolution.utilization}
             plannedUtilizationErrors={plannedResolution.errors}
@@ -1190,6 +1268,13 @@ export function ProductionSimulationPage({
         />
       )}
 
+      {frequencySyncProgress && (
+        <BlockingProgressOverlay
+          title={frequencySyncProgress.title}
+          message={frequencySyncProgress.message}
+        />
+      )}
+
       {duplicatingId && duplicateProgress && (
         <BlockingProgressOverlay
           title="Duplicating Production Setup…"
@@ -1221,6 +1306,8 @@ function ProductionSetupEditor({
   onDuplicate,
   onShare,
   onOpenFrequencyDialog,
+  onFrequencyConfigChange,
+  isFrequencySyncing = false,
   resolving,
   plannedUtilization,
   plannedUtilizationErrors,
@@ -1239,6 +1326,12 @@ function ProductionSetupEditor({
   onDuplicate?: () => void;
   onShare?: () => void;
   onOpenFrequencyDialog?: () => void;
+  onFrequencyConfigChange?: (patch: {
+    frequencyMode?: FrequencyMode;
+    frequencyStartDate?: string;
+    frequencyEndDate?: string;
+  }) => Promise<void>;
+  isFrequencySyncing?: boolean;
   resolving: boolean;
   plannedUtilization: PlannedUtilization | null;
   plannedUtilizationErrors: string[];
@@ -2524,18 +2617,22 @@ function ProductionSetupEditor({
             <SelectInput
               value={setup.frequencyMode ?? 'manual'}
               options={FREQUENCY_MODE_OPTIONS}
-              disabled={isReadOnly}
+              disabled={isReadOnly || isFrequencySyncing}
               onChange={(v) => {
                 const nextMode = v as FrequencyMode;
-                if (nextMode === 'historical' && (!setup.frequencyStartDate || !setup.frequencyEndDate)) {
-                  const defaultRange = computeFrequencyDateRange();
-                  onHeaderChange({
-                    frequencyMode: nextMode,
-                    frequencyStartDate: setup.frequencyStartDate || defaultRange.startDate,
-                    frequencyEndDate: setup.frequencyEndDate || defaultRange.endDate,
-                  });
+                if (onFrequencyConfigChange) {
+                  void onFrequencyConfigChange({ frequencyMode: nextMode });
                 } else {
-                  onHeaderChange({ frequencyMode: nextMode });
+                  if (nextMode === 'historical' && (!setup.frequencyStartDate || !setup.frequencyEndDate)) {
+                    const defaultRange = computeFrequencyDateRange();
+                    onHeaderChange({
+                      frequencyMode: nextMode,
+                      frequencyStartDate: setup.frequencyStartDate || defaultRange.startDate,
+                      frequencyEndDate: setup.frequencyEndDate || defaultRange.endDate,
+                    });
+                  } else {
+                    onHeaderChange({ frequencyMode: nextMode });
+                  }
                 }
               }}
             />
@@ -2545,8 +2642,19 @@ function ProductionSetupEditor({
               <Field label="Frequency Start Date" tooltip="Start date for actual Power BI events filter (format: YYYY-MM-DD)">
                 <DateInput
                   value={setup.frequencyStartDate ?? ''}
-                  disabled={isReadOnly}
-                  onChange={(v) => onHeaderChange({ frequencyStartDate: v })}
+                  disabled={isReadOnly || isFrequencySyncing}
+                  onChange={(v) => {
+                    if (v === setup.frequencyStartDate) return;
+                    if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+                      onHeaderChange({ frequencyStartDate: v });
+                      return;
+                    }
+                    if (onFrequencyConfigChange) {
+                      void onFrequencyConfigChange({ frequencyStartDate: v });
+                    } else {
+                      onHeaderChange({ frequencyStartDate: v });
+                    }
+                  }}
                 />
               </Field>
               <Field
@@ -2559,7 +2667,7 @@ function ProductionSetupEditor({
                       className="field-reset-btn"
                       title="Reset date range to default from Settings"
                       aria-label="Reset date range to default from Settings"
-                      disabled={isReadOnly}
+                      disabled={isReadOnly || isFrequencySyncing}
                       onClick={async (e) => {
                         e.preventDefault();
                         const defaults = await loadDefaultValuesOrBuiltIn();
@@ -2568,10 +2676,17 @@ function ProductionSetupEditor({
                           defaults.frequencyStartDate,
                           defaults.frequencyEndDate,
                         );
-                        onHeaderChange({
-                          frequencyStartDate: range.startDate,
-                          frequencyEndDate: range.endDate,
-                        });
+                        if (onFrequencyConfigChange) {
+                          void onFrequencyConfigChange({
+                            frequencyStartDate: range.startDate,
+                            frequencyEndDate: range.endDate,
+                          });
+                        } else {
+                          onHeaderChange({
+                            frequencyStartDate: range.startDate,
+                            frequencyEndDate: range.endDate,
+                          });
+                        }
                       }}
                     >
                       <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round">
@@ -2585,6 +2700,7 @@ function ProductionSetupEditor({
                         className="field-reset-btn"
                         title="View & Adjust Setup Frequencies (WL_productionsetupfrequency)"
                         aria-label="View & Adjust Setup Frequencies"
+                        disabled={isFrequencySyncing}
                         onClick={(e) => {
                           e.preventDefault();
                           onOpenFrequencyDialog();
@@ -2604,8 +2720,19 @@ function ProductionSetupEditor({
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <DateInput
                       value={setup.frequencyEndDate ?? ''}
-                      disabled={isReadOnly}
-                      onChange={(v) => onHeaderChange({ frequencyEndDate: v })}
+                      disabled={isReadOnly || isFrequencySyncing}
+                      onChange={(v) => {
+                        if (v === setup.frequencyEndDate) return;
+                        if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+                          onHeaderChange({ frequencyEndDate: v });
+                          return;
+                        }
+                        if (onFrequencyConfigChange) {
+                          void onFrequencyConfigChange({ frequencyEndDate: v });
+                        } else {
+                          onHeaderChange({ frequencyEndDate: v });
+                        }
+                      }}
                     />
                   </div>
                   {onOpenFrequencyDialog && (
@@ -2622,11 +2749,12 @@ function ProductionSetupEditor({
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        cursor: 'pointer',
+                        cursor: isFrequencySyncing ? 'not-allowed' : 'pointer',
                         flexShrink: 0,
                       }}
                       title="View & Adjust Setup Frequencies (WL_productionsetupfrequency)"
                       aria-label="View & Adjust Setup Frequencies"
+                      disabled={isFrequencySyncing}
                       onClick={onOpenFrequencyDialog}
                     >
                       <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none">

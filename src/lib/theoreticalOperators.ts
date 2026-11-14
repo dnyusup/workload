@@ -17,6 +17,8 @@ import {
   type ProductionActivityFamily,
 } from './productionActivityRouting';
 import type { FrequencyRemark, ResolvedConstruction } from './productionConstructionResolver';
+import { syncAutoActivityValues } from './calculations';
+import { extractPureConstruction, type SetupFrequencyItem } from './productionSetupFrequenciesStore';
 
 /** What the Work Load Simulator's setup for a Construction Detail is built from. */
 export interface OptimizeInputs {
@@ -118,6 +120,7 @@ export function optimizeConfigFor(
   settings: SetupOperatorSettings,
   frequencyCatalog?: HistoricalFrequencyMap | null,
   rejectShortCatalog?: HistoricalRejectShortMap | null,
+  setupFrequencies?: SetupFrequencyItem[] | null,
 ): { config: AppConfig; hasDefaultLayout: boolean } {
   const area = (product.mpp_area ?? '').trim().toUpperCase();
   const layout = inputs.layoutByArea.get(area) ?? null;
@@ -135,6 +138,27 @@ export function optimizeConfigFor(
     poLengthCrSource: settings.poLengthCrSource,
     rejectShortCatalog,
   });
+
+  if (setupFrequencies && setupFrequencies.length > 0) {
+    const pureConstr = extractPureConstruction(product);
+    const mach = (product.mpp_machinecode ?? '').trim().toUpperCase();
+    const layLength = String(product.mpp_laylength ?? '').trim();
+    const tensile = String(product.mpp_tensilegroup ?? '').trim().toUpperCase();
+    const matched = setupFrequencies.find(
+      (sf) =>
+        (sf.mach.toUpperCase() === mach || !sf.mach || !mach) &&
+        (sf.construction === pureConstr || sf.construction === product.mpp_constructioncode) &&
+        (String(sf.layLength).trim() === layLength || !sf.layLength) &&
+        (sf.tensile.toUpperCase() === tensile || !sf.tensile || !tensile),
+    );
+    if (matched) {
+      built.spec.fracturePerTon = matched.frt;
+      built.spec.defectsPerTon = matched.deft;
+      built.spec.diesPerTon = matched.diest;
+      built.activities = syncAutoActivityValues(built.activities, built.spec);
+    }
+  }
+
   const own = productOperatorSettings(product);
   const config: AppConfig = {
     ...built,

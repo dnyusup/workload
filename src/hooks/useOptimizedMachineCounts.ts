@@ -10,6 +10,7 @@ import {
 } from '../lib/theoreticalOperators';
 import type { HistoricalFrequencyMap } from '../lib/frequencyCatalog';
 import type { HistoricalRejectShortMap } from '../lib/rejectShortCatalog';
+import type { SetupFrequencyItem } from '../lib/productionSetupFrequenciesStore';
 
 export interface OptimizedCount {
   machinesPerOperator: number;
@@ -72,6 +73,7 @@ export function useOptimizedMachineCounts(
   settings: SetupOperatorSettings | null,
   frequencyCatalog?: HistoricalFrequencyMap | null,
   rejectShortCatalog?: HistoricalRejectShortMap | null,
+  setupFrequencies?: SetupFrequencyItem[] | null,
 ) {
   /** Keyed `<settings>
 <productId>`. */
@@ -105,14 +107,19 @@ export function useOptimizedMachineCounts(
   const idsKey = [...new Set(productIds)].sort().join('|');
   const freqCatalogKey = settings?.frequencyMode === 'historical' ? (frequencyCatalog ? 'loaded' : 'pending') : '';
   const crCatalogKey = settings?.poLengthCrSource === 'historical' ? (rejectShortCatalog ? 'loaded' : 'pending') : '';
-  const settingsKey = settings ? `${JSON.stringify(settings)}:${freqCatalogKey}|${crCatalogKey}` : '';
+  const setupFreqKey = (setupFrequencies ?? [])
+    .map((f) => `${f.mach}:${f.construction}:${f.frt}:${f.deft}:${f.diest}:${f.source}`)
+    .join(';');
+  const settingsKey = settings ? `${JSON.stringify(settings)}:${freqCatalogKey}|${crCatalogKey}|${setupFreqKey}` : '';
   const settingsRef = useRef(settings);
   const frequencyCatalogRef = useRef(frequencyCatalog);
   const rejectShortCatalogRef = useRef(rejectShortCatalog);
+  const setupFrequenciesRef = useRef(setupFrequencies);
   useEffect(() => {
     settingsRef.current = settings;
     frequencyCatalogRef.current = frequencyCatalog;
     rejectShortCatalogRef.current = rejectShortCatalog;
+    setupFrequenciesRef.current = setupFrequencies;
   });
   useEffect(() => {
     const runner = runnerRef.current;
@@ -136,6 +143,7 @@ ${id}`;
           currentSettings,
           frequencyCatalogRef.current,
           rejectShortCatalogRef.current,
+          setupFrequenciesRef.current,
         );
         const machinesPerOperator = await runner.run(config);
         if (!alive) return;
@@ -150,7 +158,7 @@ ${id}`;
         if (!finished.has(id)) requestedIds.delete(keyOf(id));
       });
     };
-  }, [idsKey, settingsKey, inputs, products, frequencyCatalog, rejectShortCatalog]);
+  }, [idsKey, settingsKey, inputs, products, frequencyCatalog, rejectShortCatalog, setupFrequencies]);
 
   /** This settings' counts, by Construction Detail id. */
   const counts = useMemo(() => {

@@ -1,14 +1,16 @@
 import { useState, useMemo, useEffect } from 'react';
 import type { Mpp_wl_productses } from '../../generated/models/Mpp_wl_productsesModel';
 import type { FrequencyMode, ProductionMachineAssignment } from '../../types';
-import type { HistoricalFrequencyMap } from '../../lib/frequencyCatalog';
+import { lookupHistoricalFrequency, type HistoricalFrequencyMap } from '../../lib/frequencyCatalog';
 import {
   type SetupFrequencyItem,
   type FrequencyChangeItem,
   updateSetupFrequencyItem,
   syncSetupFrequenciesForAssignments,
   deleteSetupFrequencyItem,
+  extractPureConstruction,
 } from '../../lib/productionSetupFrequenciesStore';
+import { Mpp_wl_productionsetupfrequenciesService } from '../../generated/services/Mpp_wl_productionsetupfrequenciesService';
 import { Button } from '../ui/Button';
 
 export interface ProductionSetupFrequencyDialogProps {
@@ -172,6 +174,71 @@ export function ProductionSetupFrequencyDialog({
       });
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const [resettingId, setResettingId] = useState<string | null>(null);
+
+  const handleResetAdjustment = async (item: SetupFrequencyItem) => {
+    if (isReadOnly || resettingId) return;
+    setResettingId(item.id);
+    setFeedback(null);
+    try {
+      const product = products.find(
+        (p) =>
+          extractPureConstruction(p) === item.construction ||
+          p.mpp_constructioncode === item.construction,
+      );
+      const manualFr = product ? Number(product.mpp_fractureperton ?? 0) : 0;
+      const manualDef = product ? Number(product.mpp_defectston ?? 0) : 0;
+      const manualDies = product ? Number(product.mpp_dieston ?? 0) : 0;
+
+      let targetFr = manualFr;
+      let targetDef = manualDef;
+      let targetDies = manualDies;
+      let targetSource: SetupFrequencyItem['source'] = 'manual';
+
+      if (frequencyMode === 'historical' && frequencyCatalog) {
+        const matched = lookupHistoricalFrequency(
+          frequencyCatalog,
+          item.mach,
+          item.construction,
+          item.layLength,
+          item.tensile,
+        );
+        if (matched) {
+          targetFr = matched.fracturePerTon ?? manualFr;
+          targetDef = matched.defectPerTon ?? manualDef;
+          targetDies = matched.diesPerTon ?? manualDies;
+          targetSource = 'historical';
+        } else {
+          targetSource = 'fallback manual';
+        }
+      }
+
+      const res = await Mpp_wl_productionsetupfrequenciesService.update(item.id, {
+        mpp_frt: targetFr,
+        mpp_deft: targetDef,
+        mpp_diest: targetDies,
+        mpp_frequencysource: targetSource,
+      });
+
+      if (res.success) {
+        const updated = localItems.map((i) =>
+          i.id === item.id
+            ? { ...i, frt: targetFr, deft: targetDef, diest: targetDies, source: targetSource, isEdited: false }
+            : i,
+        );
+        setLocalItems(updated);
+        onItemsChange(updated);
+        setFeedback({ message: `Reset "${item.construction}" back to ${targetSource} (Fr/T: ${targetFr}, Def/T: ${targetDef}, Dies/T: ${targetDies}).`, type: 'success' });
+      } else {
+        setFeedback({ message: `Failed to reset "${item.construction}".`, type: 'error' });
+      }
+    } catch (err) {
+      setFeedback({ message: `Reset failed: ${err instanceof Error ? err.message : 'Unknown error'}`, type: 'error' });
+    } finally {
+      setResettingId(null);
     }
   };
 
@@ -413,7 +480,23 @@ export function ProductionSetupFrequencyDialog({
                             {item.source === 'manual' && 'Manual'}
                           </span>
                         </td>
-                        <td className="text-center">
+                        <td className="text-center" style={{ whiteSpace: 'nowrap' }}>
+                          {item.source === 'adjustment' && (
+                            <button
+                              type="button"
+                              className="field-reset-btn setup-freq-del-btn"
+                              style={{ marginRight: 6, color: '#a855f7' }}
+                              title="Reset adjustment back to source (Historical/Manual)"
+                              aria-label="Reset to source"
+                              disabled={isReadOnly || resettingId === item.id}
+                              onClick={() => handleResetAdjustment(item)}
+                            >
+                              <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none">
+                                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                                <path d="M3 3v5h5" />
+                              </svg>
+                            </button>
+                          )}
                           <button
                             type="button"
                             className="field-reset-btn setup-freq-del-btn"
