@@ -547,7 +547,10 @@ export function ProductionRunView({
     const { vb: startVb, pan: startPan } = panStartRef.current;
     setPan({ x: startPan.x + (vb.x - startVb.x), y: startPan.y + (vb.y - startVb.y) });
   };
-  const handleCanvasPointerUp = () => {
+  const handleCanvasPointerUp = (e: React.PointerEvent<SVGSVGElement>) => {
+    if ((e.currentTarget as Element).hasPointerCapture?.(e.pointerId)) {
+      (e.currentTarget as Element).releasePointerCapture(e.pointerId);
+    }
     panStartRef.current = null;
     setPanning(false);
   };
@@ -795,7 +798,7 @@ export function ProductionRunView({
   );
   const fcUtilPct = (minutes: number) => (utilForecast.available > 0 ? (minutes / utilForecast.available) * 100 : 0);
   const fcUtilText = (minutes: number) => `${fmtTime(minutes)} (${fmt(fcUtilPct(minutes))}%)`;
-  const fcOccMinutes = utilForecast.walking + utilForecast.service + utilForecast.rpc;
+  const fcOccMinutes = utilForecast.walking + utilForecast.service;
   const fcOccPercent = fcUtilPct(fcOccMinutes);
   const elapsedManHours = utilSummary.elapsed / 60;
   const runningMhptTotal = runningTimeTonage > 0 ? elapsedManHours / runningTimeTonage : 0;
@@ -1158,6 +1161,7 @@ export function ProductionRunView({
               onPointerDown={handleCanvasPointerDown}
               onPointerMove={handleCanvasPointerMove}
               onPointerUp={handleCanvasPointerUp}
+              onPointerCancel={handleCanvasPointerUp}
             >
               <defs>
                 {/* Glow for legend-hovered machines (.machine-highlighted). */}

@@ -2,7 +2,6 @@ import { useMemo, useRef, useState, type ReactNode } from 'react';
 import type { AppConfig, DowntimeReason, SimulationState } from '../../types';
 import { deriveMachineSpec } from '../../lib/calculations';
 import { calculateSingleOperatorForecast, forecastOutputSummary } from '../../lib/singleOperatorUtilization';
-import { isFinishProductSpoolType } from '../../lib/productType';
 import { Card } from '../ui/Card';
 import { useFillToWindowBottom } from '../../hooks/useFillToWindowBottom';
 
@@ -160,15 +159,9 @@ export function Dashboard({
   const runningTimeDiesPerTon = runningTimeTonage > 0 ? metrics.diesChanged / runningTimeTonage : 0;
   const runningTimeDefectPerTon = runningTimeTonage > 0 ? totalDefectRepairingCount / runningTimeTonage : 0;
 
-  const spoolType = config.selectedConstructionDetail ? config.selectedConstructionDetail.split('-')[4] : undefined;
-  const isFp = spoolType ? isFinishProductSpoolType(spoolType) : true;
-  const runningTimeTonageFp = isFp ? runningTimeTonage : 0;
-  const fcTonageFp = isFp ? fc.tonage : 0;
   const elapsedManHours = workedElapsed / 60;
-  const runningMhptTotal = runningTimeTonage > 0 ? elapsedManHours / runningTimeTonage : 0;
-  const runningMhptFp = runningTimeTonageFp > 0 ? elapsedManHours / runningTimeTonageFp : 0;
-  const fcMhptTotal = fc.manHourPerTon;
-  const fcMhptFp = fcTonageFp > 0 ? shiftHours / fcTonageFp : 0;
+  const runningMhpt = runningTimeTonage > 0 ? elapsedManHours / runningTimeTonage : 0;
+  const fcMhpt = fc.manHourPerTon;
   const fcBusyMin = forecast.forecastServiceMinutes + forecast.forecastWalkingMinutes;
 
   const rpcMin = Object.entries(metrics.servicingByActivity)
@@ -404,7 +397,7 @@ export function Dashboard({
         className="dashboard-oee-card"
         subtitle={`Availability across assigned machines (Performance & Quality assumed at 100%) · ${FORECAST_NOTE}`}
       >
-        <div className="oee-gauges-grid">
+        <div className="oee-gauges-grid three-items">
           <div className="metric-gauge-item" title="Overall Equipment Effectiveness: Availability">
             <div className="metric-gauge-circle gauge-oee">
               <span className="metric-gauge-val">{fmt(oee)}%</span>
@@ -412,18 +405,11 @@ export function Dashboard({
               <span className="metric-gauge-sub" title="Forecast for the full shift">~{fmt(fc.downtime.availabilityPercent)}%</span>
             </div>
           </div>
-          <div className="metric-gauge-item" title="Manhour per ton Finish Product (SpoolType starts with BS)">
-            <div className="metric-gauge-circle gauge-mhpt-fp">
-              <span className="metric-gauge-val">{fmt(runningMhptFp)}</span>
-              <span className="metric-gauge-lbl">MHPT FP</span>
-              <span className="metric-gauge-sub" title="Forecast for the full shift">~{fmt(fcMhptFp)}</span>
-            </div>
-          </div>
-          <div className="metric-gauge-item" title="Manhour per ton Total (FP + SFP)">
-            <div className="metric-gauge-circle gauge-mhpt-total">
-              <span className="metric-gauge-val">{fmt(runningMhptTotal)}</span>
-              <span className="metric-gauge-lbl">MHPT Total</span>
-              <span className="metric-gauge-sub" title="Forecast for the full shift">~{fmt(fcMhptTotal)}</span>
+          <div className="metric-gauge-item" title="Manhour per ton: Elapsed manhours ÷ Running tonnage">
+            <div className="metric-gauge-circle gauge-mhpt">
+              <span className="metric-gauge-val">{fmt(runningMhpt)}</span>
+              <span className="metric-gauge-lbl">MHPT</span>
+              <span className="metric-gauge-sub" title="Forecast for the full shift">~{fmt(fcMhpt)}</span>
             </div>
           </div>
           <div className="metric-gauge-item" title="Man Occupancy: Handling Time ÷ Available Manhour">

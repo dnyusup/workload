@@ -120,6 +120,7 @@ export function ShiftTimeCard({
       <div
         ref={barRef}
         className={`progress-bar${onSeek ? ' scrubbable' : ''}${isDragging ? ' dragging' : ''}`}
+        style={{ position: 'relative' }}
         tabIndex={onSeek ? 0 : undefined}
         role={onSeek ? 'slider' : undefined}
         aria-label="Shift timeline slider"

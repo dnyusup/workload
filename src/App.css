@@ -2153,6 +2153,8 @@
 }
 
 .controls-bar {
+  position: relative;
+  z-index: 5;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -2647,6 +2649,7 @@
 }
 
 .progress-bar {
+  position: relative;
   height: 8px;
   background: #0b1220;
   border-radius: 999px;
@@ -2935,6 +2938,13 @@
   justify-items: center;
 }
 
+.oee-gauges-grid.three-items {
+  grid-template-columns: repeat(3, 1fr);
+  max-width: 320px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
 .metric-gauge-item {
   display: flex;
   flex-direction: column;
@@ -2966,6 +2976,10 @@
 
 .metric-gauge-circle.gauge-oee {
   background: conic-gradient(#38bdf8 0deg, #6366f1 360deg);
+}
+
+.metric-gauge-circle.gauge-mhpt {
+  background: conic-gradient(#10b981 0deg, #06b6d4 180deg, #10b981 360deg);
 }
 
 .metric-gauge-circle.gauge-mhpt-fp {
