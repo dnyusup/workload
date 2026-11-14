@@ -1394,6 +1394,14 @@ function ProductionSetupEditor({
     setDraftFreqEndDate(setup.frequencyEndDate ?? '');
   }
 
+  const debounceTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) window.clearTimeout(debounceTimerRef.current);
+    };
+  }, []);
+
   const hasFreqDateChanges = Boolean(
     (draftFreqStartDate !== (setup.frequencyStartDate ?? '') ||
       draftFreqEndDate !== (setup.frequencyEndDate ?? '')) &&
@@ -1401,12 +1409,80 @@ function ProductionSetupEditor({
       /^\d{4}-\d{2}-\d{2}$/.test(draftFreqEndDate),
   );
 
-  const handleApplyFrequencyDates = () => {
-    if (!hasFreqDateChanges || !onFrequencyConfigChange) return;
+  const applyFrequencyDates = (targetStart: string, targetEnd: string) => {
+    if (debounceTimerRef.current) window.clearTimeout(debounceTimerRef.current);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(targetStart) || !/^\d{4}-\d{2}-\d{2}$/.test(targetEnd)) return;
+    if (targetStart === (setup.frequencyStartDate ?? '') && targetEnd === (setup.frequencyEndDate ?? '')) return;
+    if (!onFrequencyConfigChange) return;
+
     void onFrequencyConfigChange({
-      frequencyStartDate: draftFreqStartDate,
-      frequencyEndDate: draftFreqEndDate,
+      frequencyStartDate: targetStart,
+      frequencyEndDate: targetEnd,
     });
+  };
+
+  const handleApplyFrequencyDates = () => {
+    applyFrequencyDates(draftFreqStartDate, draftFreqEndDate);
+  };
+
+  const handleStartDateChange = (val: string) => {
+    if (debounceTimerRef.current) window.clearTimeout(debounceTimerRef.current);
+    setDraftFreqStartDate(val);
+    onLocalChange({ frequencyStartDate: val });
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(val)) return;
+
+    let targetEnd = draftFreqEndDate;
+    if (targetEnd && val > targetEnd) {
+      targetEnd = val;
+      setDraftFreqEndDate(val);
+      onLocalChange({ frequencyEndDate: val });
+    }
+
+    const prevDay = (setup.frequencyStartDate ?? '').slice(8, 10);
+    const newDay = val.slice(8, 10);
+    const prevMonth = (setup.frequencyStartDate ?? '').slice(5, 7);
+    const newMonth = val.slice(5, 7);
+
+    const isMonthNav = Boolean(prevMonth && newMonth && newMonth !== prevMonth && newDay === prevDay);
+
+    if (isMonthNav) {
+      debounceTimerRef.current = window.setTimeout(() => {
+        applyFrequencyDates(val, targetEnd);
+      }, 1200);
+    } else {
+      applyFrequencyDates(val, targetEnd);
+    }
+  };
+
+  const handleEndDateChange = (val: string) => {
+    if (debounceTimerRef.current) window.clearTimeout(debounceTimerRef.current);
+    setDraftFreqEndDate(val);
+    onLocalChange({ frequencyEndDate: val });
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(val)) return;
+
+    let targetStart = draftFreqStartDate;
+    if (targetStart && targetStart > val) {
+      targetStart = val;
+      setDraftFreqStartDate(val);
+      onLocalChange({ frequencyStartDate: val });
+    }
+
+    const prevDay = (setup.frequencyEndDate ?? '').slice(8, 10);
+    const newDay = val.slice(8, 10);
+    const prevMonth = (setup.frequencyEndDate ?? '').slice(5, 7);
+    const newMonth = val.slice(5, 7);
+
+    const isMonthNav = Boolean(prevMonth && newMonth && newMonth !== prevMonth && newDay === prevDay);
+
+    if (isMonthNav) {
+      debounceTimerRef.current = window.setTimeout(() => {
+        applyFrequencyDates(targetStart, val);
+      }, 1200);
+    } else {
+      applyFrequencyDates(targetStart, val);
+    }
   };
 
   const handleFrequencyDateBlur = (e: React.FocusEvent) => {
@@ -2681,10 +2757,7 @@ function ProductionSetupEditor({
                 <DateInput
                   value={draftFreqStartDate}
                   disabled={isReadOnly || isFrequencySyncing}
-                  onChange={(v) => {
-                    setDraftFreqStartDate(v);
-                    onLocalChange({ frequencyStartDate: v });
-                  }}
+                  onChange={handleStartDateChange}
                   onBlur={handleFrequencyDateBlur}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') handleApplyFrequencyDates();
@@ -2768,10 +2841,7 @@ function ProductionSetupEditor({
                     <DateInput
                       value={draftFreqEndDate}
                       disabled={isReadOnly || isFrequencySyncing}
-                      onChange={(v) => {
-                        setDraftFreqEndDate(v);
-                        onLocalChange({ frequencyEndDate: v });
-                      }}
+                      onChange={handleEndDateChange}
                       onBlur={handleFrequencyDateBlur}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') handleApplyFrequencyDates();
