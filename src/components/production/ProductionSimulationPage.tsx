@@ -2632,7 +2632,7 @@ function ProductionSetupEditor({
         </div>
       )}
       <Card
-        title="Shift & Movement Settings"
+        title={setup.name ? `Simulation Setting (${setup.name})` : 'Simulation Setting'}
         actions={
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
             {onShare && (
@@ -2787,48 +2787,15 @@ function ProductionSetupEditor({
                   </div>
                 }
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <DatePicker
-                      value={draftFreqEndDate}
-                      disabled={isReadOnly || isFrequencySyncing}
-                      onChange={(v) => {
-                        setDraftFreqEndDate(v);
-                        onLocalChange({ frequencyEndDate: v });
-                      }}
-                      onSelectDate={handleEndDatePick}
-                    />
-                  </div>
-                  {onOpenFrequencyDialog && (
-                    <button
-                      type="button"
-                      className="field-reset-btn"
-                      style={{
-                        width: '36px',
-                        height: '36px',
-                        borderRadius: '6px',
-                        border: '1px solid #334155',
-                        background: '#1e293b',
-                        color: '#38bdf8',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        cursor: isFrequencySyncing ? 'not-allowed' : 'pointer',
-                        flexShrink: 0,
-                      }}
-                      title="View & Adjust Setup Frequencies (WL_productionsetupfrequency)"
-                      aria-label="View & Adjust Setup Frequencies"
-                      disabled={isFrequencySyncing}
-                      onClick={onOpenFrequencyDialog}
-                    >
-                      <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none">
-                        <path d="M3 3h18v18H3z" />
-                        <path d="M3 9h18" />
-                        <path d="M9 21V9" />
-                      </svg>
-                    </button>
-                  )}
-                </div>
+                <DatePicker
+                  value={draftFreqEndDate}
+                  disabled={isReadOnly || isFrequencySyncing}
+                  onChange={(v) => {
+                    setDraftFreqEndDate(v);
+                    onLocalChange({ frequencyEndDate: v });
+                  }}
+                  onSelectDate={handleEndDatePick}
+                />
               </Field>
             </div>
           )}

@@ -140,11 +140,11 @@ export function DatePicker({
 
   return (
     <div ref={containerRef} className="custom-datepicker-wrap" style={{ position: 'relative', width: '100%' }}>
-      <div className="custom-datepicker-input-group" style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
+      <div className="custom-datepicker-input-group" style={{ position: 'relative', width: '100%', display: 'flex', alignItems: 'center' }}>
         <input
           id={id}
           type="text"
-          className={`field-input date-input ${className}`}
+          className={`input ${className}`}
           value={value}
           placeholder={placeholder}
           disabled={disabled}
@@ -163,7 +163,11 @@ export function DatePicker({
           onClick={() => {
             if (!disabled) setIsOpen((prev) => !prev);
           }}
-          style={{ cursor: disabled ? 'not-allowed' : 'pointer', paddingRight: '32px' }}
+          style={{
+            cursor: disabled ? 'not-allowed' : 'pointer',
+            paddingRight: '34px',
+            boxSizing: 'border-box',
+          }}
         />
         <button
           type="button"
@@ -176,17 +180,24 @@ export function DatePicker({
           }}
           style={{
             position: 'absolute',
-            right: 6,
+            right: 8,
             top: '50%',
             transform: 'translateY(-50%)',
             background: 'none',
             border: 'none',
-            color: '#94a3b8',
+            color: isOpen ? '#38bdf8' : '#94a3b8',
             cursor: disabled ? 'not-allowed' : 'pointer',
             padding: 4,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
+            transition: 'color 0.15s ease',
+          }}
+          onMouseEnter={(e) => {
+            if (!disabled) e.currentTarget.style.color = '#38bdf8';
+          }}
+          onMouseLeave={(e) => {
+            if (!disabled) e.currentTarget.style.color = isOpen ? '#38bdf8' : '#94a3b8';
           }}
         >
           <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
@@ -208,10 +219,10 @@ export function DatePicker({
             top: 'calc(100% + 4px)',
             left: 0,
             zIndex: 1000,
-            background: '#0f172a',
-            border: '1px solid #334155',
+            background: '#0b1220',
+            border: '1px solid #1e293b',
             borderRadius: '8px',
-            boxShadow: '0 12px 28px rgba(0, 0, 0, 0.6), 0 4px 10px rgba(0, 0, 0, 0.4)',
+            boxShadow: '0 16px 36px rgba(0, 0, 0, 0.7), 0 4px 12px rgba(0, 0, 0, 0.5)',
             padding: '12px',
             width: '270px',
             userSelect: 'none',
