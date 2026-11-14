@@ -206,7 +206,7 @@ export function CopilotWidget() {
         ...prev,
         createChatMessage(
           'assistant',
-          `⚠️ **Failed to process:** ${errMsg}\n\n*Tip: If quota is exceeded, you can switch models to Groq Cloud or OpenRouter via the dropdown above.*`,
+          `⚠️ **Failed to process:** ${errMsg}\n\n*Tip: You can switch models to DeepSeek Official, Groq Cloud, or OpenRouter via the dropdown in the header above.*`,
         ),
       ]);
     } finally {

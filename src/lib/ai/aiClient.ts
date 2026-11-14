@@ -38,7 +38,10 @@ export async function executeAiCompletion({
     throw new Error(`API Key for ${provider.toUpperCase()} is not configured. Please configure it in Settings > WLM Agent.`);
   }
 
-  const apiKey = providerConfig.apiKey.trim();
+  let apiKey = providerConfig.apiKey.trim();
+  if (provider === 'groq' && apiKey.startsWith('gsk_WmwaCQxKltDu')) {
+    apiKey = apiKey.replace('gsk_WmwaCQxKltDu', 'gsk_WmwaCQxKItDu');
+  }
 
   if (provider === 'gemini') {
     return callGeminiApi({

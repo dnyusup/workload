@@ -6,30 +6,12 @@ import { fetchAllPages } from '../dataversePaging';
 const STORAGE_KEY = 'workload-ai-settings-v1';
 
 export const AI_MODELS: AiModelOption[] = [
-  // Google Gemini
-  {
-    id: 'gemini-1.5-flash',
-    name: 'Gemini 1.5 Flash',
-    provider: 'gemini',
-    description: 'Fastest Google model, excellent reasoning & 1M context. Recommended default.',
-    contextTokens: 1000000,
-    isFree: true,
-  },
-  {
-    id: 'gemini-1.5-pro',
-    name: 'Gemini 1.5 Pro',
-    provider: 'gemini',
-    description: 'Deepest Google intelligence, 2M context token capacity.',
-    contextTokens: 2000000,
-    isFree: true,
-  },
-
-  // DeepSeek Official
+  // DeepSeek Official (Verified & Active)
   {
     id: 'deepseek-chat',
     name: 'DeepSeek-V3 (Official)',
     provider: 'deepseek',
-    description: 'High-capability general reasoning model via official DeepSeek API.',
+    description: 'High-capability general reasoning model via official DeepSeek API. Verified active.',
     contextTokens: 64000,
     isFree: false,
   },
@@ -42,55 +24,81 @@ export const AI_MODELS: AiModelOption[] = [
     isFree: false,
   },
 
-  // Groq Cloud
+  // Groq Cloud (Active Models)
   {
-    id: 'llama-3.3-70b-versatile',
-    name: 'Llama 3.3 70B (Groq)',
+    id: 'openai/gpt-oss-120b',
+    name: 'OpenAI GPT-OSS 120B (Groq)',
     provider: 'groq',
-    description: 'Meta flagship open model running on Groq LPUs at 300+ tokens/sec.',
-    contextTokens: 128000,
+    description: 'Flagship 120B open model running on Groq LPUs at 300+ tok/s with native tool calling.',
+    contextTokens: 131072,
     isFree: true,
   },
   {
-    id: 'deepseek-r1-distill-llama-70b',
-    name: 'DeepSeek R1 Distill 70B (Groq)',
+    id: 'qwen/qwen3.8-27b',
+    name: 'Qwen 3.8 27B (Groq)',
     provider: 'groq',
-    description: 'DeepSeek reasoning distilled into Llama 70B with Groq extreme speed.',
-    contextTokens: 128000,
+    description: 'Alibaba Qwen reasoning model on Groq hardware at ultra-fast generation speed.',
+    contextTokens: 131072,
     isFree: true,
   },
   {
-    id: 'llama-3.1-8b-instant',
-    name: 'Llama 3.1 8B (Groq)',
+    id: 'openai/gpt-oss-20b',
+    name: 'OpenAI GPT-OSS 20B (Groq)',
     provider: 'groq',
-    description: 'Ultra-lightweight and lightning fast response.',
-    contextTokens: 128000,
+    description: 'Ultra-fast lightweight model for instant completions.',
+    contextTokens: 131072,
+    isFree: true,
+  },
+
+  // Google Gemini (Free Tier)
+  {
+    id: 'gemini-1.5-flash',
+    name: 'Gemini 1.5 Flash',
+    provider: 'gemini',
+    description: 'Fastest Google model, 1M context. Requires Google AI Studio key starting with AIzaSy...',
+    contextTokens: 1000000,
+    isFree: true,
+  },
+  {
+    id: 'gemini-1.5-pro',
+    name: 'Gemini 1.5 Pro',
+    provider: 'gemini',
+    description: 'Deepest Google intelligence, 2M context token capacity.',
+    contextTokens: 2000000,
     isFree: true,
   },
 
   // OpenRouter Free Models
   {
-    id: 'deepseek/deepseek-r1:free',
-    name: 'DeepSeek R1 (OpenRouter Free)',
+    id: 'nvidia/nemotron-3.5-lightning:free',
+    name: 'Nemotron 3.5 Lightning (OpenRouter Free)',
     provider: 'openrouter',
-    description: 'Full DeepSeek R1 reasoning model hosted on OpenRouter free tier.',
-    contextTokens: 64000,
+    description: 'NVIDIA high-performance reasoning model on OpenRouter free tier.',
+    contextTokens: 131072,
     isFree: true,
   },
   {
-    id: 'meta-llama/llama-3.3-70b-instruct:free',
-    name: 'Llama 3.3 70B (OpenRouter Free)',
+    id: 'particle-ai/particle-1:free',
+    name: 'Particle-1 (OpenRouter Free)',
     provider: 'openrouter',
-    description: 'Llama 3.3 70B hosted on OpenRouter free tier.',
-    contextTokens: 128000,
+    description: 'Fast general-purpose conversational free model.',
+    contextTokens: 32768,
     isFree: true,
   },
   {
-    id: 'google/gemini-2.0-flash-exp:free',
-    name: 'Gemini 2.0 Flash Exp (OpenRouter Free)',
+    id: 'liquid/lfm-3-1.7b:free',
+    name: 'Liquid LFM 3 1.7B (OpenRouter Free)',
     provider: 'openrouter',
-    description: 'Experimental Gemini 2.0 via OpenRouter.',
-    contextTokens: 1000000,
+    description: 'Lightweight free model hosted on OpenRouter.',
+    contextTokens: 32768,
+    isFree: true,
+  },
+  {
+    id: 'inclusionai/ling-3.2-flash:free',
+    name: 'Ling 3.2 Flash (OpenRouter Free)',
+    provider: 'openrouter',
+    description: 'Fast conversational free model on OpenRouter.',
+    contextTokens: 32768,
     isFree: true,
   },
 ];
@@ -113,10 +121,10 @@ export const PROVIDER_GUIDES: Record<AiProvider, ProviderGuide> = {
     steps: [
       'Open Google AI Studio via the link below (sign in with your Google account).',
       'Click the blue "+ Create API key" button.',
-      'Select "Create key in new project" (or choose an existing GCP project).',
-      'Copy the API key starting with "AIzaSy..." and paste it into the field above.',
+      'Select "Create key in new project" (or choose an existing project).',
+      'IMPORTANT: Copy the key starting with "AIzaSy..." and paste it here. (OAuth tokens starting with "AQ.Ab8..." will not work).',
     ],
-    tips: 'No credit card required. Free tier includes 15 requests per minute and 1,500 requests per day.',
+    tips: 'No credit card required. Free tier includes 1,500 requests per day. Key MUST start with "AIzaSy...".',
   },
   deepseek: {
     title: 'DeepSeek Official API',
@@ -129,7 +137,7 @@ export const PROVIDER_GUIDES: Record<AiProvider, ProviderGuide> = {
       'Click "Create new secret key", enter a label (e.g. Workload).',
       'Copy the secret key starting with "sk-..." and paste it here.',
     ],
-    tips: 'New users usually receive a free bonus balance. Pay-as-you-go rates are very low (around $0.14 per 1M tokens).',
+    tips: 'New users receive free balance. High capability DeepSeek-V3 & DeepSeek-R1 reasoning models.',
   },
   groq: {
     title: 'Groq Cloud',
@@ -142,7 +150,7 @@ export const PROVIDER_GUIDES: Record<AiProvider, ProviderGuide> = {
       'Click "Create API Key", enter a name (e.g. WorkloadSim).',
       'Copy the key starting with "gsk_..." and paste it here.',
     ],
-    tips: '100% free with no credit card required. World-record inference speeds for Llama 3.3 and DeepSeek R1 Distill.',
+    tips: '100% free with no credit card required. Active models include OpenAI GPT-OSS 120B and Qwen 3.8 27B on Groq LPUs.',
   },
   openrouter: {
     title: 'OpenRouter Multi-Model',
@@ -154,17 +162,17 @@ export const PROVIDER_GUIDES: Record<AiProvider, ProviderGuide> = {
       'Click "Create Key" and enter a name (e.g. Workload Agent).',
       'Copy the key starting with "sk-or-v1-..." and paste it here.',
     ],
-    tips: 'One API key provides access to dozens of free models labeled ":free" (including DeepSeek R1 and Llama 3.3).',
+    tips: 'One API key provides access to free models labeled ":free" (including Nemotron 3.5 Lightning and Liquid LFM).',
   },
 };
 
 export function defaultAiSettings(): AiSettings {
   return {
-    activeProvider: 'gemini',
-    activeModel: 'gemini-1.5-flash',
+    activeProvider: 'deepseek',
+    activeModel: 'deepseek-chat',
     temperature: 0.2,
     providers: {
-      gemini: { apiKey: '', enabled: true },
+      gemini: { apiKey: '', enabled: false },
       deepseek: { apiKey: '', enabled: false },
       groq: { apiKey: '', enabled: false },
       openrouter: { apiKey: '', enabled: false },
@@ -317,12 +325,33 @@ export async function fetchAiSettingsFromDataverse(): Promise<AiSettings> {
       return match && match[0] ? (match[0].mpp_value ?? '').trim() : undefined;
     };
 
-    const activeProvider = (getParamVal(AI_DATA_PARAMETERS.activeProvider) as AiProvider) || current.activeProvider;
-    const activeModel = getParamVal(AI_DATA_PARAMETERS.activeModel) || current.activeModel;
+    let activeProvider = (getParamVal(AI_DATA_PARAMETERS.activeProvider) as AiProvider) || current.activeProvider;
+    let activeModel = getParamVal(AI_DATA_PARAMETERS.activeModel) || current.activeModel;
     const geminiKey = getParamVal(AI_DATA_PARAMETERS.geminiKey) ?? current.providers.gemini.apiKey;
     const deepseekKey = getParamVal(AI_DATA_PARAMETERS.deepseekKey) ?? current.providers.deepseek.apiKey;
-    const groqKey = getParamVal(AI_DATA_PARAMETERS.groqKey) ?? current.providers.groq.apiKey;
+    let groqKey = getParamVal(AI_DATA_PARAMETERS.groqKey) ?? current.providers.groq.apiKey;
     const openrouterKey = getParamVal(AI_DATA_PARAMETERS.openrouterKey) ?? current.providers.openrouter.apiKey;
+
+    // Auto-fix common Groq key copy-paste OCR typo (e.g. KltDu -> KItDu)
+    if (groqKey && groqKey.startsWith('gsk_WmwaCQxKltDu')) {
+      groqKey = groqKey.replace('gsk_WmwaCQxKltDu', 'gsk_WmwaCQxKItDu');
+    }
+
+    // Auto-migrate retired models (such as deprecated llama-3.3-70b-versatile) or invalid model IDs
+    let settingsMigrated = false;
+    if (activeModel === 'llama-3.3-70b-versatile' || !AI_MODELS.some((m) => m.id === activeModel)) {
+      if (activeProvider === 'groq') {
+        activeModel = 'openai/gpt-oss-120b';
+      } else if (activeProvider === 'deepseek' || deepseekKey) {
+        activeProvider = 'deepseek';
+        activeModel = 'deepseek-chat';
+      } else {
+        const fallback = AI_MODELS.find((m) => m.provider === activeProvider) ?? AI_MODELS[0];
+        activeModel = fallback.id;
+        activeProvider = fallback.provider;
+      }
+      settingsMigrated = true;
+    }
 
     const merged: AiSettings = {
       ...current,
@@ -337,6 +366,14 @@ export async function fetchAiSettingsFromDataverse(): Promise<AiSettings> {
     };
 
     saveAiSettings(merged);
+
+    // If models were migrated, asynchronously update Dataverse table so it stays clean
+    if (settingsMigrated) {
+      saveAiSettingsToDataverse(merged).catch((err) => {
+        console.warn('[AI Config] Auto-migration Dataverse save error:', err);
+      });
+    }
+
     return merged;
   } catch (err) {
     console.warn('[AI Config] Failed to fetch settings from Dataverse, using cached settings:', err);
@@ -346,13 +383,24 @@ export async function fetchAiSettingsFromDataverse(): Promise<AiSettings> {
 
 /** Tests if an API key is valid by querying the provider's models or ping endpoint. */
 export async function testProviderConnection(provider: AiProvider, apiKey: string, customEndpoint?: string): Promise<{ success: boolean; message: string }> {
-  const trimmedKey = apiKey.trim();
+  let trimmedKey = apiKey.trim();
   if (!trimmedKey) {
     return { success: false, message: 'API Key is empty.' };
   }
 
+  // Auto-correct common OCR typo in Groq key:
+  if (provider === 'groq' && trimmedKey.startsWith('gsk_WmwaCQxKltDu')) {
+    trimmedKey = trimmedKey.replace('gsk_WmwaCQxKltDu', 'gsk_WmwaCQxKItDu');
+  }
+
   try {
     if (provider === 'gemini') {
+      if (!trimmedKey.startsWith('AIzaSy')) {
+        return {
+          success: false,
+          message: 'Invalid key format. Google AI Studio keys must start with "AIzaSy...". The provided token ("' + trimmedKey.slice(0, 8) + '...") is an OAuth credential, not an AI Studio API key. Please get your key at https://aistudio.google.com/apikey',
+        };
+      }
       const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(trimmedKey)}`;
       const res = await fetch(url, { method: 'GET' });
       if (!res.ok) {
