@@ -122,9 +122,9 @@ export const PROVIDER_GUIDES: Record<AiProvider, ProviderGuide> = {
       'Open Google AI Studio via the link below (sign in with your Google account).',
       'Click the blue "+ Create API key" button.',
       'Select "Create key in new project" (or choose an existing project).',
-      'IMPORTANT: Copy the key starting with "AIzaSy..." and paste it here. (OAuth tokens starting with "AQ.Ab8..." will not work).',
+      'Copy the generated API key (format starting with "AIzaSy..." or "AQ.Ab8...") and paste it here.',
     ],
-    tips: 'No credit card required. Free tier includes 1,500 requests per day. Key MUST start with "AIzaSy...".',
+    tips: 'No credit card required. Free tier includes 1,500 requests per day. Supports both standard (AIza...) and new auth keys (AQ...).',
   },
   deepseek: {
     title: 'DeepSeek Official API',
@@ -395,17 +395,26 @@ export async function testProviderConnection(provider: AiProvider, apiKey: strin
 
   try {
     if (provider === 'gemini') {
-      if (!trimmedKey.startsWith('AIzaSy')) {
+      if (!trimmedKey.startsWith('AIza') && !trimmedKey.startsWith('AQ.')) {
         return {
           success: false,
-          message: 'Invalid key format. Google AI Studio keys must start with "AIzaSy...". The provided token ("' + trimmedKey.slice(0, 8) + '...") is an OAuth credential, not an AI Studio API key. Please get your key at https://aistudio.google.com/apikey',
+          message: 'Invalid key format. Google AI Studio keys must start with "AIza..." or "AQ...". Please get your key at https://aistudio.google.com/apikey',
         };
       }
       const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(trimmedKey)}`;
-      const res = await fetch(url, { method: 'GET' });
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'x-goog-api-key': trimmedKey,
+        },
+      });
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
-        const msg = (errorData as { error?: { message?: string } })?.error?.message ?? `Status ${res.status}`;
+        const errObj = (errorData as { error?: { message?: string; details?: Array<{ reason?: string }> } })?.error;
+        let msg = errObj?.message ?? `Status ${res.status}`;
+        if (errObj?.details?.[0]?.reason === 'ACCESS_TOKEN_TYPE_UNSUPPORTED') {
+          msg += ' (Notice: Pada Google Cloud Console project, pastikan API restrictions key ini mencentang "Generative Language API" atau pilih "Don\'t restrict key").';
+        }
         return { success: false, message: `Failed: ${msg}` };
       }
       return { success: true, message: 'Connection to Google Gemini successful!' };
