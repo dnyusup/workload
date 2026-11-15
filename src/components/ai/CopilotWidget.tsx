@@ -118,7 +118,119 @@ export function CopilotWidget() {
   const [applyingOptimization, setApplyingOptimization] = useState(false);
   const [rateLimitError, setRateLimitError] = useState<string | null>(null);
 
+  // Draggable and Resizable Window State
+  const [windowSize, setWindowSize] = useState<{ width: number; height: number }>({
+    width: 440,
+    height: 620,
+  });
+  const [windowPos, setWindowPos] = useState<{ x: number; y: number } | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Keep window clamped within viewport on browser window resize
+  useEffect(() => {
+    const handleViewportResize = () => {
+      setWindowPos((prev) => {
+        if (!prev) return prev;
+        const clampedX = Math.min(Math.max(8, prev.x), Math.max(8, window.innerWidth - windowSize.width - 8));
+        const clampedY = Math.min(Math.max(8, prev.y), Math.max(8, window.innerHeight - windowSize.height - 8));
+        return { x: clampedX, y: clampedY };
+      });
+    };
+    window.addEventListener('resize', handleViewportResize);
+    return () => window.removeEventListener('resize', handleViewportResize);
+  }, [windowSize]);
+
+  const handleOpen = () => {
+    if (!windowPos) {
+      const initX = Math.max(16, window.innerWidth - windowSize.width - 24);
+      const initY = Math.max(16, window.innerHeight - windowSize.height - 24);
+      setWindowPos({ x: initX, y: initY });
+    }
+    setIsOpen(true);
+  };
+
+  const handleHeaderPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('button, select, input, a, .ai-model-quick-select')) {
+      return;
+    }
+    e.preventDefault();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const currentX = windowPos?.x ?? Math.max(16, window.innerWidth - windowSize.width - 24);
+    const currentY = windowPos?.y ?? Math.max(16, window.innerHeight - windowSize.height - 24);
+
+    const onPointerMove = (moveEvent: PointerEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const deltaY = moveEvent.clientY - startY;
+      const nextX = Math.min(Math.max(8, currentX + deltaX), window.innerWidth - windowSize.width - 8);
+      const nextY = Math.min(Math.max(8, currentY + deltaY), window.innerHeight - windowSize.height - 8);
+      setWindowPos({ x: nextX, y: nextY });
+    };
+
+    const onPointerUp = () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+  };
+
+  const handleResizePointerDown = (direction: string, e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startWidth = windowSize.width;
+    const startHeight = windowSize.height;
+    const startPosX = windowPos?.x ?? Math.max(16, window.innerWidth - windowSize.width - 24);
+    const startPosY = windowPos?.y ?? Math.max(16, window.innerHeight - windowSize.height - 24);
+
+    const minWidth = 340;
+    const minHeight = 400;
+    const maxWidth = Math.max(minWidth, window.innerWidth - 24);
+    const maxHeight = Math.max(minHeight, window.innerHeight - 24);
+
+    const onPointerMove = (moveEvent: PointerEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const deltaY = moveEvent.clientY - startY;
+
+      let nextWidth = startWidth;
+      let nextHeight = startHeight;
+      let nextPosX = startPosX;
+      let nextPosY = startPosY;
+
+      if (direction.includes('e')) {
+        nextWidth = Math.min(Math.max(minWidth, startWidth + deltaX), maxWidth);
+      } else if (direction.includes('w')) {
+        const proposedWidth = Math.min(Math.max(minWidth, startWidth - deltaX), maxWidth);
+        nextPosX = startPosX + (startWidth - proposedWidth);
+        nextWidth = proposedWidth;
+      }
+
+      if (direction.includes('s')) {
+        nextHeight = Math.min(Math.max(minHeight, startHeight + deltaY), maxHeight);
+      } else if (direction.includes('n')) {
+        const proposedHeight = Math.min(Math.max(minHeight, startHeight - deltaY), maxHeight);
+        nextPosY = startPosY + (startHeight - proposedHeight);
+        nextHeight = proposedHeight;
+      }
+
+      setWindowSize({ width: nextWidth, height: nextHeight });
+      setWindowPos({ x: nextPosX, y: nextPosY });
+    };
+
+    const onPointerUp = () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+  };
 
   // Sync AI settings from Dataverse table WL_DefaultValues on mount
   useEffect(() => {
@@ -322,7 +434,7 @@ export function CopilotWidget() {
         <button
           type="button"
           className="ai-copilot-fab"
-          onClick={() => setIsOpen(true)}
+          onClick={handleOpen}
           title="Open WLM Agent"
         >
           <span className="ai-copilot-fab-icon">✨</span>
@@ -330,15 +442,53 @@ export function CopilotWidget() {
         </button>
       )}
 
-      {/* Floating Chat Window */}
+      {/* Floating Chat Window (Draggable & Resizable) */}
       {isOpen && (
-        <div className="ai-copilot-window" role="dialog" aria-label="WLM Agent Chat">
-          {/* Header */}
-          <div className="ai-copilot-header">
+        <div
+          className="ai-copilot-window"
+          role="dialog"
+          aria-label="WLM Agent Chat"
+          style={{
+            left: windowPos ? `${windowPos.x}px` : undefined,
+            top: windowPos ? `${windowPos.y}px` : undefined,
+            right: windowPos ? 'auto' : '24px',
+            bottom: windowPos ? 'auto' : '24px',
+            width: `${windowSize.width}px`,
+            height: `${windowSize.height}px`,
+          }}
+        >
+          {/* Resize handles */}
+          <div className="ai-resize-handle ai-resize-n" onPointerDown={(e) => handleResizePointerDown('n', e)} />
+          <div className="ai-resize-handle ai-resize-s" onPointerDown={(e) => handleResizePointerDown('s', e)} />
+          <div className="ai-resize-handle ai-resize-w" onPointerDown={(e) => handleResizePointerDown('w', e)} />
+          <div className="ai-resize-handle ai-resize-e" onPointerDown={(e) => handleResizePointerDown('e', e)} />
+          <div className="ai-resize-handle ai-resize-nw" onPointerDown={(e) => handleResizePointerDown('nw', e)} />
+          <div className="ai-resize-handle ai-resize-ne" onPointerDown={(e) => handleResizePointerDown('ne', e)} />
+          <div className="ai-resize-handle ai-resize-sw" onPointerDown={(e) => handleResizePointerDown('sw', e)} />
+          <div
+            className="ai-resize-handle ai-resize-se"
+            onPointerDown={(e) => handleResizePointerDown('se', e)}
+            title="Drag corner to resize window"
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10" className="ai-resize-corner-icon">
+              <line x1="8" y1="2" x2="2" y2="8" stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round" />
+              <line x1="8" y1="5" x2="5" y2="8" stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </div>
+
+          {/* Header (Draggable) */}
+          <div
+            className="ai-copilot-header"
+            onPointerDown={handleHeaderPointerDown}
+            title="Click and drag header to move window"
+          >
             <div className="ai-header-left">
               <div className="ai-header-avatar">✨</div>
               <div>
-                <h3 className="ai-header-title">WLM Agent</h3>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <h3 className="ai-header-title">WLM Agent</h3>
+                  <span style={{ fontSize: '0.7rem', color: '#64748b', cursor: 'grab' }} title="Drag header to move">⋮⋮</span>
+                </div>
                 <span className="ai-header-subtitle">
                   {appContext.simulationMetrics
                     ? `Sim: ${appContext.setup?.name ?? 'Live'} (${appContext.simulationMetrics.oee}% OEE)`

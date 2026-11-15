@@ -97,11 +97,39 @@ async function callGeminiApi({
 
   const url = `${PROVIDER_BASE_URLS.gemini}/models/${encodeURIComponent(activeGeminiModel)}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
+  // Track tool calls that have/lack thoughtSignature for Gemini
+  const signedCallIds = new Set<string>();
+  const unsignedCallIds = new Set<string>();
+  for (const m of messages) {
+    if (m.toolCalls && m.toolCalls.length > 0) {
+      for (const tc of m.toolCalls) {
+        if (tc.thoughtSignature) {
+          signedCallIds.add(tc.id);
+        } else {
+          unsignedCallIds.add(tc.id);
+        }
+      }
+    }
+  }
+
   // Convert messages to Gemini format
   const contents = messages
     .filter((m) => m.role !== 'system')
     .map((m) => {
       if (m.role === 'tool') {
+        const isSigned = m.toolCallId ? signedCallIds.has(m.toolCallId) : false;
+        if (!isSigned) {
+          // Unsigned or legacy tool call: convert to plain text to prevent Gemini 400 thoughtSignature error
+          return {
+            role: 'user',
+            parts: [
+              {
+                text: `[Tool result for ${m.name ?? 'tool'}: ${m.content}]`,
+              },
+            ],
+          };
+        }
+
         return {
           role: 'user',
           parts: [
@@ -116,20 +144,44 @@ async function callGeminiApi({
       }
 
       if (m.toolCalls && m.toolCalls.length > 0) {
+        const hasUnsigned = m.toolCalls.some((tc) => !tc.thoughtSignature);
+        if (hasUnsigned) {
+          // Emit as text description for legacy turns lacking cryptographic thoughtSignature
+          const parts: Array<{ text: string }> = [];
+          if (m.content?.trim()) {
+            parts.push({ text: m.content.trim() });
+          }
+          for (const tc of m.toolCalls) {
+            parts.push({
+              text: `[Executed tool: ${tc.name} with arguments: ${JSON.stringify(tc.arguments)}]`,
+            });
+          }
+          return {
+            role: 'model',
+            parts: parts.length > 0 ? parts : [{ text: `[Executed tools: ${m.toolCalls.map((tc) => tc.name).join(', ')}]` }],
+          };
+        }
+
         return {
           role: 'model',
-          parts: m.toolCalls.map((tc) => ({
-            functionCall: {
-              name: tc.name,
-              args: tc.arguments,
-            },
-          })),
+          parts: m.toolCalls.map((tc) => {
+            const partObj: Record<string, unknown> = {
+              functionCall: {
+                name: tc.name,
+                args: tc.arguments,
+              },
+            };
+            if (tc.thoughtSignature) {
+              partObj.thoughtSignature = tc.thoughtSignature;
+            }
+            return partObj;
+          }),
         };
       }
 
       return {
         role: m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: m.content }],
+        parts: [{ text: m.content || '(empty)' }],
       };
     });
 
@@ -181,7 +233,10 @@ async function callGeminiApi({
       content?: {
         parts?: Array<{
           text?: string;
+          thoughtSignature?: string;
+          thought_signature?: string;
           functionCall?: {
+            id?: string;
             name: string;
             args: Record<string, unknown>;
           };
@@ -202,9 +257,10 @@ async function callGeminiApi({
     }
     if (part.functionCall) {
       toolCalls.push({
-        id: `call_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        id: part.functionCall.id ?? `call_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
         name: part.functionCall.name,
         arguments: part.functionCall.args ?? {},
+        thoughtSignature: part.thoughtSignature ?? part.thought_signature,
       });
     }
   }
