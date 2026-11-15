@@ -103,7 +103,7 @@ async function callGeminiApi({
     .map((m) => {
       if (m.role === 'tool') {
         return {
-          role: 'function',
+          role: 'user',
           parts: [
             {
               functionResponse: {
