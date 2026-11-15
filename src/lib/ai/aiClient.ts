@@ -83,7 +83,19 @@ async function callGeminiApi({
   tools?: AiToolDefinition[];
   temperature?: number;
 }): Promise<AiCompletionResponse> {
-  const url = `${PROVIDER_BASE_URLS.gemini}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  // Map retired/deprecated Google Gemini models to the active gemini-3.5-flash
+  let activeGeminiModel = model;
+  if (
+    !activeGeminiModel ||
+    activeGeminiModel === 'gemini-1.5-flash' ||
+    activeGeminiModel === 'gemini-1.5-pro' ||
+    activeGeminiModel === 'gemini-2.0-flash' ||
+    activeGeminiModel === 'gemini-2.5-flash'
+  ) {
+    activeGeminiModel = 'gemini-3.5-flash';
+  }
+
+  const url = `${PROVIDER_BASE_URLS.gemini}/models/${encodeURIComponent(activeGeminiModel)}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
   // Convert messages to Gemini format
   const contents = messages

@@ -52,19 +52,27 @@ export const AI_MODELS: AiModelOption[] = [
 
   // Google Gemini (Free Tier)
   {
-    id: 'gemini-1.5-flash',
-    name: 'Gemini 1.5 Flash',
+    id: 'gemini-3.5-flash',
+    name: 'Gemini 3.5 Flash',
     provider: 'gemini',
-    description: 'Fastest Google model, 1M context. Requires Google AI Studio key starting with AIzaSy...',
+    description: 'Latest active Google Gemini model, 1M context. Fast, smart, and free tier available.',
     contextTokens: 1000000,
     isFree: true,
   },
   {
-    id: 'gemini-1.5-pro',
-    name: 'Gemini 1.5 Pro',
+    id: 'gemini-3.5-flash-lite',
+    name: 'Gemini 3.5 Flash Lite',
     provider: 'gemini',
-    description: 'Deepest Google intelligence, 2M context token capacity.',
-    contextTokens: 2000000,
+    description: 'Ultra-fast lightweight Gemini model for instant conversational replies.',
+    contextTokens: 1000000,
+    isFree: true,
+  },
+  {
+    id: 'gemini-3.7-flash',
+    name: 'Gemini 3.7 Flash',
+    provider: 'gemini',
+    description: 'Advanced reasoning intelligence from Google DeepMind.',
+    contextTokens: 1000000,
     isFree: true,
   },
 
