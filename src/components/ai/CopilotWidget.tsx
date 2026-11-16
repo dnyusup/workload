@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import type { AiChatMessage, AiProvider } from '../../types/ai';
+import type { AiChatMessage, AiChatImage, AiProvider } from '../../types/ai';
 import {
   AI_MODELS,
   loadAiSettings,
@@ -71,6 +71,25 @@ ${setupInfo}
 - User: ${user.displayName || user.email} (${user.email})
 - Role: ${user.role.toUpperCase()}
 - Permission Tier: ${isAdmin ? 'Full Administrator' : 'Contribute User'}
+
+[WLM AGENT ACCESS ELIGIBILITY & RBAC RULES (canAccessAiFeatures)]
+The visibility and availability of WLM Agent across user roles is governed strictly by the canAccessAiFeatures() policy:
+1. GUEST Users: CANNOT access WLM Agent at all. The floating chat icon and assistant panel are completely hidden and disabled for Guest users.
+2. CONTRIBUTE Users: DO NOT have access by default. They can ONLY access WLM Agent IF an Administrator has explicitly activated "AI Features" (mpp_aifeatures = 'Yes' in table WL_Users) for their specific account in the User Management menu. If AI Features is set to 'No' or empty, the WLM Agent button is completely hidden from them.
+3. ADMIN Users: Always have full access to WLM Agent and AI Settings.
+
+CRITICAL INSTRUCTION FOR QUESTIONS ABOUT YOUR ACCESS OR VISIBILITY:
+If the user asks questions such as "apakah kamu muncul di semua user?", "siapa saja yang bisa mengakses WLM Agent?", or "kenapa user lain tidak bisa melihat kamu?", NEVER say that all users can access you. Always answer accurately with the exact policy:
+"Tidak semua pengguna dapat mengakses WLM Agent. Hak akses diatur sebagai berikut:
+1. GUEST: Tidak memiliki akses sama sekali (tombol WLM Agent tidak muncul).
+2. CONTRIBUTE: Hanya dapat mengakses jika Administrator mengaktifkan opsi 'AI Features' (mpp_aifeatures = 'Yes') pada akun pengguna tersebut di menu Manage Users. Jika tidak diaktifkan, tombol WLM Agent tidak akan muncul.
+3. ADMIN: Memiliki akses penuh secara default."
+
+[MULTIMODAL / IMAGE RECOGNITION]
+You can view and analyze images uploaded or pasted by the user (such as screenshots of charts, error messages, machine layouts, simulation outputs, or parameter tables). When an image is provided:
+- Carefully inspect the image content, numbers, tables, labels, and graphs.
+- Correlate visual findings with the active setup or simulation context if applicable.
+- Provide direct, helpful answers based on what is shown in the image.
 
 [STRICT SECURITY & AUTHORIZATION POLICY]
 ${
@@ -144,6 +163,8 @@ export function CopilotWidget() {
   const [messages, setMessages] = useState<AiChatMessage[]>(INITIAL_MESSAGES);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [attachedImages, setAttachedImages] = useState<AiChatImage[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeToolStatus, setActiveToolStatus] = useState<string | null>(null);
   const [appContext, setAppContext] = useState(() => getAiAppContext());
   const [applyingOptimization, setApplyingOptimization] = useState(false);
@@ -341,12 +362,72 @@ export function CopilotWidget() {
     handleModelChange(model.id);
   };
 
+  const processImageFile = (file: File) => {
+    if (!file.type.startsWith('image/')) return;
+    if (file.size > 8 * 1024 * 1024) {
+      alert('Ukuran gambar terlalu besar (maksimal 8MB). Silakan pilih gambar yang lebih kecil.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      if (!result) return;
+      const commaIdx = result.indexOf(',');
+      const base64Data = commaIdx !== -1 ? result.substring(commaIdx + 1) : result;
+      setAttachedImages((prev) => [
+        ...prev,
+        {
+          mimeType: file.type || 'image/jpeg',
+          data: base64Data,
+          previewUrl: result,
+        },
+      ]);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) {
+          e.preventDefault();
+          processImageFile(file);
+        }
+      }
+    }
+  };
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    for (let i = 0; i < files.length; i++) {
+      processImageFile(files[i]);
+    }
+    e.target.value = '';
+  };
+
+  const removeAttachedImage = (index: number) => {
+    setAttachedImages((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const handleSendMessage = async (userText: string) => {
     const trimmed = userText.trim();
-    if (!trimmed || isLoading) return;
+    const hasImages = attachedImages.length > 0;
+    if ((!trimmed && !hasImages) || isLoading) return;
 
     setRateLimitError(null);
-    const userMsg = createChatMessage('user', trimmed);
+    const currentAttachedImages = [...attachedImages];
+    setAttachedImages([]);
+
+    const userMsg = createChatMessage(
+      'user',
+      trimmed || (hasImages ? 'Mohon analisis gambar terlampir ini.' : ''),
+      hasImages ? { images: currentAttachedImages } : undefined,
+    );
 
     const nextHistory = [...messages, userMsg];
     setMessages(nextHistory);
@@ -674,6 +755,24 @@ export function CopilotWidget() {
                   ref={isLastAssistant ? lastAssistantMsgRef : undefined}
                   className={`ai-msg ${msg.role}`}
                 >
+                  {msg.images && msg.images.length > 0 && (
+                    <div className="ai-msg-images">
+                      {msg.images.map((img, i) => (
+                        <img
+                          key={i}
+                          src={img.previewUrl || `data:${img.mimeType};base64,${img.data}`}
+                          alt="Uploaded attachment"
+                          className="ai-msg-image-thumb"
+                          onClick={() => {
+                            const url = img.previewUrl || `data:${img.mimeType};base64,${img.data}`;
+                            window.open(url, '_blank');
+                          }}
+                          title="Click to view full image in new tab"
+                        />
+                      ))}
+                    </div>
+                  )}
+
                   <MarkdownMessage content={msg.content} />
 
                   {/* Render 1-click Apply Button if optimization was produced */}
@@ -729,6 +828,25 @@ export function CopilotWidget() {
             ))}
           </div>
 
+          {/* Attached Image Previews */}
+          {attachedImages.length > 0 && (
+            <div className="ai-attached-previews">
+              {attachedImages.map((img, idx) => (
+                <div key={idx} className="ai-attached-thumb-container">
+                  <img src={img.previewUrl} alt="Attached thumbnail" className="ai-attached-thumb" />
+                  <button
+                    type="button"
+                    className="ai-attached-remove-btn"
+                    onClick={() => removeAttachedImage(idx)}
+                    title="Remove image"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Input Form */}
           <form
             className="ai-input-form"
@@ -738,17 +856,41 @@ export function CopilotWidget() {
             }}
           >
             <input
+              type="file"
+              ref={fileInputRef}
+              accept="image/*"
+              multiple
+              style={{ display: 'none' }}
+              onChange={handleFileInputChange}
+            />
+            <button
+              type="button"
+              className="ai-attach-btn"
+              onClick={() => fileInputRef.current?.click()}
+              title="Attach image (or paste image with Ctrl+V)"
+              disabled={isLoading}
+            >
+              📎
+            </button>
+            <input
               type="text"
               className="ai-chat-input"
-              placeholder={hasApiKey ? 'Type a message or instruction for WLM Agent…' : 'Enter API Key in Settings first…'}
+              placeholder={
+                hasApiKey
+                  ? attachedImages.length > 0
+                    ? 'Add a question about this image (or press Send)…'
+                    : 'Type a message or paste an image (Ctrl+V)…'
+                  : 'Enter API Key in Settings first…'
+              }
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
+              onPaste={handlePaste}
               disabled={isLoading}
             />
             <button
               type="submit"
               className="ai-send-btn"
-              disabled={isLoading || !inputText.trim()}
+              disabled={isLoading || (!inputText.trim() && attachedImages.length === 0)}
             >
               {isLoading ? '…' : 'Send'}
             </button>

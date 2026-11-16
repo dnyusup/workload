@@ -24,11 +24,18 @@ export interface AiSettings {
 
 export type AiConnectionStatus = 'idle' | 'testing' | 'connected' | 'error';
 
+export interface AiChatImage {
+  mimeType: string;
+  data: string; // base64 without prefix
+  previewUrl?: string;
+}
+
 export interface AiChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
   timestamp: number;
+  images?: AiChatImage[];
   toolCalls?: AiToolCall[];
   toolCallId?: string;
   name?: string;

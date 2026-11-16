@@ -179,9 +179,26 @@ async function callGeminiApi({
         };
       }
 
+      const parts: Array<Record<string, unknown>> = [];
+      if (m.images && m.images.length > 0) {
+        for (const img of m.images) {
+          parts.push({
+            inlineData: {
+              mimeType: img.mimeType,
+              data: img.data,
+            },
+          });
+        }
+      }
+      if (m.content?.trim()) {
+        parts.push({ text: m.content.trim() });
+      } else if (parts.length === 0) {
+        parts.push({ text: '(empty)' });
+      }
+
       return {
         role: m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: m.content || '(empty)' }],
+        parts,
       };
     });
 
@@ -322,6 +339,18 @@ async function callOpenAiCompatibleApi({
             arguments: JSON.stringify(tc.arguments),
           },
         })),
+      });
+    } else if (m.images && m.images.length > 0) {
+      const contentParts: Array<Record<string, unknown>> = [
+        ...m.images.map((img) => ({
+          type: 'image_url',
+          image_url: { url: `data:${img.mimeType};base64,${img.data}` },
+        })),
+        ...(m.content ? [{ type: 'text', text: m.content }] : []),
+      ];
+      formattedMessages.push({
+        role: m.role,
+        content: contentParts,
       });
     } else {
       formattedMessages.push({
