@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import type { AiChatMessage, AiProvider } from '../../types/ai';
 import {
   AI_MODELS,
@@ -156,7 +156,18 @@ export function CopilotWidget() {
   });
   const [windowPos, setWindowPos] = useState<{ x: number; y: number } | null>(null);
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const lastAssistantMsgRef = useRef<HTMLDivElement>(null);
+  const thinkingMsgRef = useRef<HTMLDivElement>(null);
+  const prevLoadingRef = useRef(false);
+
+  const lastAssistantMsgId = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'assistant') {
+        return messages[i].id;
+      }
+    }
+    return null;
+  }, [messages]);
 
   // Keep window clamped within viewport on browser window resize
   useEffect(() => {
@@ -285,12 +296,28 @@ export function CopilotWidget() {
     });
   }, []);
 
-  // Auto-scroll to bottom on new messages
+  // Smart scrolling:
+  // - When assistant completes a reply: smoothly scroll to the TOP of the new assistant message!
+  // - When user sends a message / thinking starts: scroll to the thinking indicator!
   useEffect(() => {
-    if (isOpen) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (!isOpen) return;
+
+    if (prevLoadingRef.current && !isLoading) {
+      // Just finished loading: scroll to TOP of the assistant's reply
+      lastAssistantMsgRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else if (!prevLoadingRef.current && isLoading) {
+      // Just started loading: scroll to thinking indicator
+      thinkingMsgRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
-  }, [messages, isOpen, activeToolStatus]);
+
+    prevLoadingRef.current = isLoading;
+  }, [messages.length, isOpen, isLoading]);
+
+  useEffect(() => {
+    if (isOpen && isLoading) {
+      thinkingMsgRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [activeToolStatus, isOpen, isLoading]);
 
   const handleModelChange = (modelId: string) => {
     const meta = AI_MODELS.find((m) => m.id === modelId);
@@ -639,9 +666,14 @@ export function CopilotWidget() {
             {messages.map((msg) => {
               if (msg.role === 'tool') return null; // Hide raw tool data
               const isAssistant = msg.role === 'assistant';
+              const isLastAssistant = msg.id === lastAssistantMsgId;
 
               return (
-                <div key={msg.id} className={`ai-msg ${msg.role}`}>
+                <div
+                  key={msg.id}
+                  ref={isLastAssistant ? lastAssistantMsgRef : undefined}
+                  className={`ai-msg ${msg.role}`}
+                >
                   <MarkdownMessage content={msg.content} />
 
                   {/* Render 1-click Apply Button if optimization was produced */}
@@ -665,14 +697,21 @@ export function CopilotWidget() {
               );
             })}
 
-            {/* Active Tool Badge */}
-            {activeToolStatus && (
-              <div className="ai-tool-badge running">
-                <span>{activeToolStatus}</span>
+            {/* Active Thinking / Tool Running State */}
+            {isLoading && (
+              <div className="ai-msg assistant ai-thinking-msg" ref={thinkingMsgRef}>
+                <div className="ai-thinking-header">
+                  <span className="ai-thinking-dots">
+                    <span className="ai-dot-pulse"></span>
+                    <span className="ai-dot-pulse"></span>
+                    <span className="ai-dot-pulse"></span>
+                  </span>
+                  <span className="ai-thinking-label">
+                    {activeToolStatus || 'Thinking & analyzing…'}
+                  </span>
+                </div>
               </div>
             )}
-
-            <div ref={messagesEndRef} />
           </div>
 
           {/* Quick Prompts */}
