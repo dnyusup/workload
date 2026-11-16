@@ -463,16 +463,36 @@ export function CopilotWidget() {
 
   return (
     <>
-      {/* Floating Action Button */}
+      {/* Floating Action Button (Modern Chat Icon) */}
       {!isOpen && (
         <button
           type="button"
           className="ai-copilot-fab"
           onClick={handleOpen}
           title="Open WLM Agent"
+          aria-label="Open WLM Agent"
         >
-          <span className="ai-copilot-fab-icon">✨</span>
-          <span>WLM Agent</span>
+          <span className="ai-copilot-fab-icon">
+            <svg
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M12 2C6.477 2 2 6.141 2 11.25c0 2.65 1.2 5.04 3.16 6.72-.16 1.48-.68 2.92-1.52 4.14a.5.5 0 0 0 .54.77c2.34-.44 4.35-1.48 5.8-2.6.67.11 1.34.17 2.02.17 5.523 0 10-4.141 10-9.25S17.523 2 12 2z"
+                fill="currentColor"
+              />
+              <circle cx="8" cy="11.25" r="1.3" fill="#0f172a" />
+              <circle cx="12" cy="11.25" r="1.3" fill="#0f172a" />
+              <circle cx="16" cy="11.25" r="1.3" fill="#0f172a" />
+              <path
+                d="M19.5 3.5l.4 1.1 1.1.4-1.1.4-.4 1.1-.4-1.1-1.1-.4 1.1-.4.4-1.1z"
+                fill="#facc15"
+              />
+            </svg>
+          </span>
         </button>
       )}
 
