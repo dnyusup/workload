@@ -82,6 +82,39 @@ export const COPILOT_TOOLS: AiToolDefinition[] = [
       required: ['confirm'],
     },
   },
+  {
+    name: 'navigate_to_page',
+    description:
+      'Navigates the user directly to a specific page or menu in the WorkLoad application (e.g. "production", "layouts", "frequency", "actualOutput", "rejectShort", "products", "activities", "settings", "guidance").',
+    parameters: {
+      type: 'object',
+      properties: {
+        page: {
+          type: 'string',
+          enum: [
+            'production',
+            'simulator',
+            'layouts',
+            'products',
+            'activities',
+            'frequency',
+            'actualOutput',
+            'rejectShort',
+            'outputModels',
+            'users',
+            'settings',
+            'guidance',
+          ],
+          description: 'The target page to navigate to.',
+        },
+        reason: {
+          type: 'string',
+          description: 'Brief reason or explanation why we are navigating to this page.',
+        },
+      },
+      required: ['page'],
+    },
+  },
 ];
 
 export interface CopilotToolContext {
@@ -96,6 +129,7 @@ export interface CopilotToolContext {
   lastOptimizationResult?: OptimizationResult | null;
   setLastOptimizationResult?: (result: OptimizationResult | null) => void;
   onProgress?: (status: string) => void;
+  onNavigate?: (page: string) => void;
 }
 
 export async function executeCopilotTool(
@@ -103,6 +137,28 @@ export async function executeCopilotTool(
   args: Record<string, unknown>,
   ctx: CopilotToolContext,
 ): Promise<{ result: unknown; isError?: boolean }> {
+  // Navigation tool does not require an active setup
+  if (name === 'navigate_to_page') {
+    const targetPage = String(args.page || '').trim();
+    if (ctx.onNavigate && targetPage) {
+      ctx.onNavigate(targetPage);
+      return {
+        result: {
+          success: true,
+          navigatedTo: targetPage,
+          message: `Berhasil berpindah ke halaman ${targetPage}. ${args.reason ? `(${args.reason})` : ''}`,
+        },
+      };
+    }
+    return {
+      result: {
+        success: false,
+        error: `Fungsi navigasi tidak tersedia untuk halaman: ${targetPage}`,
+      },
+      isError: true,
+    };
+  }
+
   const { setup, resolvedConstructions } = ctx;
 
   if (!setup) {
@@ -141,8 +197,18 @@ export async function executeCopilotTool(
           semiFinishProductTon: `${sm.tonageSfp} ton`,
           laborMhpt: `${sm.manHourPerTon} h/ton`,
           totalDowntimeMinutes: sm.totalDowntimeMin,
-          operatorTimelineActivities: sm.activityBreakdown.map((a) => `${a.activity}: ${a.percent}%`),
+          waitingHandlingDowntime: `${sm.waitingHandlingPercent}% (${sm.waitingHandlingMinutes} min machine waiting for operator)`,
           topMachineDowntimeCauses: sm.topDowntimeReasons.slice(0, 5).map((d) => `${d.reason}: ${d.minutes} min`),
+          overallTimelineActivities: sm.activityBreakdown.map((a) => `${a.activity}: ${a.percent}%`),
+          actualManOccupationPerOperator: sm.operatorMetrics.map((op) => ({
+            operator: op.operatorLabel,
+            actualManOccupation: `${op.actualManOccupation}%`,
+            working: `${op.workingPercent}% (${op.serviceMinutes} min)`,
+            walking: `${op.walkingPercent}% (${op.walkingMinutes} min)`,
+            idle: `${op.idlePercent}% (${op.idleMinutes} min)`,
+            machinesHandled: op.machineCount,
+            assignedMachines: op.assignedMachines.join(', '),
+          })),
         },
       };
     }
@@ -155,15 +221,22 @@ export async function executeCopilotTool(
           shiftMinutes: setup.shiftTime,
           machineCount: metrics.machineCount,
           operatorCount: metrics.operatorCount,
-          oee: `${metrics.oee}%`,
-          availability: `${metrics.availability}%`,
+          oeeEstimate: `${metrics.oee}%`,
+          availabilityEstimate: `${metrics.availability}%`,
           mhptTotal: `${metrics.mhptTotal} h/ton`,
           mhptFp: `${metrics.mhptFp} h/ton`,
           totalTon: `${metrics.totalTon} ton`,
           fpTon: `${metrics.fpTon} ton`,
-          avgManOcc: `${metrics.avgManOcc}%`,
-          manOccRange: `${metrics.minManOcc}% - ${metrics.maxManOcc}%`,
-          waitingDowntimeShare: `${metrics.waitingPercent}%`,
+          forecastManOccupation: {
+            average: `${metrics.avgManOcc}%`,
+            range: `${metrics.minManOcc}% - ${metrics.maxManOcc}%`,
+            operatorBreakdown: metrics.operatorBreakdown.map((op) => ({
+              operator: op.operatorLabel,
+              forecastManOcc: `${op.manOccPercent}%`,
+              machineCount: op.machineCount,
+            })),
+          },
+          waitingDowntimeShareEstimate: `${metrics.waitingPercent}%`,
         },
       };
     }
@@ -172,33 +245,58 @@ export async function executeCopilotTool(
       const metrics = computeSetupKpiMetrics(setup, resolvedConstructions);
       const diagnostics: string[] = [];
 
-      // Analyze OEE & Waiting
-      if (metrics.waitingPercent > 12) {
+      // Check if actual simulation data is available on screen
+      if (ctx.simulationMetrics && ctx.simulationMetrics.operatorMetrics?.length > 0) {
+        const sm = ctx.simulationMetrics;
         diagnostics.push(
-          `⚠️ Machine Queue Bottleneck: Machines lose ${metrics.waitingPercent}% running time waiting for operator attention, reducing actual OEE to ${metrics.oee}%.`,
+          `📊 Live Simulation Results: Equipment OEE is ${sm.oee}%, Total Output: ${sm.tonageTotal} ton, Labor MHPT: ${sm.manHourPerTon} h/ton.`,
         );
+
+        if (sm.waitingHandlingPercent > 10) {
+          diagnostics.push(
+            `⚠️ High Machine Waiting Handling: Machines lost ${sm.waitingHandlingPercent}% time (${sm.waitingHandlingMinutes} min) stopped waiting for operators. Operator response time or travel distance is a bottleneck.`,
+          );
+        }
+
+        sm.operatorMetrics.forEach((op) => {
+          if (op.actualManOccupation < 70) {
+            diagnostics.push(
+              `⚠️ Operator ${op.operatorLabel} Underutilized: Actual Man Occupation is only ${op.actualManOccupation}% (idle ${op.idlePercent}%). Operator has capacity for more machines.`,
+            );
+          } else if (op.actualManOccupation > 92) {
+            diagnostics.push(
+              `⚠️ Operator ${op.operatorLabel} Overloaded: Actual Man Occupation is ${op.actualManOccupation}% (walking ${op.walkingPercent}%). High risk of doffing delays.`,
+            );
+          }
+        });
       } else {
-        diagnostics.push(
-          `✓ Good Machine Utilization: Operator wait time is only ${metrics.waitingPercent}%, OEE maintained at ${metrics.oee}%.`,
-        );
+        // Fall back to pre-simulation forecast metrics
+        if (metrics.waitingPercent > 12) {
+          diagnostics.push(
+            `⚠️ Machine Queue Bottleneck (Forecast): Machines estimated to lose ${metrics.waitingPercent}% running time waiting for operator attention, reducing OEE to ${metrics.oee}%.`,
+          );
+        } else {
+          diagnostics.push(
+            `✓ Good Machine Utilization (Forecast): Operator wait time is estimated at ${metrics.waitingPercent}%, OEE maintained at ${metrics.oee}%.`,
+          );
+        }
+
+        if (metrics.avgManOcc < 70) {
+          diagnostics.push(
+            `⚠️ Labor Cost Inefficiency: Average Forecast Man Occupation is only ${metrics.avgManOcc}%. MHPT is high (${metrics.mhptTotal} h/ton). Operator count can be streamlined.`,
+          );
+        } else if (metrics.avgManOcc > 92) {
+          diagnostics.push(
+            `⚠️ Operator Overload: Forecast workload is very high at ${metrics.avgManOcc}%. Risk of fatigue.`,
+          );
+        } else {
+          diagnostics.push(
+            `✓ Balanced Operator Workload: Average Forecast Man Occupation is ${metrics.avgManOcc}%, within the ideal range (80% - 90%).`,
+          );
+        }
       }
 
-      // Analyze MHPT & Labor efficiency
-      if (metrics.avgManOcc < 70) {
-        diagnostics.push(
-          `⚠️ Labor Cost Inefficiency: Average operator occupation is only ${metrics.avgManOcc}%. MHPT is high (${metrics.mhptTotal} h/ton) due to excess operators. Operator count can be streamlined.`,
-        );
-      } else if (metrics.avgManOcc > 92) {
-        diagnostics.push(
-          `⚠️ Operator Overload: Operator workload is very high at ${metrics.avgManOcc}%. High risk of fatigue and delayed doffing/repairs.`,
-        );
-      } else {
-        diagnostics.push(
-          `✓ Balanced Operator Workload: Average occupation is ${metrics.avgManOcc}%, within the ideal range (80% - 90%).`,
-        );
-      }
-
-      // Analyze Imbalance
+      // Analyze Workload Imbalance
       const spread = Number((metrics.maxManOcc - metrics.minManOcc).toFixed(1));
       if (spread > 20) {
         diagnostics.push(

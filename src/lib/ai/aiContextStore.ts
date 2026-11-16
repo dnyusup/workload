@@ -2,6 +2,20 @@ import type { ProductionSetup } from '../../types';
 import type { ResolvedConstruction } from '../productionConstructionResolver';
 import type { OptimizationResult } from './aiOptimizer';
 
+export interface AiOperatorSimulationMetric {
+  operatorId: string;
+  operatorLabel: string;
+  actualManOccupation: number;
+  workingPercent: number;
+  walkingPercent: number;
+  idlePercent: number;
+  serviceMinutes: number;
+  walkingMinutes: number;
+  idleMinutes: number;
+  machineCount: number;
+  assignedMachines: string[];
+}
+
 export interface AiSimulationMetrics {
   clockMin: number;
   shiftTimeMin: number;
@@ -17,8 +31,11 @@ export interface AiSimulationMetrics {
   tonageSfp: number;
   manHourPerTon: number;
   totalDowntimeMin: number;
+  waitingHandlingMinutes: number;
+  waitingHandlingPercent: number;
   activityBreakdown: Array<{ activity: string; percent: number }>;
   topDowntimeReasons: Array<{ reason: string; minutes: number }>;
+  operatorMetrics: AiOperatorSimulationMetric[];
 }
 
 export interface AiAppContext {
@@ -31,6 +48,7 @@ export interface AiAppContext {
     onProgress?: (phase: string, done: number, total: number) => void,
   ) => Promise<void> | void;
   lastOptimizationResult?: OptimizationResult | null;
+  onNavigate?: (page: string) => void;
 }
 
 type Listener = (context: AiAppContext) => void;

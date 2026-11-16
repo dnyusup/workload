@@ -13,6 +13,7 @@ import { getAiAppContext, subscribeAiAppContext, type AiAppContext } from '../..
 import type { OptimizationResult } from '../../lib/ai/aiOptimizer';
 import { useAuth, type AuthUser } from '../../context/auth';
 import { MarkdownMessage } from './MarkdownMessage';
+import { WLM_APP_NAVIGATION_GUIDE, WLM_FORMULAS_KNOWLEDGE } from '../../lib/ai/aiKnowledgeBase';
 
 function buildSystemPrompt(user: AuthUser, ctx: AiAppContext): string {
   const isAdmin = user.role === 'admin';
@@ -25,6 +26,16 @@ function buildSystemPrompt(user: AuthUser, ctx: AiAppContext): string {
     const sm = ctx.simulationMetrics;
     const topActivities = sm.activityBreakdown.slice(0, 8).map((a) => `${a.activity}: ${a.percent}%`).join(', ');
     const topDowntimes = sm.topDowntimeReasons.slice(0, 4).map((d) => `${d.reason}: ${d.minutes}m`).join(', ');
+    const opMetricsSummary =
+      sm.operatorMetrics && sm.operatorMetrics.length > 0
+        ? sm.operatorMetrics
+            .map(
+              (op) =>
+                `- ${op.operatorLabel}: Actual Man Occupation = ${op.actualManOccupation}% (Working: ${op.workingPercent}%, Walking: ${op.walkingPercent}%, Idle: ${op.idlePercent}%, Machines: ${op.machineCount} [${op.assignedMachines.join(', ')}])`,
+            )
+            .join('\n')
+        : 'Operator metrics loading...';
+
     simContext = `
 [LIVE SIMULATION SCREEN DATA]
 The user is currently on the Production Simulation view! A simulation run or replay is loaded:
@@ -33,10 +44,18 @@ The user is currently on the Production Simulation view! A simulation run or rep
 - Equipment OEE: ${sm.oee}% | Availability: ${sm.availability}% | Quality: ${sm.quality}%
 - Output: Total ${sm.tonageTotal} ton (FP: ${sm.tonageFp} ton, Semi-FP: ${sm.tonageSfp} ton)
 - Labor Productivity (MHPT): ${sm.manHourPerTon} h/ton
+- Machine Waiting Handling: ${sm.waitingHandlingPercent}% (${sm.waitingHandlingMinutes} minutes machines stopped waiting for operator)
 - Operator Timeline Activities: ${topActivities}
 - Top Downtime Causes: ${topDowntimes}
 - Total Machine Downtime: ${sm.totalDowntimeMin} minutes
-NOTE: You can read and refer to these exact numbers directly when the user asks questions about their simulation or setup!
+
+[ACTUAL MAN OCCUPATION PER OPERATOR (POST-SIMULATION)]:
+${opMetricsSummary}
+
+CRITICAL METRIC CLARIFICATION:
+- When the user asks about "Man Occupation" or "Utilization" while a simulation is loaded, REFER DIRECTLY TO THE ACTUAL MAN OCCUPATION LISTED ABOVE (working % + walking %)!
+- Never give an estimated average when the user asks about a specific operator after simulation!
+- Clearly explain the components: Actual Man Occupation = Working % + Walking %. The remaining is Idle %.
 `;
   } else {
     simContext = `
@@ -66,15 +85,27 @@ ${
 
 ${simContext}
 
+${WLM_APP_NAVIGATION_GUIDE}
+
+${WLM_FORMULAS_KNOWLEDGE}
+
 [MISSION & CORE RESPONSIBILITIES]
-1. Assist users in analyzing operational performance metrics: OEE, downtime breakdown (especially waiting for operator), Man Occupation (operator workload), and MHPT (Manhour Per Ton).
-2. Diagnose operational bottlenecks (e.g. excessive machine downtime waiting for operator vs labor cost inefficiencies from low occupation).
-3. Optimize machine-to-operator assignments to achieve balanced Pareto-optimal output (high OEE vs efficient MHPT). Note: high OEE with high MHPT is unfavorable.
-4. Output & Presentation Formatting:
-   - Use clean Markdown tables with columns (e.g. | Metric | Current | Proposed |) when displaying multi-item comparisons or operator workloads.
+1. Guidance & Application Navigator:
+   - You know every feature and menu of the WorkLoad app. Explain concepts and workflows clearly.
+   - If the user asks to open or go to a menu/page (e.g. "buka menu frequency", "bawa saya ke layouts", "lihat actual output"), call the "navigate_to_page" tool immediately!
+2. Teaching Mathematical Formulas & Logic:
+   - When asked about calculations, explain step-by-step using formulas from the Technical Formulas section above.
+   - Clarify the difference between Forecast Man Occupation (pre-simulation theoretical workload) and Actual Man Occupation (post-simulation recorded working + walking %).
+3. Operational Performance & Bottleneck Diagnosis:
+   - Analyze OEE, Waiting Handling, MHPT, and operator workloads.
+   - Diagnose why OEE drops (e.g. machines queuing for operators, walking distances).
+4. Machine Allocation Optimization:
+   - Optimize machine-to-operator assignments balancing high OEE and low MHPT.
+   - Ensure clustered physical row layouts to minimize operator walking distance.
+5. Presentation & Formatting:
+   - Use clean Markdown tables with columns (e.g. | Operator | Actual Man Occ | Working | Walking | Idle | Machines |).
    - Use bold for emphasis and bullet points for recommendations.
-   - Do not output raw unformatted pipe delimiters outside tables.
-5. Language flexibility: If the user communicates in Indonesian, respond naturally in Indonesian. If in English, respond in English. Always keep explanations clear, concise, and backed by calculated metrics.`;
+   - If the user asks in Indonesian, respond naturally in Indonesian. If in English, respond in English.`;
 }
 
 let msgSequence = 0;
@@ -330,6 +361,8 @@ export function CopilotWidget() {
               label = '📊 Fetching latest setup performance data…';
             } else if (call.name === 'get_current_simulation_results') {
               label = '📈 Reading live simulation run output & timeline…';
+            } else if (call.name === 'navigate_to_page') {
+              label = '🧭 Navigating to requested page…';
             }
 
             setActiveToolStatus(label);
@@ -352,6 +385,7 @@ export function CopilotWidget() {
               },
               onApplyAssignments: appContext.onApplyAssignments,
               onProgress: (status) => setActiveToolStatus(status),
+              onNavigate: appContext.onNavigate,
             });
 
             const toolResultMsg = createChatMessage(

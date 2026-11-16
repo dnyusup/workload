@@ -428,11 +428,11 @@ export async function optimizeMachineAllocation({
 
   let tradeoffSummary = '';
   if (best.count === currentMetrics.operatorCount) {
-    tradeoffSummary = `Recommended to maintain ${best.count} operators by reallocating contiguous adjacent machine rows. OEE reaches ${best.metrics.oee}% (Δ ${deltaOee >= 0 ? '+' : ''}${deltaOee}%), MHPT is ${best.metrics.mhptTotal} h/ton, and operator workload is balanced at an average of ${best.metrics.avgManOcc}% (range ${best.metrics.minManOcc}% - ${best.metrics.maxManOcc}%).`;
+    tradeoffSummary = `Recommended to maintain ${best.count} operators by reallocating contiguous adjacent machine rows. OEE reaches ${best.metrics.oee}% (Δ ${deltaOee >= 0 ? '+' : ''}${deltaOee}%), MHPT is ${best.metrics.mhptTotal} h/ton, and operator workload is balanced at an average Forecast Man Occupation of ${best.metrics.avgManOcc}% (range ${best.metrics.minManOcc}% - ${best.metrics.maxManOcc}%). The plan groups contiguous machine blocks to prevent multi-row sprawl and bounds estimated machine waiting handling at ${best.metrics.waitingPercent}%.`;
   } else if (best.count < currentMetrics.operatorCount) {
-    tradeoffSummary = `Labor efficiency recommendation: Streamline operators from ${currentMetrics.operatorCount} to ${best.count}. MHPT improves significantly to ${best.metrics.mhptTotal} h/ton (saving ${Math.abs(deltaMhpt)} h/ton), while OEE remains stable at ${best.metrics.oee}% with operator occupation within safe thresholds (${best.metrics.avgManOcc}%).`;
+    tradeoffSummary = `Labor efficiency recommendation: Streamline operators from ${currentMetrics.operatorCount} to ${best.count}. MHPT improves significantly to ${best.metrics.mhptTotal} h/ton (saving ${Math.abs(deltaMhpt)} h/ton), while OEE remains stable at ${best.metrics.oee}% with Forecast Man Occupation within safe thresholds (${best.metrics.avgManOcc}%). Contiguous machine row clusters reduce walking delays and keep estimated machine waiting handling at ${best.metrics.waitingPercent}%.`;
   } else {
-    tradeoffSummary = `Capacity expansion recommendation: Increase operators from ${currentMetrics.operatorCount} to ${best.count} to eliminate machine waiting queues. OEE rises to ${best.metrics.oee}% (Δ +${deltaOee}%) and output increases by +${deltaTon} tons, keeping MHPT optimized at ${best.metrics.mhptTotal} h/ton.`;
+    tradeoffSummary = `Capacity expansion recommendation: Increase operators from ${currentMetrics.operatorCount} to ${best.count} to eliminate machine waiting queues. OEE rises to ${best.metrics.oee}% (Δ +${deltaOee}%) and output increases by +${deltaTon} tons, keeping MHPT optimized at ${best.metrics.mhptTotal} h/ton. Estimated machine waiting handling drops to ${best.metrics.waitingPercent}%.`;
   }
 
   const alternativeScenarios = evaluations.map((e) => {

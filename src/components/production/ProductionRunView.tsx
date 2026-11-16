@@ -44,7 +44,7 @@ import {
   downloadReplayFromCloud,
   interpolateReplaySnapshot,
 } from '../../lib/simulationReplay';
-import { setAiAppContext } from '../../lib/ai/aiContextStore';
+import { setAiAppContext, type AiOperatorSimulationMetric } from '../../lib/ai/aiContextStore';
 
 const LABEL_MARGIN = 24;
 const MIN_ZOOM = 0.1;
@@ -883,6 +883,31 @@ export function ProductionRunView({
     const shiftHoursNum = Math.floor(metrics.shiftTimeMin / 60);
     const shiftMinsNum = Math.round(metrics.shiftTimeMin % 60);
 
+    const opMetrics: AiOperatorSimulationMetric[] = operatorFacts.map((op) => {
+      const avail = Math.max(1, op.availableMin);
+      const workingPct = Number(((op.serviceMin / avail) * 100).toFixed(1));
+      const walkingPct = Number(((op.walkingMin / avail) * 100).toFixed(1));
+      const idlePct = Number(((op.idleMin / avail) * 100).toFixed(1));
+      const actualOcc = Number((op.occupation * 100).toFixed(1));
+      return {
+        operatorId: op.id,
+        operatorLabel: op.label,
+        actualManOccupation: actualOcc,
+        workingPercent: workingPct,
+        walkingPercent: walkingPct,
+        idlePercent: idlePct,
+        serviceMinutes: Math.round(op.serviceMin),
+        walkingMinutes: Math.round(op.walkingMin),
+        idleMinutes: Math.round(op.idleMin),
+        machineCount: op.machineIds.length,
+        assignedMachines: op.machineIds,
+      };
+    });
+
+    const waitingMin = Math.round(metrics.downtimeByReason['waiting'] ?? 0);
+    const totalMachinePlannedTime = metrics.assignedMachineCount * Math.max(1, metrics.clockMin);
+    const waitingPct = totalMachinePlannedTime > 0 ? Number(((waitingMin / totalMachinePlannedTime) * 100).toFixed(1)) : 0;
+
     setAiAppContext({
       currentPage: 'Production Simulation',
       setup,
@@ -902,13 +927,17 @@ export function ProductionRunView({
         tonageSfp: Number(tonageSfp.toFixed(2)),
         manHourPerTon: Number(manHourPerTon.toFixed(2)),
         totalDowntimeMin: Math.round(totalDowntime),
+        waitingHandlingMinutes: waitingMin,
+        waitingHandlingPercent: waitingPct,
         activityBreakdown: activityList,
         topDowntimeReasons: topDowntime,
+        operatorMetrics: opMetrics,
       },
     });
   }, [
     setup,
     resolved,
+    operatorFacts,
     metrics.clockMin,
     metrics.shiftTimeMin,
     metrics.assignedMachineCount,

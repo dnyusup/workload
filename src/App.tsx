@@ -26,6 +26,7 @@ import { CopilotWidget } from './components/ai/CopilotWidget';
 import { FrequencyManager } from './components/data/FrequencyManager';
 import { ActualOutputManager } from './components/data/ActualOutputManager';
 import { RejectShortManager } from './components/data/RejectShortManager';
+import { setAiAppContext } from './lib/ai/aiContextStore';
 import './App.css';
 
 const ROLE_LABEL: Record<string, string> = { admin: 'Admin', contribute: 'Contribute', guest: 'Guest' };
@@ -75,6 +76,19 @@ function AppShell() {
   // If the current role cannot see the selected page, render Simulator without triggering a
   // synchronous state update from an effect. The stored page remains available if access returns.
   const activePage = authLoading || pagesForRole(user.role, user.hasSharedSetups).includes(page) ? page : 'simulator';
+
+  // Sync current active page & navigation handler to WLM Agent context
+  useEffect(() => {
+    setAiAppContext({
+      currentPage: labelForPage(activePage),
+      onNavigate: (targetPage: string) => {
+        const allowed = pagesForRole(user.role, user.hasSharedSetups);
+        if (allowed.includes(targetPage as AppPage)) {
+          setPage(targetPage as AppPage);
+        }
+      },
+    });
+  }, [activePage, user.role, user.hasSharedSetups]);
 
   const handleStart = () => {
     setConfig((prev) => ({
