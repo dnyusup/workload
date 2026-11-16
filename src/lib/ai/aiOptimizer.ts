@@ -128,10 +128,10 @@ export function computeSetupKpiMetrics(
  * Calculates a multi-objective optimization score balancing OEE and MHPT:
  * - High OEE gives more tons
  * - Low MHPT means higher labor productivity (fewer operators per ton)
- * - Operator occupation should ideally stay in the safe zone (80% - 90%)
+ * - Operator occupation is optimized towards 100%
  * - Imbalance between operators is penalized
  */
-function calculateParetoScore(metrics: SetupKpiMetrics, targetManOcc = 85): number {
+function calculateParetoScore(metrics: SetupKpiMetrics, targetManOcc = 100): number {
   let score = 0;
 
   // Reward high OEE (base equipment efficiency)
@@ -140,17 +140,17 @@ function calculateParetoScore(metrics: SetupKpiMetrics, targetManOcc = 85): numb
   // Penalize high MHPT (labor inefficiency)
   score -= metrics.mhptTotal * 8.0;
 
-  // Penalty for operator overload (>92% causes high risk of delays & machine starvation)
-  if (metrics.avgManOcc > 90) {
-    score -= (metrics.avgManOcc - 90) * 4.0;
+  // Penalty for operator backlog (>100% causes backlog & severe machine waiting delays)
+  if (metrics.avgManOcc > 100) {
+    score -= (metrics.avgManOcc - 100) * 8.0;
   }
-  if (metrics.maxManOcc > 98) {
-    score -= (metrics.maxManOcc - 98) * 8.0;
+  if (metrics.maxManOcc > 105) {
+    score -= (metrics.maxManOcc - 105) * 10.0;
   }
 
-  // Penalty for operator under-utilization (<75% wastes labor hours)
+  // Penalty for operator under-utilization (target is towards targetManOcc, e.g. 100%)
   if (metrics.avgManOcc < targetManOcc - 10) {
-    score -= (targetManOcc - 10 - metrics.avgManOcc) * 2.0;
+    score -= (targetManOcc - 10 - metrics.avgManOcc) * 3.0;
   }
 
   // Penalty for workload imbalance (difference between max and min operator occupation)
@@ -437,12 +437,12 @@ export async function optimizeMachineAllocation({
 
   const alternativeScenarios = evaluations.map((e) => {
     let desc = '';
-    if (e.metrics.avgManOcc > 92) {
-      desc = 'Overload risk: operators over-utilized, high machine queue downtime.';
-    } else if (e.metrics.avgManOcc < 75) {
-      desc = 'Under-utilized: excess operator idle time, higher labor cost per ton (high MHPT).';
+    if (e.metrics.avgManOcc > 100) {
+      desc = 'Overload (>100%): operator exceeds capacity, high machine waiting backlog.';
+    } else if (e.metrics.avgManOcc < 85) {
+      desc = 'Under-utilized (<85%): excess idle capacity, opportunity to add machines towards 100% Man Occ.';
     } else {
-      desc = 'Sweet spot: optimum balance between equipment OEE and labor efficiency.';
+      desc = 'Optimized towards 100%: high operator utilization with balanced equipment throughput.';
     }
     return {
       operatorCount: e.count,

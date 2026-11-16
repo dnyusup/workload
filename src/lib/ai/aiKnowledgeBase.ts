@@ -78,7 +78,10 @@ export const WLM_FORMULAS_KNOWLEDGE = `
      * Calculated in the Setup editor before simulation.
      * Theoretical operator workload ratio = (Total Machine Activity Minutes / Net Shift Minutes) * 100%
      * Net Shift Minutes = ShiftTime - LunchTime - MeetingTime.
-     * Ideal target: 80% - 90%. Below 70% is underloaded (labor cost waste); above 92% is overloaded (risk of delays & fatigue).
+     * Optimization Target: Target Man Occupation dioptimalkan menuju 100% (memaksimalkan efisiensi utilisasi operator).
+     * Fitur "Man Occ 100%" di Default Values memastikan alokasi mesin dioptimalkan hingga mencapai 100% (selama Ideal Demand < Max Ideal Demand).
+     * Jika Man Occ 100% tidak aktif, prosedur step-up bekerja jika Man Occupation di bawah "Optimize Step-Up Below" (default 89%) untuk melangkah naik mendekati 100%.
+     * Nilai > 100% berarti operator mengalami backlog / kelebihan beban antrean mesin. Nilai jauh di bawah 100% (misal < 80%) berarti operator under-utilized dan masih punya kapasitas untuk menambah mesin.
    - ACTUAL MAN OCCUPATION (%) [Post-Simulation]:
      * Measured during the 8-hour discrete event simulation replay.
      * Actual Man Occupation = Working % + Walking %

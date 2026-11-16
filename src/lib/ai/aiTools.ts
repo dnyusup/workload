@@ -259,13 +259,17 @@ export async function executeCopilotTool(
         }
 
         sm.operatorMetrics.forEach((op) => {
-          if (op.actualManOccupation < 70) {
+          if (op.actualManOccupation < 80) {
             diagnostics.push(
-              `⚠️ Operator ${op.operatorLabel} Underutilized: Actual Man Occupation is only ${op.actualManOccupation}% (idle ${op.idlePercent}%). Operator has capacity for more machines.`,
+              `⚠️ Operator ${op.operatorLabel} Underutilized: Actual Man Occupation is ${op.actualManOccupation}% (idle ${op.idlePercent}%). Operator has available capacity to handle more machines towards 100%.`,
             );
-          } else if (op.actualManOccupation > 92) {
+          } else if (op.actualManOccupation > 100) {
             diagnostics.push(
-              `⚠️ Operator ${op.operatorLabel} Overloaded: Actual Man Occupation is ${op.actualManOccupation}% (walking ${op.walkingPercent}%). High risk of doffing delays.`,
+              `⚠️ Operator ${op.operatorLabel} Over 100%: Actual Man Occupation is ${op.actualManOccupation}% (working ${op.workingPercent}%, walking ${op.walkingPercent}%). Workload exceeds 100% capacity causing queue backlog.`,
+            );
+          } else {
+            diagnostics.push(
+              `✓ Operator ${op.operatorLabel} Well-Optimized: Actual Man Occupation is ${op.actualManOccupation}%, well utilized towards target 100%.`,
             );
           }
         });
@@ -281,17 +285,17 @@ export async function executeCopilotTool(
           );
         }
 
-        if (metrics.avgManOcc < 70) {
+        if (metrics.avgManOcc < 80) {
           diagnostics.push(
-            `⚠️ Labor Cost Inefficiency: Average Forecast Man Occupation is only ${metrics.avgManOcc}%. MHPT is high (${metrics.mhptTotal} h/ton). Operator count can be streamlined.`,
+            `⚠️ Labor Underutilized: Average Forecast Man Occupation is ${metrics.avgManOcc}%. Target is towards 100% (opportunity to add machines or streamline operators).`,
           );
-        } else if (metrics.avgManOcc > 92) {
+        } else if (metrics.avgManOcc > 100) {
           diagnostics.push(
-            `⚠️ Operator Overload: Forecast workload is very high at ${metrics.avgManOcc}%. Risk of fatigue.`,
+            `⚠️ Forecast Workload Over 100%: Average Forecast Man Occupation is ${metrics.avgManOcc}%, exceeding 100% (machines will experience queue backlog).`,
           );
         } else {
           diagnostics.push(
-            `✓ Balanced Operator Workload: Average Forecast Man Occupation is ${metrics.avgManOcc}%, within the ideal range (80% - 90%).`,
+            `✓ Optimized Operator Workload: Average Forecast Man Occupation is ${metrics.avgManOcc}%, well optimized towards target 100%.`,
           );
         }
       }
